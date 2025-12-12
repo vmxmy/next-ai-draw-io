@@ -66,42 +66,34 @@ model VerificationToken {
 // 应用会话（对齐现有 localStorage 的 conversation 概念）
 // 先做最小可用数据模型：后续再加入“共享/权限/团队空间”等能力（YAGNI）。
 model Conversation {
-  id        String   @id
   userId    String
+  id        String
   title     String?
+  // 客户端时间戳（用于排序/避免回拉覆盖本地更新）
+  clientCreatedAt DateTime
+  clientUpdatedAt DateTime
+  // 会话完整载荷（与当前 localStorage 结构对齐，便于无感同步）
+  // { messages, xml, snapshots, sessionId }
+  data      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?
 
-  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  ConversationMessage[]
-  snapshots ConversationSnapshot[]
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@id([userId, id])
   @@index([userId, updatedAt])
+  @@index([userId, clientUpdatedAt])
 }
 
-model ConversationMessage {
-  id             String   @id
+// 用于增量同步的事件流游标（单调递增，避免 updatedAt 边界漏拉）
+model SyncEvent {
+  id             BigInt   @id @default(autoincrement())
+  userId         String
   conversationId String
-  role           String
-  contentJson    Json
+  type           String   // upsert/delete
   createdAt      DateTime @default(now())
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@index([conversationId, createdAt])
+  @@index([userId, id])
+  @@index([userId, conversationId, id])
 }
-
-model ConversationSnapshot {
-  id             String   @id @default(cuid())
-  conversationId String
-  version        Int
-  xml            String
-  createdAt      DateTime @default(now())
-
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@unique([conversationId, version])
-  @@index([conversationId, createdAt])
-}
-

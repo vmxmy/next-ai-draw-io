@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
@@ -32,6 +33,7 @@ import { useI18n } from "@/contexts/i18n-context"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
+import { api } from "@/lib/trpc/client"
 import { type FileData, useFileProcessor } from "@/lib/use-file-processor"
 import { useQuotaManager } from "@/lib/use-quota-manager"
 import { formatXML, wrapWithMxFile } from "@/lib/utils"
@@ -50,6 +52,11 @@ const STORAGE_CURRENT_CONVERSATION_ID_KEY =
     "next-ai-draw-io-current-conversation-id"
 const conversationStorageKey = (id: string) =>
     `next-ai-draw-io-conversation:${id}`
+
+// 云端同步（登录态）游标
+const STORAGE_SYNC_CURSOR_PREFIX = "next-ai-draw-io-sync-cursor:"
+const syncCursorStorageKey = (userId: string) =>
+    `${STORAGE_SYNC_CURSOR_PREFIX}${userId}`
 
 // Type for message parts (tool calls and their states)
 interface MessagePart {
@@ -288,6 +295,138 @@ export default function ChatPanel({
 
     // Persist processed tool call IDs so collapsing the chat doesn't replay old tool outputs
     const processedToolCallsRef = useRef<Set<string>>(new Set())
+
+    // 登录态（OAuth）+ 云端同步（tRPC）
+    const { data: authSession, status: authStatus } = useSession()
+    const pushConversations = api.conversation.push.useMutation()
+    const pullConversations = api.conversation.pull.useMutation()
+
+    const syncBootstrappedUserIdRef = useRef<string | null>(null)
+    const syncPullIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+        null,
+    )
+    const syncDebounceTimersRef = useRef<
+        Map<string, ReturnType<typeof setTimeout>>
+    >(new Map())
+    const syncPullInFlightRef = useRef(false)
+    const syncPullOnceRef = useRef<(() => void) | null>(null)
+
+    const getSyncCursor = useCallback((): string => {
+        const userId = authSession?.user?.id
+        if (!userId) return "0"
+        try {
+            return localStorage.getItem(syncCursorStorageKey(userId)) || "0"
+        } catch {
+            return "0"
+        }
+    }, [authSession?.user?.id])
+
+    const setSyncCursor = useCallback(
+        (cursor: string) => {
+            const userId = authSession?.user?.id
+            if (!userId) return
+            try {
+                localStorage.setItem(syncCursorStorageKey(userId), cursor)
+            } catch {
+                // ignore
+            }
+        },
+        [authSession?.user?.id],
+    )
+
+    const readConversationMetasFromStorage =
+        useCallback((): ConversationMeta[] => {
+            try {
+                const raw = localStorage.getItem(STORAGE_CONVERSATIONS_KEY)
+                const metas = raw ? (JSON.parse(raw) as unknown) : []
+                return Array.isArray(metas) ? (metas as ConversationMeta[]) : []
+            } catch {
+                return []
+            }
+        }, [])
+
+    const readConversationPayloadFromStorage = useCallback(
+        (id: string): ConversationPayload | null => {
+            try {
+                const raw = localStorage.getItem(conversationStorageKey(id))
+                if (!raw) return null
+                return JSON.parse(raw) as ConversationPayload
+            } catch {
+                return null
+            }
+        },
+        [],
+    )
+
+    const buildPushConversationInput = useCallback(
+        (id: string, opts?: { deleted?: boolean }) => {
+            const metas = readConversationMetasFromStorage()
+            const meta = metas.find((m) => m.id === id)
+            const now = Date.now()
+            const createdAt = meta?.createdAt ?? now
+            const updatedAt = meta?.updatedAt ?? now
+
+            const payload = opts?.deleted
+                ? undefined
+                : readConversationPayloadFromStorage(id)
+
+            return {
+                id,
+                title: meta?.title,
+                createdAt,
+                updatedAt,
+                deleted: opts?.deleted,
+                payload: payload ?? undefined,
+            }
+        },
+        [readConversationMetasFromStorage, readConversationPayloadFromStorage],
+    )
+
+    const pushConversationNow = useCallback(
+        async (id: string, opts?: { deleted?: boolean }) => {
+            if (authStatus !== "authenticated") return
+            const userId = authSession?.user?.id
+            if (!userId) return
+
+            const input = buildPushConversationInput(id, opts)
+            // 非删除必须有 payload；否则跳过（避免把空数据覆盖到云端）
+            if (!input.deleted && !input.payload) return
+
+            const res = await pushConversations.mutateAsync({
+                conversations: [input],
+            })
+            if (res?.cursor) setSyncCursor(res.cursor)
+
+            // push 成功后短延迟 pull 一次，尽快在其它设备体现
+            setTimeout(() => {
+                syncPullOnceRef.current?.()
+            }, 1500)
+        },
+        [
+            authSession?.user?.id,
+            authStatus,
+            buildPushConversationInput,
+            pushConversations,
+            setSyncCursor,
+        ],
+    )
+
+    const queuePushConversation = useCallback(
+        (id: string, opts?: { immediate?: boolean; deleted?: boolean }) => {
+            if (authStatus !== "authenticated") return
+            if (!authSession?.user?.id) return
+
+            const delay = opts?.immediate ? 0 : 1000
+            const existing = syncDebounceTimersRef.current.get(id)
+            if (existing) clearTimeout(existing)
+            const timer = setTimeout(() => {
+                syncDebounceTimersRef.current.delete(id)
+                void pushConversationNow(id, { deleted: opts?.deleted })
+            }, delay)
+            syncDebounceTimersRef.current.set(id, timer)
+        },
+        [authSession?.user?.id, authStatus, pushConversationNow],
+    )
 
     const {
         messages,
@@ -566,6 +705,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     quotaManager.incrementTPMCount(actualTokens)
                 }
             }
+
+            // 自动同步：消息生成完成后尽快 push（比 messages 变更更“稳定”）
+            if (currentConversationId) {
+                queuePushConversation(currentConversationId, {
+                    immediate: true,
+                })
+            }
         },
         sendAutomaticallyWhen: ({ messages }) => {
             const chatMessages = messages as unknown as ChatMessage[]
@@ -758,6 +904,259 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         [clearDiagram, isDrawioReady, onDisplayChart, setMessages],
     )
 
+    const applyRemoteConversations = useCallback(
+        (remote: Array<any>) => {
+            if (!Array.isArray(remote) || remote.length === 0) return
+
+            let shouldReloadCurrent = false
+            let currentRemoved = false
+
+            const localMetas = readConversationMetasFromStorage()
+            const metaById = new Map(localMetas.map((m) => [m.id, m]))
+
+            for (const rc of remote) {
+                const id = String(rc?.id || "")
+                if (!id) continue
+
+                if (rc?.deleted) {
+                    metaById.delete(id)
+                    try {
+                        localStorage.removeItem(conversationStorageKey(id))
+                    } catch {
+                        // ignore
+                    }
+                    if (id === currentConversationId) currentRemoved = true
+                    continue
+                }
+
+                const localMeta = metaById.get(id)
+                const remoteUpdatedAt = Number(rc?.updatedAt ?? 0)
+                if (localMeta && localMeta.updatedAt >= remoteUpdatedAt) {
+                    continue
+                }
+
+                try {
+                    localStorage.setItem(
+                        conversationStorageKey(id),
+                        JSON.stringify(rc?.payload ?? {}),
+                    )
+                } catch {
+                    // ignore
+                }
+
+                metaById.set(id, {
+                    id,
+                    createdAt: Number(rc?.createdAt ?? Date.now()),
+                    updatedAt: remoteUpdatedAt || Date.now(),
+                    title: rc?.title,
+                })
+
+                if (id === currentConversationId) shouldReloadCurrent = true
+            }
+
+            const nextMetas = Array.from(metaById.values()).sort(
+                (a, b) => b.updatedAt - a.updatedAt,
+            )
+            try {
+                localStorage.setItem(
+                    STORAGE_CONVERSATIONS_KEY,
+                    JSON.stringify(nextMetas),
+                )
+            } catch {
+                // ignore
+            }
+            setConversations(nextMetas)
+
+            if (currentRemoved) {
+                const nextId = nextMetas[0]?.id || ""
+                if (nextId) {
+                    try {
+                        localStorage.setItem(
+                            STORAGE_CURRENT_CONVERSATION_ID_KEY,
+                            nextId,
+                        )
+                    } catch {
+                        // ignore
+                    }
+                    setCurrentConversationId(nextId)
+                    return
+                }
+                // 云端删除导致本地无会话：兜底创建一个新的空会话（保持产品可用性）
+                const newId = createConversationId()
+                const now = Date.now()
+                const payload: ConversationPayload = {
+                    messages: [],
+                    xml: "",
+                    snapshots: [],
+                    sessionId: createSessionId(),
+                }
+                try {
+                    localStorage.setItem(
+                        conversationStorageKey(newId),
+                        JSON.stringify(payload),
+                    )
+                    const metas: ConversationMeta[] = [
+                        { id: newId, createdAt: now, updatedAt: now },
+                    ]
+                    localStorage.setItem(
+                        STORAGE_CONVERSATIONS_KEY,
+                        JSON.stringify(metas),
+                    )
+                    localStorage.setItem(
+                        STORAGE_CURRENT_CONVERSATION_ID_KEY,
+                        newId,
+                    )
+                    setConversations(metas)
+                    setCurrentConversationId(newId)
+                    queuePushConversation(newId, { immediate: true })
+                } catch {
+                    // ignore
+                }
+                return
+            }
+
+            if (shouldReloadCurrent && currentConversationId) {
+                loadConversation(currentConversationId)
+            }
+        },
+        [
+            currentConversationId,
+            loadConversation,
+            queuePushConversation,
+            readConversationMetasFromStorage,
+            setConversations,
+        ],
+    )
+
+    const pullOnce = useCallback(async () => {
+        if (authStatus !== "authenticated") return
+        if (!authSession?.user?.id) return
+        if (syncPullInFlightRef.current) return
+
+        syncPullInFlightRef.current = true
+        try {
+            const cursor = getSyncCursor()
+            const res = await pullConversations.mutateAsync({
+                cursor,
+                limit: 200,
+            })
+            if (res?.cursor) setSyncCursor(res.cursor)
+            if (Array.isArray(res?.conversations) && res.conversations.length) {
+                applyRemoteConversations(res.conversations as any[])
+            }
+        } catch {
+            // 自动同步失败不打扰用户；UI 只在需要时提示（后续可加状态指示）
+        } finally {
+            syncPullInFlightRef.current = false
+        }
+    }, [
+        applyRemoteConversations,
+        authSession?.user?.id,
+        authStatus,
+        getSyncCursor,
+        pullConversations,
+        setSyncCursor,
+    ])
+
+    useEffect(() => {
+        syncPullOnceRef.current = () => void pullOnce()
+        return () => {
+            syncPullOnceRef.current = null
+        }
+    }, [pullOnce])
+
+    // 登录后自动同步：首次合并上传 + 轮询拉取（20s）+ 聚合触发（focus/online）
+    useEffect(() => {
+        const userId = authSession?.user?.id
+        if (authStatus !== "authenticated" || !userId) {
+            syncBootstrappedUserIdRef.current = null
+            if (syncPullIntervalRef.current) {
+                clearInterval(syncPullIntervalRef.current)
+                syncPullIntervalRef.current = null
+            }
+            return
+        }
+
+        if (!hasRestoredRef.current) return
+        if (conversations.length === 0) return
+
+        let cancelled = false
+
+        const bootstrap = async () => {
+            if (syncBootstrappedUserIdRef.current === userId) return
+            syncBootstrappedUserIdRef.current = userId
+
+            const metas = readConversationMetasFromStorage()
+            const toPush = metas
+                .map((m) => {
+                    const payload = readConversationPayloadFromStorage(m.id)
+                    if (!payload) return null
+                    return {
+                        id: m.id,
+                        title: m.title,
+                        createdAt: m.createdAt,
+                        updatedAt: m.updatedAt,
+                        payload,
+                    }
+                })
+                .filter(Boolean) as Array<{
+                id: string
+                title?: string
+                createdAt: number
+                updatedAt: number
+                payload: ConversationPayload
+            }>
+
+            if (toPush.length > 0) {
+                try {
+                    const res = await pushConversations.mutateAsync({
+                        conversations: toPush as any,
+                    })
+                    if (!cancelled && res?.cursor) setSyncCursor(res.cursor)
+                } catch {
+                    // ignore
+                }
+            }
+
+            if (!cancelled) {
+                await pullOnce()
+            }
+        }
+
+        void bootstrap()
+
+        if (!syncPullIntervalRef.current) {
+            syncPullIntervalRef.current = setInterval(() => {
+                void pullOnce()
+            }, 20_000)
+        }
+
+        const handleWake = () => void pullOnce()
+        const handleVisibility = () => {
+            if (document.visibilityState === "visible") void pullOnce()
+        }
+
+        window.addEventListener("focus", handleWake)
+        window.addEventListener("online", handleWake)
+        document.addEventListener("visibilitychange", handleVisibility)
+
+        return () => {
+            cancelled = true
+            window.removeEventListener("focus", handleWake)
+            window.removeEventListener("online", handleWake)
+            document.removeEventListener("visibilitychange", handleVisibility)
+        }
+    }, [
+        authSession?.user?.id,
+        authStatus,
+        conversations.length,
+        pullOnce,
+        pushConversations,
+        readConversationMetasFromStorage,
+        readConversationPayloadFromStorage,
+        setSyncCursor,
+    ])
+
     // Restore conversations on mount (with legacy migration)
     useEffect(() => {
         if (hasRestoredRef.current) return
@@ -939,6 +1338,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     )
                     return next
                 })
+
+                // 登录态自动同步：本地写入后做一次防抖 push
+                queuePushConversation(currentConversationId)
             } catch (error) {
                 console.error("Failed to persist current conversation:", error)
             }
@@ -946,6 +1348,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         [
             currentConversationId,
             deriveConversationTitle,
+            queuePushConversation,
             sessionId,
             setConversations,
         ],
@@ -1171,6 +1574,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             setConversations(nextMetas)
             setCurrentConversationId(id)
 
+            // 登录态自动同步：新会话立即推送，让其它设备尽快可见
+            queuePushConversation(id, { immediate: true })
+
             toast.success(t("toast.startedFreshChat"))
         } catch (error) {
             console.error("Failed to create new conversation:", error)
@@ -1181,6 +1587,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         conversations,
         handleFileChange,
         persistCurrentConversation,
+        queuePushConversation,
         setMessages,
         t,
     ])
@@ -1208,6 +1615,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const handleDeleteConversation = useCallback(
         (id: string) => {
             try {
+                // 登录态自动同步：先把“删除事件”推送到云端，再删本地缓存
+                queuePushConversation(id, { immediate: true, deleted: true })
+
                 localStorage.removeItem(conversationStorageKey(id))
                 const nextMetas = conversations.filter((c) => c.id !== id)
                 localStorage.setItem(
@@ -1262,7 +1672,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 toast.warning(t("toast.storageUpdateFailed"))
             }
         },
-        [conversations, currentConversationId, t],
+        [conversations, currentConversationId, queuePushConversation, t],
     )
 
     // Helper functions for message actions (regenerate/edit)
