@@ -57,9 +57,9 @@ export function CloudSyncStatusButton({
                 <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
             ) : lastSyncErrorAt &&
               (!lastSyncOkAt || lastSyncErrorAt > lastSyncOkAt) ? (
-                <AlertCircle className="h-4 w-4 text-amber-500" />
+                <AlertCircle className="h-4 w-4 text-warning" />
             ) : (
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <CheckCircle2 className="h-4 w-4 text-success" />
             )}
         </ButtonWithTooltip>
     )

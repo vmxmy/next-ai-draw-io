@@ -115,11 +115,11 @@ export function FilePreviewList({
                                 ) : isPdfFile(file) || isTextFile(file) ? (
                                     <div className="flex flex-col items-center justify-center h-full p-1">
                                         {pdfInfo?.isExtracting ? (
-                                            <Loader2 className="h-6 w-6 text-blue-500 mb-1 animate-spin" />
+                                            <Loader2 className="h-6 w-6 text-info mb-1 animate-spin" />
                                         ) : isPdfFile(file) ? (
-                                            <FileText className="h-6 w-6 text-red-500 mb-1" />
+                                            <FileText className="h-6 w-6 text-destructive mb-1" />
                                         ) : (
-                                            <FileCode className="h-6 w-6 text-blue-500 mb-1" />
+                                            <FileCode className="h-6 w-6 text-info mb-1" />
                                         )}
                                         <span className="text-xs text-center truncate w-full px-1">
                                             {file.name.length > 10
@@ -131,7 +131,7 @@ export function FilePreviewList({
                                                 {t("files.reading")}
                                             </span>
                                         ) : pdfInfo?.charCount ? (
-                                            <span className="text-[10px] text-green-600 font-medium">
+                                            <span className="text-[10px] text-success font-medium">
                                                 {t("files.chars", {
                                                     count: formatCharCount(
                                                         pdfInfo.charCount,

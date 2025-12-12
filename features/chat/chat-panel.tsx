@@ -23,27 +23,12 @@ import {
     extractIdFromSearch,
     findMxCellLineById,
 } from "@/features/chat/ai/xml-search"
-import type {
-    ConversationMeta,
-    ConversationPayload,
-} from "@/features/chat/sessions/storage"
-import {
-    conversationStorageKey,
-    createConversationId,
-    createSessionId,
-    STORAGE_CONVERSATIONS_KEY,
-    STORAGE_CURRENT_CONVERSATION_ID_KEY,
-    STORAGE_MESSAGES_KEY,
-    STORAGE_SESSION_ID_KEY,
-    STORAGE_XML_SNAPSHOTS_KEY,
-    syncCursorStorageKey,
-} from "@/features/chat/sessions/storage"
+import { useLocalConversations } from "@/features/chat/sessions/use-local-conversations"
+import { useConversationSync } from "@/features/chat/sync/use-conversation-sync"
 import { ChatHeader } from "@/features/chat/ui/chat-header"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
-import { STORAGE_DIAGRAM_XML_KEY } from "@/lib/storage-keys"
-import { api } from "@/lib/trpc/client"
 import { type FileData, useFileProcessor } from "@/lib/use-file-processor"
 import { useQuotaManager } from "@/lib/use-quota-manager"
 import { formatXML, wrapWithMxFile } from "@/lib/utils"
@@ -122,31 +107,6 @@ export default function ChatPanel({
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
     const [dailyTokenLimit, setDailyTokenLimit] = useState(0)
     const [tpmLimit, setTpmLimit] = useState(0)
-    // Conversation sessions (multi-session)
-    const [conversations, setConversations] = useState<ConversationMeta[]>([])
-    const [currentConversationId, setCurrentConversationId] = useState(() => {
-        if (typeof window !== "undefined") {
-            return (
-                localStorage.getItem(STORAGE_CURRENT_CONVERSATION_ID_KEY) || ""
-            )
-        }
-        return ""
-    })
-
-    const getConversationDisplayTitle = useCallback(
-        (id: string): string => {
-            const idx = conversations.findIndex((c) => c.id === id)
-            const meta = idx >= 0 ? conversations[idx] : undefined
-            if (meta?.title) return meta.title
-            if (idx >= 0) {
-                return locale === "zh-CN"
-                    ? `会话 ${idx + 1}`
-                    : `Session ${idx + 1}`
-            }
-            return id
-        },
-        [conversations, locale],
-    )
 
     // Check config on mount
     useEffect(() => {
@@ -168,14 +128,8 @@ export default function ChatPanel({
         tpmLimit,
     })
 
-    // Session ID for Langfuse tracing (per conversation)
-    const [sessionId, setSessionId] = useState(() => createSessionId())
-
     // Store XML snapshots for each user message (keyed by message index)
     const xmlSnapshotsRef = useRef<Map<number, string>>(new Map())
-
-    // Flag to track if we've restored from localStorage
-    const hasRestoredRef = useRef(false)
 
     // Ref to track latest chartXML for use in callbacks (avoids stale closure)
     const chartXMLRef = useRef(chartXML)
@@ -196,189 +150,18 @@ export default function ChatPanel({
     // Persist processed tool call IDs so collapsing the chat doesn't replay old tool outputs
     const processedToolCallsRef = useRef<Set<string>>(new Set())
 
-    // 登录态（OAuth）+ 云端同步（tRPC）
+    // 登录态（OAuth）
     const { data: authSession, status: authStatus } = useSession()
-    const pushConversationsMutation = api.conversation.push.useMutation()
-    const pullConversationsMutation = api.conversation.pull.useMutation()
-    const pushConversationsMutateAsyncRef = useRef(
-        pushConversationsMutation.mutateAsync,
-    )
-    const pullConversationsMutateAsyncRef = useRef(
-        pullConversationsMutation.mutateAsync,
-    )
-    useEffect(() => {
-        pushConversationsMutateAsyncRef.current =
-            pushConversationsMutation.mutateAsync
-        pullConversationsMutateAsyncRef.current =
-            pullConversationsMutation.mutateAsync
-    }, [
-        pushConversationsMutation.mutateAsync,
-        pullConversationsMutation.mutateAsync,
-    ])
 
-    const syncBootstrappedUserIdRef = useRef<string | null>(null)
-    const syncPullIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-        null,
-    )
-    const syncDebounceTimersRef = useRef<
-        Map<string, ReturnType<typeof setTimeout>>
-    >(new Map())
-    const syncPullInFlightRef = useRef(false)
-    const syncPullOnceRef = useRef<(() => void) | null>(null)
-    const [isOnline, setIsOnline] = useState(() => {
-        if (typeof navigator === "undefined") return true
-        return navigator.onLine
-    })
-    const [syncInFlightCount, setSyncInFlightCount] = useState(0)
-    const [lastSyncOkAt, setLastSyncOkAt] = useState<number | null>(null)
-    const [lastSyncErrorAt, setLastSyncErrorAt] = useState<number | null>(null)
-
-    useEffect(() => {
-        const handleOnline = () => setIsOnline(true)
-        const handleOffline = () => setIsOnline(false)
-        window.addEventListener("online", handleOnline)
-        window.addEventListener("offline", handleOffline)
-        return () => {
-            window.removeEventListener("online", handleOnline)
-            window.removeEventListener("offline", handleOffline)
-        }
-    }, [])
-
-    const markSyncStart = useCallback(() => {
-        setSyncInFlightCount((c) => c + 1)
-    }, [])
-
-    const markSyncEnd = useCallback(() => {
-        setSyncInFlightCount((c) => Math.max(0, c - 1))
-    }, [])
-
-    const getSyncCursor = useCallback((): string => {
-        const userId = authSession?.user?.id
-        if (!userId) return "0"
-        try {
-            return localStorage.getItem(syncCursorStorageKey(userId)) || "0"
-        } catch {
-            return "0"
-        }
-    }, [authSession?.user?.id])
-
-    const setSyncCursor = useCallback(
-        (cursor: string) => {
-            const userId = authSession?.user?.id
-            if (!userId) return
-            try {
-                localStorage.setItem(syncCursorStorageKey(userId), cursor)
-            } catch {
-                // ignore
-            }
-        },
-        [authSession?.user?.id],
-    )
-
-    const readConversationMetasFromStorage =
-        useCallback((): ConversationMeta[] => {
-            try {
-                const raw = localStorage.getItem(STORAGE_CONVERSATIONS_KEY)
-                const metas = raw ? (JSON.parse(raw) as unknown) : []
-                return Array.isArray(metas) ? (metas as ConversationMeta[]) : []
-            } catch {
-                return []
-            }
-        }, [])
-
-    const readConversationPayloadFromStorage = useCallback(
-        (id: string): ConversationPayload | null => {
-            try {
-                const raw = localStorage.getItem(conversationStorageKey(id))
-                if (!raw) return null
-                return JSON.parse(raw) as ConversationPayload
-            } catch {
-                return null
-            }
-        },
-        [],
-    )
-
-    const buildPushConversationInput = useCallback(
-        (id: string, opts?: { deleted?: boolean }) => {
-            const metas = readConversationMetasFromStorage()
-            const meta = metas.find((m) => m.id === id)
-            const now = Date.now()
-            const createdAt = meta?.createdAt ?? now
-            const updatedAt = meta?.updatedAt ?? now
-
-            const payload = opts?.deleted
-                ? undefined
-                : readConversationPayloadFromStorage(id)
-
-            return {
-                id,
-                title: meta?.title,
-                createdAt,
-                updatedAt,
-                deleted: opts?.deleted,
-                payload: payload ?? undefined,
-            }
-        },
-        [readConversationMetasFromStorage, readConversationPayloadFromStorage],
-    )
-
-    const pushConversationNow = useCallback(
-        async (id: string, opts?: { deleted?: boolean }) => {
-            if (authStatus !== "authenticated") return
-            const userId = authSession?.user?.id
-            if (!userId) return
-            if (!isOnline) return
-
-            const input = buildPushConversationInput(id, opts)
-            // 非删除必须有 payload；否则跳过（避免把空数据覆盖到云端）
-            if (!input.deleted && !input.payload) return
-
-            markSyncStart()
-            try {
-                const res = await pushConversationsMutateAsyncRef.current({
-                    conversations: [input],
-                })
-                if (res?.cursor) setSyncCursor(res.cursor)
-                setLastSyncOkAt(Date.now())
-                setLastSyncErrorAt(null)
-            } catch {
-                setLastSyncErrorAt(Date.now())
-            } finally {
-                markSyncEnd()
-            }
-
-            // push 成功后短延迟 pull 一次，尽快在其它设备体现
-            setTimeout(() => {
-                syncPullOnceRef.current?.()
-            }, 1500)
-        },
-        [
-            authSession?.user?.id,
-            authStatus,
-            buildPushConversationInput,
-            isOnline,
-            markSyncEnd,
-            markSyncStart,
-            setSyncCursor,
-        ],
-    )
-
+    const currentConversationIdRef = useRef("")
+    const queuePushConversationRef = useRef<
+        (id: string, opts?: { immediate?: boolean; deleted?: boolean }) => void
+    >(() => {})
     const queuePushConversation = useCallback(
         (id: string, opts?: { immediate?: boolean; deleted?: boolean }) => {
-            if (authStatus !== "authenticated") return
-            if (!authSession?.user?.id) return
-
-            const delay = opts?.immediate ? 0 : 1000
-            const existing = syncDebounceTimersRef.current.get(id)
-            if (existing) clearTimeout(existing)
-            const timer = setTimeout(() => {
-                syncDebounceTimersRef.current.delete(id)
-                void pushConversationNow(id, { deleted: opts?.deleted })
-            }, delay)
-            syncDebounceTimersRef.current.set(id, timer)
+            queuePushConversationRef.current?.(id, opts)
         },
-        [authSession?.user?.id, authStatus, pushConversationNow],
+        [],
     )
 
     const {
@@ -661,8 +444,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             }
 
             // 自动同步：消息生成完成后尽快 push（比 messages 变更更“稳定”）
-            if (currentConversationId) {
-                queuePushConversation(currentConversationId, {
+            const conversationId = currentConversationIdRef.current
+            if (conversationId) {
+                queuePushConversation(conversationId, {
                     immediate: true,
                 })
             }
@@ -798,604 +582,75 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
-    const pendingDiagramXmlRef = useRef<string | null>(null)
-
-    const deriveConversationTitle = useCallback(
-        (msgs: ChatMessage[]): string | undefined => {
-            const firstUser = msgs.find((m) => m.role === "user") as any
-            const textPart =
-                firstUser?.parts?.find((p: any) => p.type === "text")?.text ||
-                ""
-            const trimmed = String(textPart).trim()
-            if (!trimmed) return undefined
-            return trimmed.slice(0, 24)
-        },
-        [],
+    const resetFiles = useCallback(
+        () => handleFileChange([]),
+        [handleFileChange],
     )
 
-    const loadConversation = useCallback(
-        (id: string) => {
-            try {
-                const raw = localStorage.getItem(conversationStorageKey(id))
-                const payload: ConversationPayload = raw
-                    ? JSON.parse(raw)
-                    : {
-                          messages: [],
-                          xml: "",
-                          snapshots: [],
-                          sessionId: createSessionId(),
-                      }
+    const {
+        conversations,
+        setConversations,
+        currentConversationId,
+        setCurrentConversationId,
+        sessionId,
+        hasRestored,
+        getConversationDisplayTitle,
+        loadConversation,
+        saveXmlSnapshots,
+        handleNewChat,
+        handleSelectConversation,
+        handleDeleteConversation,
+    } = useLocalConversations({
+        locale,
+        t,
+        isDrawioReady,
+        onDisplayChart,
+        clearDiagram,
+        chartXML,
+        chartXMLRef,
+        messages,
+        processedToolCallsRef,
+        autoRetryCountRef,
+        editFailureCountRef,
+        forceDisplayNextRef,
+        xmlSnapshotsRef,
+        setMessages,
+        messagesRef,
+        resetFiles,
+        queuePushConversation,
+    })
 
-                setMessages((payload.messages || []) as any)
-                xmlSnapshotsRef.current = new Map(payload.snapshots || [])
-                setSessionId(payload.sessionId || createSessionId())
-
-                processedToolCallsRef.current = new Set()
-                autoRetryCountRef.current = 0
-                editFailureCountRef.current = 0
-                forceDisplayNextRef.current = false
-
-                // Load diagram if ready, else defer to DrawIO-ready effect
-                if (payload.xml) {
-                    if (isDrawioReady) {
-                        onDisplayChart(payload.xml, true)
-                        chartXMLRef.current = payload.xml
-                    } else {
-                        pendingDiagramXmlRef.current = payload.xml
-                    }
-                } else {
-                    clearDiagram()
-                    chartXMLRef.current = ""
-                }
-            } catch (error) {
-                console.error("Failed to load conversation:", error)
-                setMessages([])
-                xmlSnapshotsRef.current = new Map()
-                setSessionId(createSessionId())
-                clearDiagram()
-            }
-        },
-        [clearDiagram, isDrawioReady, onDisplayChart, setMessages],
-    )
-
-    const applyRemoteConversations = useCallback(
-        (remote: Array<any>) => {
-            if (!Array.isArray(remote) || remote.length === 0) return
-
-            let shouldReloadCurrent = false
-            let currentRemoved = false
-
-            const localMetas = readConversationMetasFromStorage()
-            const metaById = new Map(localMetas.map((m) => [m.id, m]))
-
-            for (const rc of remote) {
-                const id = String(rc?.id || "")
-                if (!id) continue
-
-                if (rc?.deleted) {
-                    metaById.delete(id)
-                    try {
-                        localStorage.removeItem(conversationStorageKey(id))
-                    } catch {
-                        // ignore
-                    }
-                    if (id === currentConversationId) currentRemoved = true
-                    continue
-                }
-
-                const localMeta = metaById.get(id)
-                const remoteUpdatedAt = Number(rc?.updatedAt ?? 0)
-                if (localMeta && localMeta.updatedAt >= remoteUpdatedAt) {
-                    continue
-                }
-
-                try {
-                    localStorage.setItem(
-                        conversationStorageKey(id),
-                        JSON.stringify(rc?.payload ?? {}),
-                    )
-                } catch {
-                    // ignore
-                }
-
-                metaById.set(id, {
-                    id,
-                    createdAt: Number(rc?.createdAt ?? Date.now()),
-                    updatedAt: remoteUpdatedAt || Date.now(),
-                    title: rc?.title,
-                })
-
-                if (id === currentConversationId) shouldReloadCurrent = true
-            }
-
-            const nextMetas = Array.from(metaById.values()).sort(
-                (a, b) => b.updatedAt - a.updatedAt,
-            )
-            try {
-                localStorage.setItem(
-                    STORAGE_CONVERSATIONS_KEY,
-                    JSON.stringify(nextMetas),
-                )
-            } catch {
-                // ignore
-            }
-            setConversations(nextMetas)
-
-            if (currentRemoved) {
-                const nextId = nextMetas[0]?.id || ""
-                if (nextId) {
-                    try {
-                        localStorage.setItem(
-                            STORAGE_CURRENT_CONVERSATION_ID_KEY,
-                            nextId,
-                        )
-                    } catch {
-                        // ignore
-                    }
-                    setCurrentConversationId(nextId)
-                    return
-                }
-                // 云端删除导致本地无会话：兜底创建一个新的空会话（保持产品可用性）
-                const newId = createConversationId()
-                const now = Date.now()
-                const payload: ConversationPayload = {
-                    messages: [],
-                    xml: "",
-                    snapshots: [],
-                    sessionId: createSessionId(),
-                }
-                try {
-                    localStorage.setItem(
-                        conversationStorageKey(newId),
-                        JSON.stringify(payload),
-                    )
-                    const metas: ConversationMeta[] = [
-                        { id: newId, createdAt: now, updatedAt: now },
-                    ]
-                    localStorage.setItem(
-                        STORAGE_CONVERSATIONS_KEY,
-                        JSON.stringify(metas),
-                    )
-                    localStorage.setItem(
-                        STORAGE_CURRENT_CONVERSATION_ID_KEY,
-                        newId,
-                    )
-                    setConversations(metas)
-                    setCurrentConversationId(newId)
-                    queuePushConversation(newId, { immediate: true })
-                } catch {
-                    // ignore
-                }
-                return
-            }
-
-            if (shouldReloadCurrent && currentConversationId) {
-                loadConversation(currentConversationId)
-            }
-        },
-        [
-            currentConversationId,
-            loadConversation,
-            queuePushConversation,
-            readConversationMetasFromStorage,
-            setConversations,
-        ],
-    )
-
-    const pullOnce = useCallback(async () => {
-        if (authStatus !== "authenticated") return
-        if (!authSession?.user?.id) return
-        if (!isOnline) return
-        if (syncPullInFlightRef.current) return
-
-        syncPullInFlightRef.current = true
-        markSyncStart()
-        try {
-            const cursor = getSyncCursor()
-            const res = await pullConversationsMutateAsyncRef.current({
-                cursor,
-                limit: 200,
-            })
-            if (res?.cursor) setSyncCursor(res.cursor)
-            if (Array.isArray(res?.conversations) && res.conversations.length) {
-                applyRemoteConversations(res.conversations as any[])
-            }
-            setLastSyncOkAt(Date.now())
-            setLastSyncErrorAt(null)
-        } catch {
-            // 自动同步失败不打扰用户；UI 只在需要时提示（后续可加状态指示）
-            setLastSyncErrorAt(Date.now())
-        } finally {
-            syncPullInFlightRef.current = false
-            markSyncEnd()
-        }
-    }, [
-        applyRemoteConversations,
-        authSession?.user?.id,
-        authStatus,
-        getSyncCursor,
+    const {
         isOnline,
-        markSyncEnd,
-        markSyncStart,
-        setSyncCursor,
-    ])
-
-    useEffect(() => {
-        syncPullOnceRef.current = () => void pullOnce()
-        return () => {
-            syncPullOnceRef.current = null
-        }
-    }, [pullOnce])
-
-    // 登录后自动同步：首次合并上传 + 轮询拉取（20s）+ 聚合触发（focus/online）
-    useEffect(() => {
-        const userId = authSession?.user?.id
-        if (authStatus !== "authenticated" || !userId) {
-            syncBootstrappedUserIdRef.current = null
-            if (syncPullIntervalRef.current) {
-                clearInterval(syncPullIntervalRef.current)
-                syncPullIntervalRef.current = null
-            }
-            return
-        }
-
-        if (!hasRestoredRef.current) return
-        if (conversations.length === 0) return
-
-        let cancelled = false
-
-        const bootstrap = async () => {
-            if (syncBootstrappedUserIdRef.current === userId) return
-            syncBootstrappedUserIdRef.current = userId
-
-            const metas = readConversationMetasFromStorage()
-            const toPush = metas
-                .map((m) => {
-                    const payload = readConversationPayloadFromStorage(m.id)
-                    if (!payload) return null
-                    return {
-                        id: m.id,
-                        title: m.title,
-                        createdAt: m.createdAt,
-                        updatedAt: m.updatedAt,
-                        payload,
-                    }
-                })
-                .filter(Boolean) as Array<{
-                id: string
-                title?: string
-                createdAt: number
-                updatedAt: number
-                payload: ConversationPayload
-            }>
-
-            if (toPush.length > 0) {
-                try {
-                    const res = await pushConversationsMutateAsyncRef.current({
-                        conversations: toPush as any,
-                    })
-                    if (!cancelled && res?.cursor) setSyncCursor(res.cursor)
-                } catch {
-                    // ignore
-                }
-            }
-
-            if (!cancelled) {
-                await pullOnce()
-            }
-        }
-
-        void bootstrap()
-
-        if (!syncPullIntervalRef.current) {
-            syncPullIntervalRef.current = setInterval(() => {
-                void pullOnce()
-            }, 20_000)
-        }
-
-        const handleWake = () => void pullOnce()
-        const handleVisibility = () => {
-            if (document.visibilityState === "visible") void pullOnce()
-        }
-
-        window.addEventListener("focus", handleWake)
-        window.addEventListener("online", handleWake)
-        document.addEventListener("visibilitychange", handleVisibility)
-
-        return () => {
-            cancelled = true
-            window.removeEventListener("focus", handleWake)
-            window.removeEventListener("online", handleWake)
-            document.removeEventListener("visibilitychange", handleVisibility)
-        }
-    }, [
-        authSession?.user?.id,
-        authStatus,
-        conversations.length,
+        syncInFlightCount,
+        lastSyncOkAt,
+        lastSyncErrorAt,
         pullOnce,
-        readConversationMetasFromStorage,
-        readConversationPayloadFromStorage,
-        setSyncCursor,
-    ])
+        queuePushConversation: syncQueuePushConversation,
+    } = useConversationSync({
+        authStatus,
+        userId: authSession?.user?.id,
+        hasRestored,
+        conversations,
+        currentConversationId,
+        setConversations,
+        setCurrentConversationId,
+        loadConversation,
+    })
 
-    // Restore conversations on mount (with legacy migration)
     useEffect(() => {
-        if (hasRestoredRef.current) return
-        hasRestoredRef.current = true
+        queuePushConversationRef.current = syncQueuePushConversation
+    }, [syncQueuePushConversation])
 
-        try {
-            const stored = localStorage.getItem(STORAGE_CONVERSATIONS_KEY)
-            let metas: ConversationMeta[] = stored ? JSON.parse(stored) : []
-            if (!Array.isArray(metas)) metas = []
-
-            const legacyMessages = localStorage.getItem(STORAGE_MESSAGES_KEY)
-            const legacySnapshots = localStorage.getItem(
-                STORAGE_XML_SNAPSHOTS_KEY,
-            )
-            const legacyXml = localStorage.getItem(STORAGE_DIAGRAM_XML_KEY)
-            const legacySession = localStorage.getItem(STORAGE_SESSION_ID_KEY)
-
-            if (
-                metas.length === 0 &&
-                (legacyMessages || legacySnapshots || legacyXml)
-            ) {
-                const id = createConversationId()
-                const payload: ConversationPayload = {
-                    messages: legacyMessages ? JSON.parse(legacyMessages) : [],
-                    xml: legacyXml || "",
-                    snapshots: legacySnapshots
-                        ? JSON.parse(legacySnapshots)
-                        : [],
-                    sessionId: legacySession || createSessionId(),
-                }
-                localStorage.setItem(
-                    conversationStorageKey(id),
-                    JSON.stringify(payload),
-                )
-                metas = [
-                    {
-                        id,
-                        createdAt: Date.now(),
-                        updatedAt: Date.now(),
-                        title: deriveConversationTitle(payload.messages),
-                    },
-                ]
-                localStorage.setItem(
-                    STORAGE_CONVERSATIONS_KEY,
-                    JSON.stringify(metas),
-                )
-                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
-                setCurrentConversationId(id)
-
-                // Clean up legacy keys
-                localStorage.removeItem(STORAGE_MESSAGES_KEY)
-                localStorage.removeItem(STORAGE_XML_SNAPSHOTS_KEY)
-                localStorage.removeItem(STORAGE_DIAGRAM_XML_KEY)
-                localStorage.removeItem(STORAGE_SESSION_ID_KEY)
-            }
-
-            if (metas.length === 0) {
-                const id = createConversationId()
-                metas = [{ id, createdAt: Date.now(), updatedAt: Date.now() }]
-                localStorage.setItem(
-                    STORAGE_CONVERSATIONS_KEY,
-                    JSON.stringify(metas),
-                )
-                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
-                localStorage.setItem(
-                    conversationStorageKey(id),
-                    JSON.stringify({
-                        messages: [],
-                        xml: "",
-                        snapshots: [],
-                        sessionId: createSessionId(),
-                    } satisfies ConversationPayload),
-                )
-                setCurrentConversationId(id)
-            } else if (!currentConversationId) {
-                const id = metas[0].id
-                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
-                setCurrentConversationId(id)
-            }
-
-            setConversations(metas)
-        } catch (error) {
-            console.error("Failed to restore conversations:", error)
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
-
-    // Load conversation when current ID changes
     useEffect(() => {
-        if (!currentConversationId) return
-        loadConversation(currentConversationId)
-    }, [currentConversationId, loadConversation])
-
-    // Restore diagram XML when DrawIO becomes ready, per conversations
-    const [canSaveDiagram, setCanSaveDiagram] = useState(false)
-    useEffect(() => {
-        if (!isDrawioReady) {
-            setCanSaveDiagram(false)
-            return
-        }
-        const pending = pendingDiagramXmlRef.current
-        pendingDiagramXmlRef.current = null
-        let xmlToLoad = pending
-        if (!xmlToLoad && currentConversationId) {
-            try {
-                const raw = localStorage.getItem(
-                    conversationStorageKey(currentConversationId),
-                )
-                if (raw) {
-                    const payload = JSON.parse(raw) as ConversationPayload
-                    xmlToLoad = payload?.xml || ""
-                }
-            } catch {
-                xmlToLoad = ""
-            }
-        }
-        if (xmlToLoad) {
-            onDisplayChart(xmlToLoad, true)
-            chartXMLRef.current = xmlToLoad
-        }
-        setTimeout(() => setCanSaveDiagram(true), 300)
-    }, [currentConversationId, isDrawioReady, onDisplayChart])
-
-    const persistCurrentConversation = useCallback(
-        (overrides: Partial<ConversationPayload>) => {
-            if (!currentConversationId) return
-            try {
-                const raw = localStorage.getItem(
-                    conversationStorageKey(currentConversationId),
-                )
-                const existing: ConversationPayload = raw
-                    ? JSON.parse(raw)
-                    : {
-                          messages: [],
-                          xml: "",
-                          snapshots: [],
-                          sessionId,
-                      }
-
-                const merged: ConversationPayload = {
-                    messages:
-                        overrides.messages ?? existing.messages ?? ([] as any),
-                    xml: overrides.xml ?? existing.xml ?? "",
-                    snapshots: overrides.snapshots ?? existing.snapshots ?? [],
-                    sessionId:
-                        overrides.sessionId ?? existing.sessionId ?? sessionId,
-                }
-
-                localStorage.setItem(
-                    conversationStorageKey(currentConversationId),
-                    JSON.stringify(merged),
-                )
-
-                setConversations((prev) => {
-                    const now = Date.now()
-                    let found = false
-                    const next = prev.map((m) => {
-                        if (m.id !== currentConversationId) return m
-                        found = true
-                        return {
-                            ...m,
-                            updatedAt: now,
-                            title:
-                                m.title ||
-                                deriveConversationTitle(merged.messages),
-                        }
-                    })
-                    if (!found) {
-                        next.unshift({
-                            id: currentConversationId,
-                            createdAt: now,
-                            updatedAt: now,
-                            title: deriveConversationTitle(merged.messages),
-                        })
-                    }
-                    localStorage.setItem(
-                        STORAGE_CONVERSATIONS_KEY,
-                        JSON.stringify(next),
-                    )
-                    return next
-                })
-
-                // 登录态自动同步：本地写入后做一次防抖 push
-                queuePushConversation(currentConversationId)
-            } catch (error) {
-                console.error("Failed to persist current conversation:", error)
-            }
-        },
-        [
-            currentConversationId,
-            deriveConversationTitle,
-            queuePushConversation,
-            sessionId,
-            setConversations,
-        ],
-    )
-
-    // Save messages to current conversation
-    useEffect(() => {
-        if (!hasRestoredRef.current) return
-        persistCurrentConversation({ messages: messages as any })
-    }, [messages, persistCurrentConversation])
-
-    // Save diagram XML to current conversation whenever it changes
-    useEffect(() => {
-        if (!canSaveDiagram) return
-        if (chartXML && chartXML.length > 300) {
-            persistCurrentConversation({ xml: chartXML })
-        } else if (chartXML === "") {
-            persistCurrentConversation({ xml: "" })
-        }
-    }, [chartXML, canSaveDiagram, persistCurrentConversation])
-
-    // Save XML snapshots to current conversation whenever they change
-    const saveXmlSnapshots = useCallback(() => {
-        const snapshotsArray = Array.from(xmlSnapshotsRef.current.entries())
-        persistCurrentConversation({ snapshots: snapshotsArray })
-    }, [persistCurrentConversation])
-
-    // Save session ID to current conversation
-    useEffect(() => {
-        persistCurrentConversation({ sessionId })
-    }, [sessionId, persistCurrentConversation])
+        currentConversationIdRef.current = currentConversationId
+    }, [currentConversationId])
 
     useEffect(() => {
         if (messagesEndRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
         }
     }, [messages])
-
-    // Save state right before page unload (refresh/close)
-    useEffect(() => {
-        const handleBeforeUnload = () => {
-            if (!currentConversationId) return
-            try {
-                const payload: ConversationPayload = {
-                    messages: messagesRef.current as any,
-                    xml: chartXMLRef.current || "",
-                    snapshots: Array.from(xmlSnapshotsRef.current.entries()),
-                    sessionId,
-                }
-                localStorage.setItem(
-                    conversationStorageKey(currentConversationId),
-                    JSON.stringify(payload),
-                )
-                const stored = localStorage.getItem(STORAGE_CONVERSATIONS_KEY)
-                const metas: ConversationMeta[] = stored
-                    ? JSON.parse(stored)
-                    : []
-                const now = Date.now()
-                const next = Array.isArray(metas)
-                    ? metas.map((m) =>
-                          m.id === currentConversationId
-                              ? {
-                                    ...m,
-                                    updatedAt: now,
-                                    title:
-                                        m.title ||
-                                        deriveConversationTitle(
-                                            payload.messages,
-                                        ),
-                                }
-                              : m,
-                      )
-                    : []
-                localStorage.setItem(
-                    STORAGE_CONVERSATIONS_KEY,
-                    JSON.stringify(next),
-                )
-            } catch (error) {
-                console.error("Failed to persist state before unload:", error)
-            }
-        }
-
-        window.addEventListener("beforeunload", handleBeforeUnload)
-        return () =>
-            window.removeEventListener("beforeunload", handleBeforeUnload)
-    }, [currentConversationId, deriveConversationTitle, sessionId])
 
     const onFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -1494,147 +749,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         }
     }
 
-    const handleNewChat = useCallback(() => {
-        const id = createConversationId()
-        const now = Date.now()
-        const payload: ConversationPayload = {
-            messages: [],
-            xml: "",
-            snapshots: [],
-            sessionId: createSessionId(),
-        }
-
-        try {
-            // 先保存当前会话，避免未落盘的内容丢失
-            persistCurrentConversation({})
-
-            localStorage.setItem(
-                conversationStorageKey(id),
-                JSON.stringify(payload),
-            )
-            const nextMetas = [
-                {
-                    id,
-                    createdAt: now,
-                    updatedAt: now,
-                } satisfies ConversationMeta,
-                ...conversations,
-            ]
-            localStorage.setItem(
-                STORAGE_CONVERSATIONS_KEY,
-                JSON.stringify(nextMetas),
-            )
-            localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
-
-            // Reset UI state
-            setMessages([])
-            clearDiagram()
-            handleFileChange([]) // Also clears pdfData
-            xmlSnapshotsRef.current.clear()
-            setSessionId(payload.sessionId)
-            setConversations(nextMetas)
-            setCurrentConversationId(id)
-
-            // 登录态自动同步：新会话立即推送，让其它设备尽快可见
-            queuePushConversation(id, { immediate: true })
-
-            toast.success(t("toast.startedFreshChat"))
-        } catch (error) {
-            console.error("Failed to create new conversation:", error)
-            toast.warning(t("toast.storageUpdateFailed"))
-        }
-    }, [
-        clearDiagram,
-        conversations,
-        handleFileChange,
-        persistCurrentConversation,
-        queuePushConversation,
-        setMessages,
-        t,
-    ])
-
     const handleInputChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => {
         setInput(e.target.value)
     }
-
-    const handleSelectConversation = useCallback(
-        (id: string) => {
-            if (!id || id === currentConversationId) return
-            try {
-                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
-                setCurrentConversationId(id)
-            } catch (error) {
-                console.error("Failed to select conversation:", error)
-                toast.warning(t("toast.storageUpdateFailed"))
-            }
-        },
-        [currentConversationId, t],
-    )
-
-    const handleDeleteConversation = useCallback(
-        (id: string) => {
-            try {
-                // 登录态自动同步：先把“删除事件”推送到云端，再删本地缓存
-                queuePushConversation(id, { immediate: true, deleted: true })
-
-                localStorage.removeItem(conversationStorageKey(id))
-                const nextMetas = conversations.filter((c) => c.id !== id)
-                localStorage.setItem(
-                    STORAGE_CONVERSATIONS_KEY,
-                    JSON.stringify(nextMetas),
-                )
-                setConversations(nextMetas)
-
-                if (id === currentConversationId) {
-                    const nextId = nextMetas[0]?.id
-                    if (nextId) {
-                        localStorage.setItem(
-                            STORAGE_CURRENT_CONVERSATION_ID_KEY,
-                            nextId,
-                        )
-                        setCurrentConversationId(nextId)
-                    } else {
-                        // If all sessions removed, create a fresh one
-                        const newId = createConversationId()
-                        const now = Date.now()
-                        const payload: ConversationPayload = {
-                            messages: [],
-                            xml: "",
-                            snapshots: [],
-                            sessionId: createSessionId(),
-                        }
-                        localStorage.setItem(
-                            conversationStorageKey(newId),
-                            JSON.stringify(payload),
-                        )
-                        const metas = [
-                            {
-                                id: newId,
-                                createdAt: now,
-                                updatedAt: now,
-                            } satisfies ConversationMeta,
-                        ]
-                        localStorage.setItem(
-                            STORAGE_CONVERSATIONS_KEY,
-                            JSON.stringify(metas),
-                        )
-                        localStorage.setItem(
-                            STORAGE_CURRENT_CONVERSATION_ID_KEY,
-                            newId,
-                        )
-                        setConversations(metas)
-                        setCurrentConversationId(newId)
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to delete conversation:", error)
-                toast.warning(t("toast.storageUpdateFailed"))
-            }
-        },
-        [conversations, currentConversationId, queuePushConversation, t],
-    )
 
     // Helper functions for message actions (regenerate/edit)
     // Extract previous XML snapshot before a given message index

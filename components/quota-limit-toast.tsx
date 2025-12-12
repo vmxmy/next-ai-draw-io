@@ -77,7 +77,7 @@ export function QuotaLimitToast({
                         href="/about"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-amber-600 font-medium hover:text-amber-700 hover:underline"
+                        className="inline-flex items-center gap-1 text-warning font-medium hover:text-warning/80 hover:underline"
                     >
                         {t("quota.learnMore")}
                     </Link>
