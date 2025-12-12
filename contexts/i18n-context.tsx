@@ -153,6 +153,8 @@ type I18nKey =
     | "sync.status.error"
     | "auth.signIn"
     | "auth.signOut"
+    | "settings.aiProvider.modelsLoading"
+    | "settings.aiProvider.modelsCount"
     | "chat.header.sessionSwitcher"
     | "chat.header.newSessionTooltip"
     | "chat.tooltip.edit"
@@ -328,6 +330,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "sync.status.error": "Sync failed (will retry automatically)",
         "auth.signIn": "Sign in with GitHub",
         "auth.signOut": "Sign out",
+        "settings.aiProvider.modelsLoading": "Loading models…",
+        "settings.aiProvider.modelsCount": "{count} models",
         "chat.header.sessionSwitcher": "Switch session",
         "chat.header.newSessionTooltip": "New session",
         "chat.tooltip.edit": "Edit message",
@@ -488,6 +492,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "sync.status.error": "同步失败（将自动重试）",
         "auth.signIn": "使用 GitHub 登录",
         "auth.signOut": "退出登录",
+        "settings.aiProvider.modelsLoading": "正在加载模型列表…",
+        "settings.aiProvider.modelsCount": "共 {count} 个模型",
         "chat.header.sessionSwitcher": "切换会话",
         "chat.header.newSessionTooltip": "新建会话",
         "chat.tooltip.edit": "编辑消息",

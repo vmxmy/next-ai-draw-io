@@ -22,6 +22,11 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { useI18n } from "@/contexts/i18n-context"
 
+interface ModelOption {
+    id: string
+    label?: string
+}
+
 interface SettingsDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
@@ -68,6 +73,8 @@ export function SettingsDialog({
     const [baseUrl, setBaseUrl] = useState("")
     const [apiKey, setApiKey] = useState("")
     const [modelId, setModelId] = useState("")
+    const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+    const [isLoadingModels, setIsLoadingModels] = useState(false)
 
     useEffect(() => {
         // Only fetch if not cached in localStorage
@@ -113,6 +120,37 @@ export function SettingsDialog({
             setError("")
         }
     }, [open])
+
+    useEffect(() => {
+        if (!open) return
+        if (!provider) {
+            setModelOptions([])
+            return
+        }
+
+        const controller = new AbortController()
+        setIsLoadingModels(true)
+
+        fetch(`/api/models?provider=${encodeURIComponent(provider)}`, {
+            signal: controller.signal,
+        })
+            .then((res) => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                return res.json()
+            })
+            .then((data) => {
+                const models = Array.isArray(data?.models) ? data.models : []
+                setModelOptions(models)
+            })
+            .catch(() => {
+                setModelOptions([])
+            })
+            .finally(() => {
+                setIsLoadingModels(false)
+            })
+
+        return () => controller.abort()
+    }, [open, provider])
 
     const handleSave = async () => {
         if (!accessCodeRequired) return
@@ -266,9 +304,17 @@ export function SettingsDialog({
                                                 "settings.aiProvider.modelIdLabel",
                                             )}
                                         </Label>
+                                        <datalist id="ai-model-list">
+                                            {modelOptions.map((m) => (
+                                                <option key={m.id} value={m.id}>
+                                                    {m.label || m.id}
+                                                </option>
+                                            ))}
+                                        </datalist>
                                         <Input
                                             id="ai-model"
                                             value={modelId}
+                                            list="ai-model-list"
                                             onChange={(e) => {
                                                 setModelId(e.target.value)
                                                 localStorage.setItem(
@@ -291,6 +337,20 @@ export function SettingsDialog({
                                                             )
                                             }
                                         />
+                                        <p className="text-[0.8rem] text-muted-foreground">
+                                            {isLoadingModels
+                                                ? t(
+                                                      "settings.aiProvider.modelsLoading",
+                                                  )
+                                                : modelOptions.length > 0
+                                                  ? t(
+                                                        "settings.aiProvider.modelsCount",
+                                                        {
+                                                            count: modelOptions.length,
+                                                        },
+                                                    )
+                                                  : ""}
+                                        </p>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="ai-api-key">
