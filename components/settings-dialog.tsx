@@ -1,6 +1,6 @@
 "use client"
 
-import { Moon, Sun } from "lucide-react"
+import { ChevronDown, Moon, Search, Sun } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -75,6 +75,7 @@ export function SettingsDialog({
     const [modelId, setModelId] = useState("")
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
     const [isLoadingModels, setIsLoadingModels] = useState(false)
+    const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
 
     useEffect(() => {
         // Only fetch if not cached in localStorage
@@ -127,30 +128,47 @@ export function SettingsDialog({
             setModelOptions([])
             return
         }
+        if (!apiKey.trim()) {
+            setModelOptions([])
+            return
+        }
 
         const controller = new AbortController()
-        setIsLoadingModels(true)
+        const timeout = setTimeout(() => {
+            setIsLoadingModels(true)
+            fetch("/api/models", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    provider,
+                    apiKey,
+                    baseUrl,
+                }),
+                signal: controller.signal,
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                    return res.json()
+                })
+                .then((data) => {
+                    const models = Array.isArray(data?.models)
+                        ? data.models
+                        : []
+                    setModelOptions(models)
+                })
+                .catch(() => {
+                    setModelOptions([])
+                })
+                .finally(() => {
+                    setIsLoadingModels(false)
+                })
+        }, 250)
 
-        fetch(`/api/models?provider=${encodeURIComponent(provider)}`, {
-            signal: controller.signal,
-        })
-            .then((res) => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                return res.json()
-            })
-            .then((data) => {
-                const models = Array.isArray(data?.models) ? data.models : []
-                setModelOptions(models)
-            })
-            .catch(() => {
-                setModelOptions([])
-            })
-            .finally(() => {
-                setIsLoadingModels(false)
-            })
-
-        return () => controller.abort()
-    }, [open, provider])
+        return () => {
+            clearTimeout(timeout)
+            controller.abort()
+        }
+    }, [apiKey, baseUrl, open, provider])
 
     const handleSave = async () => {
         if (!accessCodeRequired) return
@@ -304,75 +322,143 @@ export function SettingsDialog({
                                                 "settings.aiProvider.modelIdLabel",
                                             )}
                                         </Label>
-                                        <datalist id="ai-model-list">
-                                            {modelOptions.map((m) => (
-                                                <option key={m.id} value={m.id}>
-                                                    {m.label || m.id}
-                                                </option>
-                                            ))}
-                                        </datalist>
-                                        <Input
-                                            id="ai-model"
-                                            value={modelId}
-                                            list="ai-model-list"
-                                            onChange={(e) => {
-                                                setModelId(e.target.value)
-                                                localStorage.setItem(
-                                                    STORAGE_AI_MODEL_KEY,
-                                                    e.target.value,
-                                                )
-                                            }}
-                                            placeholder={
-                                                provider === "openai"
-                                                    ? "e.g., gpt-4o"
-                                                    : provider === "anthropic"
-                                                      ? "e.g., claude-sonnet-4-5"
-                                                      : provider === "google"
-                                                        ? "e.g., gemini-2.0-flash-exp"
-                                                        : provider ===
-                                                            "deepseek"
-                                                          ? "e.g., deepseek-chat"
-                                                          : t(
-                                                                "settings.aiProvider.modelIdLabel",
-                                                            )
-                                            }
-                                        />
-                                        {modelOptions.length > 0 && (
-                                            <Select
-                                                value={
-                                                    modelOptions.some(
-                                                        (m) => m.id === modelId,
-                                                    )
-                                                        ? modelId
-                                                        : ""
-                                                }
-                                                onValueChange={(value) => {
-                                                    setModelId(value)
-                                                    localStorage.setItem(
-                                                        STORAGE_AI_MODEL_KEY,
-                                                        value,
-                                                    )
-                                                }}
-                                            >
-                                                <SelectTrigger className="h-8">
-                                                    <SelectValue
-                                                        placeholder={t(
-                                                            "settings.aiProvider.modelIdSelectPlaceholder",
-                                                        )}
-                                                    />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {modelOptions.map((m) => (
-                                                        <SelectItem
-                                                            key={m.id}
-                                                            value={m.id}
-                                                        >
-                                                            {m.label || m.id}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        )}
+                                        <div className="relative">
+                                            <div className="relative">
+                                                <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                                <Input
+                                                    id="ai-model"
+                                                    value={modelId}
+                                                    onChange={(e) => {
+                                                        const value =
+                                                            e.target.value
+                                                        setModelId(value)
+                                                        localStorage.setItem(
+                                                            STORAGE_AI_MODEL_KEY,
+                                                            value,
+                                                        )
+                                                        setIsModelMenuOpen(true)
+                                                    }}
+                                                    onFocus={() =>
+                                                        setIsModelMenuOpen(true)
+                                                    }
+                                                    onBlur={() => {
+                                                        setTimeout(
+                                                            () =>
+                                                                setIsModelMenuOpen(
+                                                                    false,
+                                                                ),
+                                                            150,
+                                                        )
+                                                    }}
+                                                    placeholder={
+                                                        provider === "openai"
+                                                            ? "e.g., gpt-4o"
+                                                            : provider ===
+                                                                "anthropic"
+                                                              ? "e.g., claude-3-5-sonnet-latest"
+                                                              : provider ===
+                                                                  "google"
+                                                                ? "e.g., gemini-2.5-pro"
+                                                                : provider ===
+                                                                    "deepseek"
+                                                                  ? "e.g., deepseek-chat"
+                                                                  : t(
+                                                                        "settings.aiProvider.modelIdLabel",
+                                                                    )
+                                                    }
+                                                    className="pl-8 pr-9"
+                                                />
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault()
+                                                    }}
+                                                    onClick={() =>
+                                                        setIsModelMenuOpen(
+                                                            (v) => !v,
+                                                        )
+                                                    }
+                                                >
+                                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                                </Button>
+                                            </div>
+                                            {isModelMenuOpen &&
+                                                modelOptions.length > 0 && (
+                                                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
+                                                        <div className="max-h-56 overflow-auto">
+                                                            {modelOptions
+                                                                .filter((m) => {
+                                                                    const q =
+                                                                        modelId
+                                                                            .trim()
+                                                                            .toLowerCase()
+                                                                    if (!q)
+                                                                        return true
+                                                                    return (
+                                                                        String(
+                                                                            m.id,
+                                                                        )
+                                                                            .toLowerCase()
+                                                                            .includes(
+                                                                                q,
+                                                                            ) ||
+                                                                        String(
+                                                                            m.label ||
+                                                                                "",
+                                                                        )
+                                                                            .toLowerCase()
+                                                                            .includes(
+                                                                                q,
+                                                                            )
+                                                                    )
+                                                                })
+                                                                .slice(0, 100)
+                                                                .map((m) => (
+                                                                    <button
+                                                                        key={
+                                                                            m.id
+                                                                        }
+                                                                        type="button"
+                                                                        className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                                                                        onMouseDown={(
+                                                                            e,
+                                                                        ) => {
+                                                                            e.preventDefault()
+                                                                        }}
+                                                                        onClick={() => {
+                                                                            setModelId(
+                                                                                m.id,
+                                                                            )
+                                                                            localStorage.setItem(
+                                                                                STORAGE_AI_MODEL_KEY,
+                                                                                m.id,
+                                                                            )
+                                                                            setIsModelMenuOpen(
+                                                                                false,
+                                                                            )
+                                                                        }}
+                                                                    >
+                                                                        <span className="truncate">
+                                                                            {
+                                                                                m.id
+                                                                            }
+                                                                        </span>
+                                                                        {m.label ? (
+                                                                            <span className="ml-2 max-w-[45%] truncate text-xs text-muted-foreground">
+                                                                                {
+                                                                                    m.label
+                                                                                }
+                                                                            </span>
+                                                                        ) : null}
+                                                                    </button>
+                                                                ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                        </div>
                                         <p className="text-[0.8rem] text-muted-foreground">
                                             {isLoadingModels
                                                 ? t(
@@ -385,7 +471,11 @@ export function SettingsDialog({
                                                             count: modelOptions.length,
                                                         },
                                                     )
-                                                  : ""}
+                                                  : apiKey
+                                                    ? ""
+                                                    : t(
+                                                          "settings.aiProvider.modelsHint",
+                                                      )}
                                         </p>
                                     </div>
                                     <div className="space-y-2">
