@@ -4,6 +4,7 @@ import { Coffee, X } from "lucide-react"
 import Link from "next/link"
 import type React from "react"
 import { FaGithub } from "react-icons/fa"
+import { useI18n } from "@/contexts/i18n-context"
 
 interface QuotaLimitToastProps {
     type?: "request" | "token"
@@ -18,6 +19,7 @@ export function QuotaLimitToast({
     limit,
     onDismiss,
 }: QuotaLimitToastProps) {
+    const { t } = useI18n()
     const isTokenLimit = type === "token"
     const formatNumber = (n: number) =>
         n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString()
@@ -40,7 +42,7 @@ export function QuotaLimitToast({
             <button
                 onClick={onDismiss}
                 className="absolute right-3 top-3 p-1.5 rounded-full text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
-                aria-label="Dismiss"
+                aria-label={t("quota.dismiss")}
             >
                 <X className="w-4 h-4" />
             </button>
@@ -55,8 +57,8 @@ export function QuotaLimitToast({
                 </div>
                 <h3 className="font-semibold text-foreground text-sm">
                     {isTokenLimit
-                        ? "Daily Token Limit Reached"
-                        : "Daily Quota Reached"}
+                        ? t("quota.title.token")
+                        : t("quota.title.request")}
                 </h3>
                 <span className="px-2 py-0.5 text-xs font-medium rounded-md bg-muted text-muted-foreground">
                     {isTokenLimit
@@ -68,25 +70,22 @@ export function QuotaLimitToast({
             {/* Message */}
             <div className="text-sm text-muted-foreground leading-relaxed mb-4 space-y-2">
                 <p>
-                    Oops — you've reached the daily{" "}
-                    {isTokenLimit ? "token" : "API"} limit for this demo! As an
-                    indie developer covering all the API costs myself, I have to
-                    set these limits to keep things sustainable.{" "}
+                    {t("quota.body1", {
+                        type: isTokenLimit ? "token" : "API",
+                    })}{" "}
                     <Link
                         href="/about"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-amber-600 font-medium hover:text-amber-700 hover:underline"
                     >
-                        Learn more →
+                        {t("quota.learnMore")}
                     </Link>
                 </p>
                 <p>
-                    <strong>Tip:</strong> You can use your own API key (click
-                    the Settings icon) or self-host the project to bypass these
-                    limits.
+                    <strong>{t("quota.tip")}</strong> {t("quota.body2")}
                 </p>
-                <p>Your limit resets tomorrow. Thanks for understanding!</p>
+                <p>{t("quota.body3")}</p>
             </div>
 
             {/* Action buttons */}
@@ -98,7 +97,7 @@ export function QuotaLimitToast({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                 >
                     <FaGithub className="w-3.5 h-3.5" />
-                    Self-host
+                    {t("quota.selfHost")}
                 </a>
                 <a
                     href="https://github.com/sponsors/DayuanJiang"
@@ -107,7 +106,7 @@ export function QuotaLimitToast({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
                 >
                     <Coffee className="w-3.5 h-3.5" />
-                    Sponsor
+                    {t("quota.sponsor")}
                 </a>
             </div>
         </div>

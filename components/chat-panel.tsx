@@ -21,6 +21,7 @@ import { ChatInput } from "@/components/chat-input"
 import { ResetWarningModal } from "@/components/reset-warning-modal"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { useDiagram } from "@/contexts/diagram-context"
+import { useI18n } from "@/contexts/i18n-context"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
@@ -129,6 +130,7 @@ export default function ChatPanel({
     isMobile = false,
     onCloseProtectionChange,
 }: ChatPanelProps) {
+    const { t } = useI18n()
     const {
         loadDiagram: onDisplayChart,
         handleExport: onExport,
@@ -464,12 +466,12 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
             // Simple check for network errors if message is generic
             if (friendlyMessage === "Failed to fetch") {
-                friendlyMessage = "Network error. Please check your connection."
+                friendlyMessage = t("toast.networkError")
             }
 
             // Translate image not supported error
             if (friendlyMessage.includes("image content block")) {
-                friendlyMessage = "This model doesn't support image input."
+                friendlyMessage = t("toast.imageNotSupported")
             }
 
             // Add system message for error so it can be cleared
@@ -555,9 +557,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     ])
                 }
 
-                toast.error(
-                    "多次精确编辑失败，已停止自动重试。请再次发送指令，系统将引导模型改用重绘(display_diagram)。",
-                )
+                toast.error(t("toast.editFallbackStopRetry"))
                 autoRetryCountRef.current = 0
                 return false
             }
@@ -569,9 +569,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         `[sendAutomaticallyWhen] Max retry count (${MAX_AUTO_RETRY_COUNT}) reached, stopping`,
                     )
                 }
-                toast.error(
-                    `Auto-retry limit reached (${MAX_AUTO_RETRY_COUNT}). Please try again manually.`,
-                )
+                toast.error(t("toast.autoRetryLimitReached"))
                 if (
                     lastErrorToolName === "edit_diagram" &&
                     !forceDisplayNextRef.current
@@ -899,12 +897,10 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             localStorage.removeItem(STORAGE_XML_SNAPSHOTS_KEY)
             localStorage.removeItem(STORAGE_DIAGRAM_XML_KEY)
             localStorage.setItem(STORAGE_SESSION_ID_KEY, newSessionId)
-            toast.success("Started a fresh chat")
+            toast.success(t("toast.startedFreshChat"))
         } catch (error) {
             console.error("Failed to clear localStorage:", error)
-            toast.warning(
-                "Chat cleared but browser storage could not be updated",
-            )
+            toast.warning(t("toast.storageUpdateFailed"))
         }
 
         setShowNewChatDialog(false)
@@ -1148,7 +1144,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         return (
             <div className="h-full flex flex-col items-center pt-4 bg-card border border-border/30 rounded-xl">
                 <ButtonWithTooltip
-                    tooltipContent="Show chat panel (Ctrl+B)"
+                    tooltipContent={t("chat.header.showTooltip")}
                     variant="ghost"
                     size="icon"
                     onClick={onToggleVisibility}
@@ -1163,7 +1159,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         transform: "rotate(180deg)",
                     }}
                 >
-                    AI Chat
+                    {t("chat.header.aiChatLabel")}
                 </div>
             </div>
         )
@@ -1210,7 +1206,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                 rel="noopener noreferrer"
                                 className="text-sm text-muted-foreground hover:text-foreground transition-colors ml-2"
                             >
-                                About
+                                {t("chat.header.about")}
                             </Link>
                         )}
                         {!isMobile && (
@@ -1220,7 +1216,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                 rel="noopener noreferrer"
                             >
                                 <ButtonWithTooltip
-                                    tooltipContent="Due to high usage, I have changed the model to minimax-m2 and added some usage limits. See About page for details."
+                                    tooltipContent={t(
+                                        "chat.header.noticeTooltip",
+                                    )}
                                     variant="ghost"
                                     size="icon"
                                     className="h-6 w-6 text-amber-500 hover:text-amber-600"
@@ -1232,7 +1230,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     </div>
                     <div className="flex items-center gap-1">
                         <ButtonWithTooltip
-                            tooltipContent="Start fresh chat"
+                            tooltipContent={t("chat.header.newChatTooltip")}
                             variant="ghost"
                             size="icon"
                             onClick={() => setShowNewChatDialog(true)}
@@ -1254,7 +1252,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                             />
                         </a>
                         <ButtonWithTooltip
-                            tooltipContent="Settings"
+                            tooltipContent={t("chat.header.settingsTooltip")}
                             variant="ghost"
                             size="icon"
                             onClick={() => setShowSettingsDialog(true)}
@@ -1266,7 +1264,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         </ButtonWithTooltip>
                         {!isMobile && (
                             <ButtonWithTooltip
-                                tooltipContent="Hide chat panel (Ctrl+B)"
+                                tooltipContent={t("chat.header.hideTooltip")}
                                 variant="ghost"
                                 size="icon"
                                 onClick={onToggleVisibility}

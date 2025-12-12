@@ -19,6 +19,7 @@ import { SaveDialog } from "@/components/save-dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useDiagram } from "@/contexts/diagram-context"
+import { useI18n } from "@/contexts/i18n-context"
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, MAX_FILES } from "@/lib/limits"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import { FilePreviewList } from "./file-preview-list"
@@ -50,6 +51,7 @@ interface ValidationResult {
 function validateFiles(
     newFiles: File[],
     existingCount: number,
+    t: (key: any, vars?: Record<string, string | number>) => string,
 ): ValidationResult {
     const errors: string[] = []
     const validFiles: File[] = []
@@ -57,24 +59,28 @@ function validateFiles(
     const availableSlots = MAX_FILES - existingCount
 
     if (availableSlots <= 0) {
-        errors.push(`Maximum ${MAX_FILES} files allowed`)
+        errors.push(t("files.maxFiles", { count: MAX_FILES }))
         return { validFiles, errors }
     }
 
     for (const file of newFiles) {
         if (validFiles.length >= availableSlots) {
-            errors.push(`Only ${availableSlots} more file(s) allowed`)
+            errors.push(t("files.onlyMoreAllowed", { count: availableSlots }))
             break
         }
         if (!isValidFileType(file)) {
-            errors.push(`"${file.name}" is not a supported file type`)
+            errors.push(t("files.unsupportedType", { name: file.name }))
             continue
         }
         // Only check size for images (PDFs/text files are extracted client-side, so file size doesn't matter)
         const isExtractedFile = isPdfFile(file) || isTextFile(file)
         if (!isExtractedFile && file.size > MAX_FILE_SIZE_BYTES) {
             errors.push(
-                `"${file.name}" is ${formatFileSize(file.size)} (exceeds ${MAX_FILE_SIZE_MB}MB)`,
+                t("files.exceedsLimit", {
+                    name: file.name,
+                    size: formatFileSize(file.size),
+                    limit: MAX_FILE_SIZE_MB,
+                }),
             )
         } else {
             validFiles.push(file)
@@ -84,7 +90,10 @@ function validateFiles(
     return { validFiles, errors }
 }
 
-function showValidationErrors(errors: string[]) {
+function showValidationErrors(
+    errors: string[],
+    t: (key: any, vars?: Record<string, string | number>) => string,
+) {
     if (errors.length === 0) return
 
     if (errors.length === 1) {
@@ -95,14 +104,23 @@ function showValidationErrors(errors: string[]) {
         showErrorToast(
             <div className="flex flex-col gap-1">
                 <span className="font-medium">
-                    {errors.length} files rejected:
+                    {t(
+                        errors.length === 1
+                            ? "files.rejectedOne"
+                            : "files.rejectedMany",
+                        { count: errors.length },
+                    )}
                 </span>
                 <ul className="text-muted-foreground text-xs list-disc list-inside">
                     {errors.slice(0, 3).map((err) => (
                         <li key={err}>{err}</li>
                     ))}
                     {errors.length > 3 && (
-                        <li>...and {errors.length - 3} more</li>
+                        <li>
+                            {t("files.more", {
+                                count: errors.length - 3,
+                            })}
+                        </li>
                     )}
                 </ul>
             </div>,
@@ -142,6 +160,7 @@ export function ChatInput({
     sessionId,
     error = null,
 }: ChatInputProps) {
+    const { t } = useI18n()
     const { diagramHistory, saveDiagramToFile } = useDiagram()
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -207,8 +226,9 @@ export function ChatInput({
             const { validFiles, errors } = validateFiles(
                 imageFiles,
                 files.length,
+                t,
             )
-            showValidationErrors(errors)
+            showValidationErrors(errors, t)
             if (validFiles.length > 0) {
                 onFileChange([...files, ...validFiles])
             }
@@ -217,8 +237,8 @@ export function ChatInput({
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newFiles = Array.from(e.target.files || [])
-        const { validFiles, errors } = validateFiles(newFiles, files.length)
-        showValidationErrors(errors)
+        const { validFiles, errors } = validateFiles(newFiles, files.length, t)
+        showValidationErrors(errors, t)
         if (validFiles.length > 0) {
             onFileChange([...files, ...validFiles])
         }
@@ -266,8 +286,9 @@ export function ChatInput({
         const { validFiles, errors } = validateFiles(
             supportedFiles,
             files.length,
+            t,
         )
-        showValidationErrors(errors)
+        showValidationErrors(errors, t)
         if (validFiles.length > 0) {
             onFileChange([...files, ...validFiles])
         }
@@ -309,7 +330,7 @@ export function ChatInput({
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
-                    placeholder="Describe your diagram or upload a file..."
+                    placeholder={t("chat.placeholder")}
                     disabled={isDisabled}
                     aria-label="Chat input"
                     className="min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent px-4 py-3 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
@@ -324,7 +345,7 @@ export function ChatInput({
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowClearDialog(true)}
-                            tooltipContent="Clear conversation"
+                            tooltipContent={t("chat.tooltip.clear")}
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         >
                             <Trash2 className="h-4 w-4" />
@@ -350,7 +371,7 @@ export function ChatInput({
                             size="sm"
                             onClick={() => onToggleHistory(true)}
                             disabled={isDisabled || diagramHistory.length === 0}
-                            tooltipContent="Diagram history"
+                            tooltipContent={t("chat.tooltip.history")}
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                         >
                             <History className="h-4 w-4" />
@@ -362,7 +383,7 @@ export function ChatInput({
                             size="sm"
                             onClick={() => setShowSaveDialog(true)}
                             disabled={isDisabled}
-                            tooltipContent="Save diagram"
+                            tooltipContent={t("chat.tooltip.save")}
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                         >
                             <Download className="h-4 w-4" />
@@ -385,7 +406,7 @@ export function ChatInput({
                             size="sm"
                             onClick={triggerFileInput}
                             disabled={isDisabled}
-                            tooltipContent="Upload file (image, PDF, text)"
+                            tooltipContent={t("chat.tooltip.upload")}
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                         >
                             <ImageIcon className="h-4 w-4" />
@@ -409,7 +430,7 @@ export function ChatInput({
                             size="sm"
                             className="h-8 px-4 rounded-xl font-medium shadow-sm"
                             aria-label={
-                                isDisabled ? "Sending..." : "Send message"
+                                isDisabled ? t("chat.sending") : t("chat.send")
                             }
                         >
                             {isDisabled ? (
@@ -417,7 +438,7 @@ export function ChatInput({
                             ) : (
                                 <>
                                     <Send className="h-4 w-4 mr-1.5" />
-                                    Send
+                                    {t("chat.send")}
                                 </>
                             )}
                         </Button>

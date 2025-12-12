@@ -29,6 +29,7 @@ import {
     ReasoningTrigger,
 } from "@/components/ai-elements/reasoning"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useI18n } from "@/contexts/i18n-context"
 import {
     convertToLegalXml,
     replaceNodes,
@@ -188,6 +189,7 @@ export function ChatMessageDisplay({
     onEditMessage,
     status = "idle",
 }: ChatMessageDisplayProps) {
+    const { t } = useI18n()
     const { chartXML, loadDiagram: onDisplayChart } = useDiagram()
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const previousXML = useRef<string>("")
@@ -235,9 +237,7 @@ export function ChatMessageDisplay({
                 setTimeout(() => setCopiedMessageId(null), 2000)
             } catch (fallbackErr) {
                 console.error("Failed to copy message:", fallbackErr)
-                toast.error(
-                    "Failed to copy message. Please copy manually or check clipboard permissions.",
-                )
+                toast.error(t("toast.copyFailed"))
                 setCopyFailedMessageId(messageId)
                 setTimeout(() => setCopyFailedMessageId(null), 2000)
             } finally {
@@ -271,7 +271,7 @@ export function ChatMessageDisplay({
             })
         } catch (error) {
             console.error("Failed to log feedback:", error)
-            toast.error("Failed to record your feedback. Please try again.")
+            toast.error(t("toast.feedbackFailed"))
             // Revert optimistic UI update
             setFeedback((prev) => {
                 const next = { ...prev }
@@ -297,9 +297,7 @@ export function ChatMessageDisplay({
                     )
                     // Only show toast if this is the final XML (not during streaming)
                     if (showToast) {
-                        toast.error(
-                            "AI generated invalid diagram XML. Please try regenerating.",
-                        )
+                        toast.error(t("toast.diagramInvalid"))
                     }
                     return // Skip this update
                 }
@@ -324,9 +322,7 @@ export function ChatMessageDisplay({
                         )
                         // Only show toast if this is the final XML (not during streaming)
                         if (showToast) {
-                            toast.error(
-                                "Diagram validation failed. Please try regenerating.",
-                            )
+                            toast.error(t("toast.diagramValidationFailed"))
                         }
                     }
                 } catch (error) {
@@ -336,9 +332,7 @@ export function ChatMessageDisplay({
                     )
                     // Only show toast if this is the final XML (not during streaming)
                     if (showToast) {
-                        toast.error(
-                            "Failed to process diagram. Please try regenerating.",
-                        )
+                        toast.error(t("toast.diagramProcessFailed"))
                     }
                 }
             }
@@ -415,11 +409,11 @@ export function ChatMessageDisplay({
         const getToolDisplayName = (name: string) => {
             switch (name) {
                 case "display_diagram":
-                    return "Generate Diagram"
+                    return t("tool.generate")
                 case "edit_diagram":
-                    return "Edit Diagram"
+                    return t("tool.edit")
                 case "analyze_diagram":
-                    return "Analyze Diagram"
+                    return t("tool.analyze")
                 default:
                     return name
             }
@@ -445,12 +439,12 @@ export function ChatMessageDisplay({
                         )}
                         {state === "output-available" && (
                             <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                                Complete
+                                {t("status.complete")}
                             </span>
                         )}
                         {state === "output-error" && (
                             <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                                Error
+                                {t("status.error")}
                             </span>
                         )}
                         {input && Object.keys(input).length > 0 && (

@@ -9,6 +9,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
+import { useI18n } from "@/contexts/i18n-context"
 
 interface ResetWarningModalProps {
     open: boolean
@@ -21,14 +22,14 @@ export function ResetWarningModal({
     onOpenChange,
     onClear,
 }: ResetWarningModalProps) {
+    const { t } = useI18n()
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Clear Everything?</DialogTitle>
+                    <DialogTitle>{t("reset.title")}</DialogTitle>
                     <DialogDescription>
-                        This will clear the current conversation and reset the
-                        diagram. This action cannot be undone.
+                        {t("reset.description")}
                     </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
@@ -36,10 +37,10 @@ export function ResetWarningModal({
                         variant="outline"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t("reset.cancel")}
                     </Button>
                     <Button variant="destructive" onClick={onClear}>
-                        Clear Everything
+                        {t("reset.clear")}
                     </Button>
                 </DialogFooter>
             </DialogContent>

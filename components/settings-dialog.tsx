@@ -20,6 +20,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { useI18n } from "@/contexts/i18n-context"
 
 interface SettingsDialogProps {
     open: boolean
@@ -55,6 +56,7 @@ export function SettingsDialog({
     darkMode,
     onToggleDarkMode,
 }: SettingsDialogProps) {
+    const { t, locale, setLocale } = useI18n()
     const [accessCode, setAccessCode] = useState("")
     const [closeProtection, setCloseProtection] = useState(true)
     const [isVerifying, setIsVerifying] = useState(false)
@@ -129,14 +131,14 @@ export function SettingsDialog({
             const data = await response.json()
 
             if (!data.valid) {
-                setError(data.message || "Invalid access code")
+                setError(data.message || t("settings.accessCode.invalid"))
                 return
             }
 
             localStorage.setItem(STORAGE_ACCESS_CODE_KEY, accessCode.trim())
             onOpenChange(false)
         } catch {
-            setError("Failed to verify access code")
+            setError(t("settings.accessCode.verifyFailed"))
         } finally {
             setIsVerifying(false)
         }
@@ -153,15 +155,17 @@ export function SettingsDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Settings</DialogTitle>
+                    <DialogTitle>{t("dialog.settings.title")}</DialogTitle>
                     <DialogDescription>
-                        Configure your application settings.
+                        {t("dialog.settings.description")}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-2">
                     {accessCodeRequired && (
                         <div className="space-y-2">
-                            <Label htmlFor="access-code">Access Code</Label>
+                            <Label htmlFor="access-code">
+                                {t("settings.accessCode.label")}
+                            </Label>
                             <div className="flex gap-2">
                                 <Input
                                     id="access-code"
@@ -171,18 +175,22 @@ export function SettingsDialog({
                                         setAccessCode(e.target.value)
                                     }
                                     onKeyDown={handleKeyDown}
-                                    placeholder="Enter access code"
+                                    placeholder={t(
+                                        "settings.accessCode.placeholder",
+                                    )}
                                     autoComplete="off"
                                 />
                                 <Button
                                     onClick={handleSave}
                                     disabled={isVerifying || !accessCode.trim()}
                                 >
-                                    {isVerifying ? "..." : "Save"}
+                                    {isVerifying
+                                        ? "..."
+                                        : t("settings.accessCode.save")}
                                 </Button>
                             </div>
                             <p className="text-[0.8rem] text-muted-foreground">
-                                Required to use this application.
+                                {t("settings.accessCode.requiredNote")}
                             </p>
                             {error && (
                                 <p className="text-[0.8rem] text-destructive">
@@ -192,15 +200,15 @@ export function SettingsDialog({
                         </div>
                     )}
                     <div className="space-y-2">
-                        <Label>AI Provider Settings</Label>
+                        <Label>{t("settings.aiProvider.title")}</Label>
                         <p className="text-[0.8rem] text-muted-foreground">
-                            Use your own API key to bypass usage limits. Your
-                            key is stored locally in your browser and is never
-                            stored on the server.
+                            {t("settings.aiProvider.note")}
                         </p>
                         <div className="space-y-3 pt-2">
                             <div className="space-y-2">
-                                <Label htmlFor="ai-provider">Provider</Label>
+                                <Label htmlFor="ai-provider">
+                                    {t("settings.aiProvider.providerLabel")}
+                                </Label>
                                 <Select
                                     value={provider || "default"}
                                     onValueChange={(value) => {
@@ -214,11 +222,17 @@ export function SettingsDialog({
                                     }}
                                 >
                                     <SelectTrigger id="ai-provider">
-                                        <SelectValue placeholder="Use Server Default" />
+                                        <SelectValue
+                                            placeholder={t(
+                                                "settings.aiProvider.useServerDefault",
+                                            )}
+                                        />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="default">
-                                            Use Server Default
+                                            {t(
+                                                "settings.aiProvider.useServerDefault",
+                                            )}
                                         </SelectItem>
                                         <SelectItem value="openai">
                                             OpenAI
@@ -248,7 +262,9 @@ export function SettingsDialog({
                                 <>
                                     <div className="space-y-2">
                                         <Label htmlFor="ai-model">
-                                            Model ID
+                                            {t(
+                                                "settings.aiProvider.modelIdLabel",
+                                            )}
                                         </Label>
                                         <Input
                                             id="ai-model"
@@ -270,13 +286,17 @@ export function SettingsDialog({
                                                         : provider ===
                                                             "deepseek"
                                                           ? "e.g., deepseek-chat"
-                                                          : "Model ID"
+                                                          : t(
+                                                                "settings.aiProvider.modelIdLabel",
+                                                            )
                                             }
                                         />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="ai-api-key">
-                                            API Key
+                                            {t(
+                                                "settings.aiProvider.apiKeyLabel",
+                                            )}
                                         </Label>
                                         <Input
                                             id="ai-api-key"
@@ -289,34 +309,46 @@ export function SettingsDialog({
                                                     e.target.value,
                                                 )
                                             }}
-                                            placeholder="Your API key"
+                                            placeholder={t(
+                                                "settings.aiProvider.apiKeyPlaceholder",
+                                            )}
                                             autoComplete="off"
                                         />
                                         <p className="text-[0.8rem] text-muted-foreground">
-                                            Overrides{" "}
-                                            {provider === "openai"
-                                                ? "OPENAI_API_KEY"
-                                                : provider === "anthropic"
-                                                  ? "ANTHROPIC_API_KEY"
-                                                  : provider === "google"
-                                                    ? "GOOGLE_GENERATIVE_AI_API_KEY"
-                                                    : provider === "azure"
-                                                      ? "AZURE_API_KEY"
-                                                      : provider ===
-                                                          "openrouter"
-                                                        ? "OPENROUTER_API_KEY"
-                                                        : provider ===
-                                                            "deepseek"
-                                                          ? "DEEPSEEK_API_KEY"
-                                                          : provider ===
-                                                              "siliconflow"
-                                                            ? "SILICONFLOW_API_KEY"
-                                                            : "server API key"}
+                                            {t(
+                                                "settings.aiProvider.overrides",
+                                                {
+                                                    env:
+                                                        provider === "openai"
+                                                            ? "OPENAI_API_KEY"
+                                                            : provider ===
+                                                                "anthropic"
+                                                              ? "ANTHROPIC_API_KEY"
+                                                              : provider ===
+                                                                  "google"
+                                                                ? "GOOGLE_GENERATIVE_AI_API_KEY"
+                                                                : provider ===
+                                                                    "azure"
+                                                                  ? "AZURE_API_KEY"
+                                                                  : provider ===
+                                                                      "openrouter"
+                                                                    ? "OPENROUTER_API_KEY"
+                                                                    : provider ===
+                                                                        "deepseek"
+                                                                      ? "DEEPSEEK_API_KEY"
+                                                                      : provider ===
+                                                                          "siliconflow"
+                                                                        ? "SILICONFLOW_API_KEY"
+                                                                        : "server API key",
+                                                },
+                                            )}
                                         </p>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="ai-base-url">
-                                            Base URL (optional)
+                                            {t(
+                                                "settings.aiProvider.baseUrlLabel",
+                                            )}
                                         </Label>
                                         <Input
                                             id="ai-base-url"
@@ -333,7 +365,9 @@ export function SettingsDialog({
                                                     ? "https://api.anthropic.com/v1"
                                                     : provider === "siliconflow"
                                                       ? "https://api.siliconflow.com/v1"
-                                                      : "Custom endpoint URL"
+                                                      : t(
+                                                            "settings.aiProvider.baseUrlPlaceholder",
+                                                        )
                                             }
                                         />
                                     </div>
@@ -360,7 +394,7 @@ export function SettingsDialog({
                                             setModelId("")
                                         }}
                                     >
-                                        Clear Settings
+                                        {t("settings.aiProvider.clear")}
                                     </Button>
                                 </>
                             )}
@@ -369,9 +403,11 @@ export function SettingsDialog({
 
                     <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
-                            <Label htmlFor="theme-toggle">Theme</Label>
+                            <Label htmlFor="theme-toggle">
+                                {t("settings.theme.label")}
+                            </Label>
                             <p className="text-[0.8rem] text-muted-foreground">
-                                Dark/Light mode for interface and DrawIO canvas.
+                                {t("settings.theme.note")}
                             </p>
                         </div>
                         <Button
@@ -390,10 +426,46 @@ export function SettingsDialog({
 
                     <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
-                            <Label htmlFor="drawio-ui">DrawIO Style</Label>
+                            <Label htmlFor="language-select">
+                                {t("settings.language.label")}
+                            </Label>
                             <p className="text-[0.8rem] text-muted-foreground">
-                                Canvas style:{" "}
-                                {drawioUi === "min" ? "Minimal" : "Sketch"}
+                                {t("settings.language.note")}
+                            </p>
+                        </div>
+                        <Select
+                            value={locale}
+                            onValueChange={(value) => setLocale(value as any)}
+                        >
+                            <SelectTrigger
+                                id="language-select"
+                                className="w-[140px]"
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="en">
+                                    {t("settings.language.en")}
+                                </SelectItem>
+                                <SelectItem value="zh-CN">
+                                    {t("settings.language.zhCN")}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <Label htmlFor="drawio-ui">
+                                {t("settings.drawioStyle.label")}
+                            </Label>
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                {t("settings.drawioStyle.note", {
+                                    style:
+                                        drawioUi === "min"
+                                            ? t("settings.drawioStyle.minimal")
+                                            : t("settings.drawioStyle.sketch"),
+                                })}
                             </p>
                         </div>
                         <Button
@@ -402,18 +474,22 @@ export function SettingsDialog({
                             size="sm"
                             onClick={onToggleDrawioUi}
                         >
-                            Switch to{" "}
-                            {drawioUi === "min" ? "Sketch" : "Minimal"}
+                            {t("settings.drawioStyle.switchTo", {
+                                style:
+                                    drawioUi === "min"
+                                        ? t("settings.drawioStyle.sketch")
+                                        : t("settings.drawioStyle.minimal"),
+                            })}
                         </Button>
                     </div>
 
                     <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
                             <Label htmlFor="close-protection">
-                                Close Protection
+                                {t("settings.closeProtection.label")}
                             </Label>
                             <p className="text-[0.8rem] text-muted-foreground">
-                                Show confirmation when leaving the page.
+                                {t("settings.closeProtection.note")}
                             </p>
                         </div>
                         <Switch

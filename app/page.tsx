@@ -1,8 +1,11 @@
 "use client"
+import { Download } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { DrawIoEmbed } from "react-drawio"
 import type { ImperativePanelHandle } from "react-resizable-panels"
+import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import ChatPanel from "@/components/chat-panel"
+import { SaveDialog } from "@/components/save-dialog"
 import { STORAGE_CLOSE_PROTECTION_KEY } from "@/components/settings-dialog"
 import {
     ResizableHandle,
@@ -10,19 +13,28 @@ import {
     ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { useDiagram } from "@/contexts/diagram-context"
+import { useI18n } from "@/contexts/i18n-context"
 
 const drawioBaseUrl =
     process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || "https://embed.diagrams.net"
 
 export default function Home() {
-    const { drawioRef, handleDiagramExport, onDrawioLoad, resetDrawioReady } =
-        useDiagram()
+    const { t } = useI18n()
+    const {
+        drawioRef,
+        handleDiagramExport,
+        onDrawioLoad,
+        resetDrawioReady,
+        syncDiagramXml,
+        saveDiagramToFile,
+    } = useDiagram()
     const [isMobile, setIsMobile] = useState(false)
     const [isChatVisible, setIsChatVisible] = useState(true)
     const [drawioUi, setDrawioUi] = useState<"min" | "sketch">("min")
     const [darkMode, setDarkMode] = useState(false)
     const [isLoaded, setIsLoaded] = useState(false)
     const [closeProtection, setCloseProtection] = useState(false)
+    const [showDrawioSaveDialog, setShowDrawioSaveDialog] = useState(false)
 
     const chatPanelRef = useRef<ImperativePanelHandle>(null)
 
@@ -137,6 +149,20 @@ export default function Home() {
                             isMobile ? "p-1" : "p-2"
                         }`}
                     >
+                        {/* Export button (right-middle, avoid draw.io corner toolbars) */}
+                        <div className="absolute top-1/2 right-3 -translate-y-1/2 z-20">
+                            <ButtonWithTooltip
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setShowDrawioSaveDialog(true)}
+                                tooltipContent={t("canvas.exportTooltip")}
+                                className="shadow-sm"
+                            >
+                                <Download className="h-4 w-4 mr-1.5" />
+                                {t("canvas.export")}
+                            </ButtonWithTooltip>
+                        </div>
                         <div className="h-full rounded-xl overflow-hidden shadow-soft-lg border border-border/30">
                             {isLoaded ? (
                                 <DrawIoEmbed
@@ -144,11 +170,18 @@ export default function Home() {
                                     ref={drawioRef}
                                     onExport={handleDiagramExport}
                                     onLoad={onDrawioLoad}
+                                    onSave={(data) => {
+                                        if (data?.xml) {
+                                            syncDiagramXml(data.xml)
+                                            setShowDrawioSaveDialog(true)
+                                        }
+                                    }}
                                     baseUrl={drawioBaseUrl}
                                     urlParameters={{
                                         ui: drawioUi,
                                         spin: true,
                                         libraries: false,
+                                        noSaveBtn: true,
                                         saveAndExit: false,
                                         noExitBtn: true,
                                         dark: darkMode,
@@ -197,6 +230,18 @@ export default function Home() {
                     </div>
                 </ResizablePanel>
             </ResizablePanelGroup>
+
+            {/* draw.io 自带 Save 按钮触发的导出弹窗 */}
+            <SaveDialog
+                open={showDrawioSaveDialog}
+                onOpenChange={setShowDrawioSaveDialog}
+                onSave={(filename, format) =>
+                    saveDiagramToFile(filename, format)
+                }
+                defaultFilename={`diagram-${new Date()
+                    .toISOString()
+                    .slice(0, 10)}`}
+            />
         </div>
     )
 }

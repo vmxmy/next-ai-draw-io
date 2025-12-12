@@ -1,6 +1,7 @@
 "use client"
 
 import { Cloud, FileText, GitBranch, Palette, Zap } from "lucide-react"
+import { useI18n } from "@/contexts/i18n-context"
 
 interface ExampleCardProps {
     icon: React.ReactNode
@@ -17,6 +18,7 @@ function ExampleCard({
     onClick,
     isNew,
 }: ExampleCardProps) {
+    const { t } = useI18n()
     return (
         <button
             onClick={onClick}
@@ -43,7 +45,7 @@ function ExampleCard({
                         </h3>
                         {isNew && (
                             <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-primary text-primary-foreground rounded">
-                                NEW
+                                {t("examples.new")}
                             </span>
                         )}
                     </div>
@@ -63,8 +65,9 @@ export default function ExamplePanel({
     setInput: (input: string) => void
     setFiles: (files: File[]) => void
 }) {
+    const { t } = useI18n()
     const handleReplicateFlowchart = async () => {
-        setInput("Replicate this flowchart.")
+        setInput(t("examples.flowchart.prompt"))
 
         try {
             const response = await fetch("/example.png")
@@ -77,7 +80,7 @@ export default function ExamplePanel({
     }
 
     const handleReplicateArchitecture = async () => {
-        setInput("Replicate this in aws style")
+        setInput(t("examples.aws.prompt"))
 
         try {
             const response = await fetch("/architecture.png")
@@ -92,7 +95,7 @@ export default function ExamplePanel({
     }
 
     const handlePdfExample = async () => {
-        setInput("Summarize this paper as a diagram")
+        setInput(t("examples.paper.prompt"))
 
         try {
             const response = await fetch("/chain-of-thought.txt")
@@ -111,68 +114,65 @@ export default function ExamplePanel({
             {/* Welcome section */}
             <div className="text-center mb-6">
                 <h2 className="text-lg font-semibold text-foreground mb-2">
-                    Create diagrams with AI
+                    {t("examples.title")}
                 </h2>
                 <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                    Describe what you want to create or upload an image to
-                    replicate
+                    {t("examples.subtitle")}
                 </p>
             </div>
 
             {/* Examples grid */}
             <div className="space-y-3">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">
-                    Quick Examples
+                    {t("examples.quick")}
                 </p>
 
                 <div className="grid gap-2">
                     <ExampleCard
                         icon={<FileText className="w-4 h-4 text-primary" />}
-                        title="Paper to Diagram"
-                        description="Upload .pdf, .txt, .md, .json, .csv, .py, .js, .ts and more"
+                        title={t("examples.paper.title")}
+                        description={t("examples.paper.desc")}
                         onClick={handlePdfExample}
                         isNew
                     />
 
                     <ExampleCard
                         icon={<Zap className="w-4 h-4 text-primary" />}
-                        title="Animated Diagram"
-                        description="Draw a transformer architecture with animated connectors"
+                        title={t("examples.animated.title")}
+                        description={t("examples.animated.desc")}
                         onClick={() => {
-                            setInput(
-                                "Give me a **animated connector** diagram of transformer's architecture",
-                            )
+                            setInput(t("examples.animated.prompt"))
                             setFiles([])
                         }}
                     />
 
                     <ExampleCard
                         icon={<Cloud className="w-4 h-4 text-primary" />}
-                        title="AWS Architecture"
-                        description="Create a cloud architecture diagram with AWS icons"
+                        title={t("examples.aws.title")}
+                        description={t("examples.aws.desc")}
                         onClick={handleReplicateArchitecture}
                     />
 
                     <ExampleCard
                         icon={<GitBranch className="w-4 h-4 text-primary" />}
-                        title="Replicate Flowchart"
-                        description="Upload and replicate an existing flowchart"
+                        title={t("examples.flowchart.title")}
+                        description={t("examples.flowchart.desc")}
                         onClick={handleReplicateFlowchart}
                     />
 
                     <ExampleCard
                         icon={<Palette className="w-4 h-4 text-primary" />}
-                        title="Creative Drawing"
-                        description="Draw something fun and creative"
+                        title={t("examples.creative.title")}
+                        description={t("examples.creative.desc")}
                         onClick={() => {
-                            setInput("Draw a cat for me")
+                            setInput(t("examples.creative.prompt"))
                             setFiles([])
                         }}
                     />
                 </div>
 
                 <p className="text-[11px] text-muted-foreground/60 text-center mt-4">
-                    Examples are cached for instant response
+                    {t("examples.cachedNote")}
                 </p>
             </div>
         </div>

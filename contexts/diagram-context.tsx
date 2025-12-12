@@ -12,6 +12,7 @@ interface DiagramContextType {
     latestSvg: string
     diagramHistory: { svg: string; xml: string }[]
     loadDiagram: (chart: string, skipValidation?: boolean) => string | null
+    syncDiagramXml: (chart: string) => void
     handleExport: () => void
     handleExportWithoutHistory: () => void
     resolverRef: React.Ref<((value: string) => void) | null>
@@ -105,6 +106,16 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
         }
 
         return null
+    }
+
+    // Sync XML from draw.io save without reloading iframe.
+    const syncDiagramXml = (chart: string) => {
+        setChartXML(chart)
+        try {
+            localStorage.setItem(STORAGE_DIAGRAM_XML_KEY, chart)
+        } catch {
+            // ignore storage failures
+        }
     }
 
     const handleDiagramExport = (data: any) => {
@@ -254,6 +265,7 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
                 latestSvg,
                 diagramHistory,
                 loadDiagram,
+                syncDiagramXml,
                 handleExport,
                 handleExportWithoutHistory,
                 resolverRef,

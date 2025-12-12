@@ -12,6 +12,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { useDiagram } from "@/contexts/diagram-context"
+import { useI18n } from "@/contexts/i18n-context"
 
 interface HistoryDialogProps {
     showHistory: boolean
@@ -22,6 +23,7 @@ export function HistoryDialog({
     showHistory,
     onToggleHistory,
 }: HistoryDialogProps) {
+    const { t } = useI18n()
     const { loadDiagram: onDisplayChart, diagramHistory } = useDiagram()
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
@@ -42,7 +44,7 @@ export function HistoryDialog({
         <Dialog open={showHistory} onOpenChange={onToggleHistory}>
             <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Diagram History</DialogTitle>
+                    <DialogTitle>{t("dialog.history.title")}</DialogTitle>
                     <DialogDescription>
                         Here saved each diagram before AI modification.
                         <br />
@@ -52,8 +54,7 @@ export function HistoryDialog({
 
                 {diagramHistory.length === 0 ? (
                     <div className="text-center p-4 text-gray-500">
-                        No history available yet. Send messages to create
-                        diagram history.
+                        {t("dialog.history.empty")}
                     </div>
                 ) : (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
@@ -88,21 +89,23 @@ export function HistoryDialog({
                     {selectedIndex !== null ? (
                         <>
                             <div className="flex-1 text-sm text-muted-foreground">
-                                Restore to Version {selectedIndex + 1}?
+                                {t("dialog.history.restorePrompt", {
+                                    version: selectedIndex + 1,
+                                })}
                             </div>
                             <Button
                                 variant="outline"
                                 onClick={() => setSelectedIndex(null)}
                             >
-                                Cancel
+                                {t("dialog.history.cancel")}
                             </Button>
                             <Button onClick={handleConfirmRestore}>
-                                Confirm
+                                {t("dialog.history.confirm")}
                             </Button>
                         </>
                     ) : (
                         <Button variant="outline" onClick={handleClose}>
-                            Close
+                            {t("dialog.history.close")}
                         </Button>
                     )}
                 </DialogFooter>

@@ -17,6 +17,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { useI18n } from "@/contexts/i18n-context"
 
 export type ExportFormat = "drawio" | "png" | "svg"
 
@@ -43,6 +44,7 @@ export function SaveDialog({
     onSave,
     defaultFilename,
 }: SaveDialogProps) {
+    const { t } = useI18n()
     const [filename, setFilename] = useState(defaultFilename)
     const [format, setFormat] = useState<ExportFormat>("drawio")
 
@@ -71,11 +73,13 @@ export function SaveDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Save Diagram</DialogTitle>
+                    <DialogTitle>{t("dialog.save.title")}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Format</label>
+                        <label className="text-sm font-medium">
+                            {t("dialog.save.format")}
+                        </label>
                         <Select
                             value={format}
                             onValueChange={(v) => setFormat(v as ExportFormat)}
@@ -96,13 +100,15 @@ export function SaveDialog({
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">Filename</label>
+                        <label className="text-sm font-medium">
+                            {t("dialog.save.filename")}
+                        </label>
                         <div className="flex items-stretch">
                             <Input
                                 value={filename}
                                 onChange={(e) => setFilename(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Enter filename"
+                                placeholder={t("save.filenamePlaceholder")}
                                 autoFocus
                                 onFocus={(e) => e.target.select()}
                                 className="rounded-r-none border-r-0 focus-visible:z-10"
@@ -118,9 +124,11 @@ export function SaveDialog({
                         variant="outline"
                         onClick={() => onOpenChange(false)}
                     >
-                        Cancel
+                        {t("dialog.save.cancel")}
                     </Button>
-                    <Button onClick={handleSave}>Save</Button>
+                    <Button onClick={handleSave}>
+                        {t("dialog.save.save")}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
