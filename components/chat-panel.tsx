@@ -5,15 +5,16 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { DefaultChatTransport } from "ai"
 import {
     AlertCircle,
-    AlertTriangle,
     CheckCircle2,
     CloudOff,
     MessageSquarePlus,
     PanelRightClose,
     PanelRightOpen,
+    Redo2,
     RefreshCw,
     Settings,
     Trash2,
+    Undo2,
 } from "lucide-react"
 import Image from "next/image"
 import { signIn, signOut, useSession } from "next-auth/react"
@@ -180,6 +181,12 @@ export default function ChatPanel({
         loadDiagram: onDisplayChart,
         handleExport: onExport,
         handleExportWithoutHistory,
+        recordUndoCheckpoint,
+        resetUndoHistory,
+        undo,
+        redo,
+        canUndo,
+        canRedo,
         resolverRef,
         chartXML,
         clearDiagram,
@@ -515,6 +522,7 @@ export default function ChatPanel({
                 const fullXml = wrapWithMxFile(xml)
 
                 // loadDiagram validates and returns error if invalid
+                const previousXml = chartXMLRef.current
                 const validationError = onDisplayChart(fullXml)
 
                 if (validationError) {
@@ -542,6 +550,9 @@ ${xml}
 \`\`\``,
                     })
                 } else {
+                    if (previousXml !== fullXml) {
+                        recordUndoCheckpoint(previousXml)
+                    }
                     // Success - diagram will be rendered by chat-message-display
                     if (DEBUG) {
                         console.log(
@@ -673,6 +684,9 @@ ${currentXml}
 Please fix the edit to avoid structural issues (e.g., duplicate IDs, invalid references).`,
                         })
                         return
+                    }
+                    if (currentXml !== editedXml) {
+                        recordUndoCheckpoint(currentXml)
                     }
                     onExport()
                     addToolOutput({
@@ -918,6 +932,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const loadConversation = useCallback(
         (id: string) => {
             try {
+                resetUndoHistory()
                 const raw = localStorage.getItem(conversationStorageKey(id))
                 const payload: ConversationPayload = raw
                     ? JSON.parse(raw)
@@ -957,7 +972,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 clearDiagram()
             }
         },
-        [clearDiagram, isDrawioReady, onDisplayChart, setMessages],
+        [
+            clearDiagram,
+            isDrawioReady,
+            onDisplayChart,
+            resetUndoHistory,
+            setMessages,
+        ],
     )
 
     const applyRemoteConversations = useCallback(
@@ -2059,23 +2080,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                 Next AI Drawio
                             </h1>
                         </div>
-                        {!isMobile && (
-                            <ButtonWithTooltip
-                                tooltipContent={t("chat.header.noticeTooltip")}
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-amber-500 hover:text-amber-600 ml-1"
-                                asChild
-                            >
-                                <a
-                                    href="/about"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <AlertTriangle className="h-4 w-4" />
-                                </a>
-                            </ButtonWithTooltip>
-                        )}
                     </div>
                     <div className="flex items-center gap-1">
                         <ButtonWithTooltip
@@ -2262,6 +2266,30 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                             className="hover:bg-accent"
                         >
                             <MessageSquarePlus
+                                className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
+                            />
+                        </ButtonWithTooltip>
+                        <ButtonWithTooltip
+                            tooltipContent={t("chat.tooltip.undo")}
+                            variant="ghost"
+                            size="icon"
+                            disabled={!isDrawioReady || !canUndo}
+                            onClick={undo}
+                            className="hover:bg-accent"
+                        >
+                            <Undo2
+                                className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
+                            />
+                        </ButtonWithTooltip>
+                        <ButtonWithTooltip
+                            tooltipContent={t("chat.tooltip.redo")}
+                            variant="ghost"
+                            size="icon"
+                            disabled={!isDrawioReady || !canRedo}
+                            onClick={redo}
+                            className="hover:bg-accent"
+                        >
+                            <Redo2
                                 className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
                             />
                         </ButtonWithTooltip>
