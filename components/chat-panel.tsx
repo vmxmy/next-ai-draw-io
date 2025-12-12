@@ -16,8 +16,7 @@ import {
     Trash2,
 } from "lucide-react"
 import Image from "next/image"
-import Link from "next/link"
-import { useSession } from "next-auth/react"
+import { signIn, signOut, useSession } from "next-auth/react"
 import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
@@ -302,8 +301,23 @@ export default function ChatPanel({
 
     // 登录态（OAuth）+ 云端同步（tRPC）
     const { data: authSession, status: authStatus } = useSession()
-    const pushConversations = api.conversation.push.useMutation()
-    const pullConversations = api.conversation.pull.useMutation()
+    const pushConversationsMutation = api.conversation.push.useMutation()
+    const pullConversationsMutation = api.conversation.pull.useMutation()
+    const pushConversationsMutateAsyncRef = useRef(
+        pushConversationsMutation.mutateAsync,
+    )
+    const pullConversationsMutateAsyncRef = useRef(
+        pullConversationsMutation.mutateAsync,
+    )
+    useEffect(() => {
+        pushConversationsMutateAsyncRef.current =
+            pushConversationsMutation.mutateAsync
+        pullConversationsMutateAsyncRef.current =
+            pullConversationsMutation.mutateAsync
+    }, [
+        pushConversationsMutation.mutateAsync,
+        pullConversationsMutation.mutateAsync,
+    ])
 
     const syncBootstrappedUserIdRef = useRef<string | null>(null)
     const syncPullIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -425,7 +439,7 @@ export default function ChatPanel({
 
             markSyncStart()
             try {
-                const res = await pushConversations.mutateAsync({
+                const res = await pushConversationsMutateAsyncRef.current({
                     conversations: [input],
                 })
                 if (res?.cursor) setSyncCursor(res.cursor)
@@ -449,7 +463,6 @@ export default function ChatPanel({
             isOnline,
             markSyncEnd,
             markSyncStart,
-            pushConversations,
             setSyncCursor,
         ],
     )
@@ -1081,7 +1094,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         markSyncStart()
         try {
             const cursor = getSyncCursor()
-            const res = await pullConversations.mutateAsync({
+            const res = await pullConversationsMutateAsyncRef.current({
                 cursor,
                 limit: 200,
             })
@@ -1106,7 +1119,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         isOnline,
         markSyncEnd,
         markSyncStart,
-        pullConversations,
         setSyncCursor,
     ])
 
@@ -1161,7 +1173,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
             if (toPush.length > 0) {
                 try {
-                    const res = await pushConversations.mutateAsync({
+                    const res = await pushConversationsMutateAsyncRef.current({
                         conversations: toPush as any,
                     })
                     if (!cancelled && res?.cursor) setSyncCursor(res.cursor)
@@ -1203,7 +1215,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         authStatus,
         conversations.length,
         pullOnce,
-        pushConversations,
         readConversationMetasFromStorage,
         readConversationPayloadFromStorage,
         setSyncCursor,
@@ -2049,25 +2060,60 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                             </h1>
                         </div>
                         {!isMobile && (
-                            <Link
-                                href="/about"
-                                target="_blank"
-                                rel="noopener noreferrer"
+                            <ButtonWithTooltip
+                                tooltipContent={t("chat.header.noticeTooltip")}
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-amber-500 hover:text-amber-600 ml-1"
+                                asChild
                             >
-                                <ButtonWithTooltip
-                                    tooltipContent={t(
-                                        "chat.header.noticeTooltip",
-                                    )}
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-amber-500 hover:text-amber-600 ml-1"
+                                <a
+                                    href="/about"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                 >
                                     <AlertTriangle className="h-4 w-4" />
-                                </ButtonWithTooltip>
-                            </Link>
+                                </a>
+                            </ButtonWithTooltip>
                         )}
                     </div>
                     <div className="flex items-center gap-1">
+                        <ButtonWithTooltip
+                            tooltipContent={
+                                authStatus === "authenticated"
+                                    ? t("auth.signOut")
+                                    : t("auth.signIn")
+                            }
+                            aria-label={
+                                authStatus === "authenticated"
+                                    ? t("auth.signOut")
+                                    : t("auth.signIn")
+                            }
+                            variant="ghost"
+                            size="icon"
+                            disabled={authStatus === "loading"}
+                            onClick={() => {
+                                if (authStatus === "authenticated") {
+                                    void signOut()
+                                    return
+                                }
+                                void signIn("github")
+                            }}
+                            className="hover:bg-accent"
+                        >
+                            {authStatus === "authenticated" &&
+                            authSession?.user?.image ? (
+                                <Image
+                                    src={authSession.user.image}
+                                    alt="User avatar"
+                                    width={18}
+                                    height={18}
+                                    className="rounded-full"
+                                />
+                            ) : (
+                                <FaGithub className="h-4 w-4 text-muted-foreground" />
+                            )}
+                        </ButtonWithTooltip>
                         {authStatus === "authenticated" && (
                             <ButtonWithTooltip
                                 tooltipContent={

@@ -151,6 +151,8 @@ type I18nKey =
     | "sync.status.syncing"
     | "sync.status.offline"
     | "sync.status.error"
+    | "auth.signIn"
+    | "auth.signOut"
     | "chat.header.sessionSwitcher"
     | "chat.header.newSessionTooltip"
     | "chat.tooltip.edit"
@@ -324,6 +326,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "sync.status.syncing": "Syncing…",
         "sync.status.offline": "Offline (will sync when back online)",
         "sync.status.error": "Sync failed (will retry automatically)",
+        "auth.signIn": "Sign in with GitHub",
+        "auth.signOut": "Sign out",
         "chat.header.sessionSwitcher": "Switch session",
         "chat.header.newSessionTooltip": "New session",
         "chat.tooltip.edit": "Edit message",
@@ -482,6 +486,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "sync.status.syncing": "同步中…",
         "sync.status.offline": "离线（恢复网络后将自动同步）",
         "sync.status.error": "同步失败（将自动重试）",
+        "auth.signIn": "使用 GitHub 登录",
+        "auth.signOut": "退出登录",
         "chat.header.sessionSwitcher": "切换会话",
         "chat.header.newSessionTooltip": "新建会话",
         "chat.tooltip.edit": "编辑消息",

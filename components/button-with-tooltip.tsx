@@ -18,20 +18,23 @@ interface ButtonWithTooltipProps
 export function ButtonWithTooltip({
     tooltipContent,
     children,
+    asChild = false,
     ...buttonProps
 }: ButtonWithTooltipProps) {
-    const trigger =
-        buttonProps.disabled === true ? (
-            // Radix Tooltip 需要可接收 ref 的触发节点；禁用按钮无法触发 hover/focus，
-            // 因此仅在 disabled 场景下用外层 span 作为 trigger。
-            <span className="inline-flex outline-none" tabIndex={0}>
-                <Button {...buttonProps} tabIndex={-1}>
-                    {children}
-                </Button>
-            </span>
-        ) : (
-            <Button {...buttonProps}>{children}</Button>
-        )
+    const isDisabled = buttonProps.disabled === true
+    const trigger = isDisabled ? (
+        // Radix Tooltip 需要可接收 ref 的触发节点；禁用按钮无法触发 hover/focus，
+        // 因此仅在 disabled 场景下用外层 span 作为 trigger。
+        <span className="inline-flex outline-none" tabIndex={0}>
+            <Button {...buttonProps} asChild={false} tabIndex={-1}>
+                {children}
+            </Button>
+        </span>
+    ) : (
+        <Button {...buttonProps} asChild={asChild}>
+            {children}
+        </Button>
+    )
 
     return (
         <Tooltip>
