@@ -199,6 +199,34 @@ function sanitizeGoogleToolCallingHistory(messages: any[]): any[] {
     )
 }
 
+function preserveOpenRouterReasoningDetails(messages: any[]): any[] {
+    // OpenRouter 的 Gemini 模型要求在后续请求里“原样带回” reasoning_details，
+    // 否则会在包含 tool/function 调用历史时返回 400（例如缺少 thought_signature）。
+    //
+    // OpenRouter adapter 会从 message.providerOptions.openrouter.reasoning_details 读取并回传；
+    // 但流式响应里该字段通常落在 providerMetadata.openrouter.reasoning_details。
+    // 因此这里做一次“providerMetadata -> providerOptions”的兼容映射，确保历史回放不丢字段。
+    return messages.map((msg) => {
+        if (!msg || msg.role !== "assistant") return msg
+        const reasoningDetails =
+            msg?.providerMetadata?.openrouter?.reasoning_details
+        if (!Array.isArray(reasoningDetails) || reasoningDetails.length === 0) {
+            return msg
+        }
+
+        return {
+            ...msg,
+            providerOptions: {
+                ...(msg.providerOptions ?? {}),
+                openrouter: {
+                    ...(msg.providerOptions?.openrouter ?? {}),
+                    reasoning_details: reasoningDetails,
+                },
+            },
+        }
+    })
+}
+
 // Helper function to create cached stream response
 function createCachedStreamResponse(xml: string): Response {
     const toolCallId = `cached-${Date.now()}`
@@ -497,10 +525,17 @@ ${lastMessageText}
 
     const providerForSanitize =
         clientOverrides.provider || process.env.AI_PROVIDER || null
-    const finalMessages =
-        providerForSanitize === "google"
-            ? sanitizeGoogleToolCallingHistory(windowedMessages)
+    const isGeminiModel = modelId.toLowerCase().includes("gemini")
+
+    const preservedMessages =
+        providerForSanitize === "openrouter" && isGeminiModel
+            ? preserveOpenRouterReasoningDetails(windowedMessages)
             : windowedMessages
+
+    const finalMessages =
+        providerForSanitize === "google" || isGeminiModel
+            ? sanitizeGoogleToolCallingHistory(preservedMessages)
+            : preservedMessages
 
     // Record safe trace metadata for observability
     setTraceMetadata({
