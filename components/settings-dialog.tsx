@@ -337,6 +337,42 @@ export function SettingsDialog({
                                                             )
                                             }
                                         />
+                                        {modelOptions.length > 0 && (
+                                            <Select
+                                                value={
+                                                    modelOptions.some(
+                                                        (m) => m.id === modelId,
+                                                    )
+                                                        ? modelId
+                                                        : ""
+                                                }
+                                                onValueChange={(value) => {
+                                                    setModelId(value)
+                                                    localStorage.setItem(
+                                                        STORAGE_AI_MODEL_KEY,
+                                                        value,
+                                                    )
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-8">
+                                                    <SelectValue
+                                                        placeholder={t(
+                                                            "settings.aiProvider.modelIdSelectPlaceholder",
+                                                        )}
+                                                    />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {modelOptions.map((m) => (
+                                                        <SelectItem
+                                                            key={m.id}
+                                                            value={m.id}
+                                                        >
+                                                            {m.label || m.id}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        )}
                                         <p className="text-[0.8rem] text-muted-foreground">
                                             {isLoadingModels
                                                 ? t(
