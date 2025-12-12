@@ -689,3 +689,28 @@ export function supportsPromptCaching(modelId: string): boolean {
         modelId.startsWith("eu.anthropic")
     )
 }
+
+/**
+ * Check if a model is safe to enable historical XML placeholder replacement.
+ * Some models tend to copy placeholders verbatim instead of generating fresh XML.
+ *
+ * Rules:
+ * - Whitelist by modelId patterns.
+ * - Users can force-enable/disable via ENABLE_HISTORY_XML_REPLACE env in chat route.
+ */
+export function supportsHistoryXmlReplace(modelId: string): boolean {
+    const id = modelId.toLowerCase()
+
+    // Conservative whitelist: models known to follow tool instructions well.
+    return (
+        id.includes("gpt-") ||
+        id.includes("gpt5") ||
+        id.includes("gpt-5") ||
+        id.includes("o1") ||
+        id.includes("o3") ||
+        id.includes("claude") ||
+        id.includes("anthropic") ||
+        id.includes("gemini") ||
+        id.includes("deepseek")
+    )
+}

@@ -538,20 +538,43 @@ export function replaceXMLParts(
  * @param xml - The XML string to validate
  * @returns null if valid, error message string if invalid
  */
-export function validateMxCellStructure(xml: string): string | null {
+export type MxCellValidationErrorCode =
+    | "PARSE_ERROR"
+    | "NESTED_CELL"
+    | "DUPLICATE_ID"
+    | "MISSING_PARENT"
+    | "INVALID_PARENT"
+    | "INVALID_EDGE_REF"
+    | "ORPHANED_MXPOINT"
+
+export interface MxCellValidationError {
+    code: MxCellValidationErrorCode
+    message: string
+    cellIds?: string[]
+    hint?: string
+}
+
+/**
+ * 结构化校验：返回可定位的错误信息，便于模型自修复。
+ * 不改变现有 validateMxCellStructure 的外部行为。
+ */
+export function validateMxCellStructureDetailed(
+    xml: string,
+): MxCellValidationError | null {
     const parser = new DOMParser()
     const doc = parser.parseFromString(xml, "text/xml")
 
-    // Check for XML parsing errors (includes unescaped special characters)
     const parseError = doc.querySelector("parsererror")
     if (parseError) {
-        return `Invalid XML: The XML contains syntax errors (likely unescaped special characters like <, >, & in attribute values). Please escape special characters: use &lt; for <, &gt; for >, &amp; for &, &quot; for ". Regenerate the diagram with properly escaped values.`
+        return {
+            code: "PARSE_ERROR",
+            message: 'XML 语法错误（常见原因：属性值中未转义的 <、>、&、"）。',
+            hint: '请转义特殊字符：< 用 &lt;，> 用 &gt;，& 用 &amp;，" 用 &quot;，然后重新生成/编辑。',
+        }
     }
 
-    // Get all mxCell elements once for all validations
     const allCells = doc.querySelectorAll("mxCell")
 
-    // Single pass: collect IDs, check for duplicates, nesting, orphans, and invalid parents
     const cellIds = new Set<string>()
     const duplicateIds: string[] = []
     const nestedCells: string[] = []
@@ -568,31 +591,23 @@ export function validateMxCellStructure(xml: string): string | null {
         const parent = cell.getAttribute("parent")
         const isEdge = cell.getAttribute("edge") === "1"
 
-        // Check for duplicate IDs
         if (id) {
-            if (cellIds.has(id)) {
-                duplicateIds.push(id)
-            } else {
-                cellIds.add(id)
-            }
+            if (cellIds.has(id)) duplicateIds.push(id)
+            else cellIds.add(id)
         }
 
-        // Check for nested mxCell (parent element is also mxCell)
         if (cell.parentElement?.tagName === "mxCell") {
             nestedCells.push(id || "unknown")
         }
 
-        // Check parent attribute (skip root cell id="0")
         if (id !== "0") {
             if (!parent) {
                 if (id) orphanCells.push(id)
             } else {
-                // Store for later validation (after all IDs collected)
                 invalidParents.push({ id: id || "unknown", parent })
             }
         }
 
-        // Collect edges for connection validation
         if (isEdge) {
             edgesToValidate.push({
                 id: id || "unknown",
@@ -602,46 +617,62 @@ export function validateMxCellStructure(xml: string): string | null {
         }
     })
 
-    // Return errors in priority order
     if (nestedCells.length > 0) {
-        return `Invalid XML: Found nested mxCell elements (IDs: ${nestedCells.slice(0, 3).join(", ")}). All mxCell elements must be direct children of <root>, never nested inside other mxCell elements. Please regenerate the diagram with correct structure.`
+        return {
+            code: "NESTED_CELL",
+            message: "发现嵌套的 mxCell（mxCell 不能嵌套在另一个 mxCell 内）。",
+            cellIds: nestedCells.slice(0, 5),
+            hint: "请确保所有 mxCell 都是 <root> 的直接子节点。",
+        }
     }
 
     if (duplicateIds.length > 0) {
-        return `Invalid XML: Found duplicate cell IDs (${duplicateIds.slice(0, 3).join(", ")}). Each mxCell must have a unique ID. Please regenerate the diagram with unique IDs for all elements.`
+        return {
+            code: "DUPLICATE_ID",
+            message: "发现重复的 mxCell id（每个 mxCell 必须唯一）。",
+            cellIds: duplicateIds.slice(0, 5),
+            hint: "请为所有新建节点/连线生成不重复的 id。",
+        }
     }
 
     if (orphanCells.length > 0) {
-        return `Invalid XML: Found cells without parent attribute (IDs: ${orphanCells.slice(0, 3).join(", ")}). All mxCell elements (except id="0") must have a parent attribute. Please regenerate the diagram with proper parent references.`
+        return {
+            code: "MISSING_PARENT",
+            message: "发现缺失 parent 的 mxCell（除 id=0 外都需要 parent）。",
+            cellIds: orphanCells.slice(0, 5),
+            hint: '请给该 mxCell 添加 parent="1" 或有效父节点 id。',
+        }
     }
 
-    // Validate parent references (now that all IDs are collected)
     const badParents = invalidParents.filter((p) => !cellIds.has(p.parent))
     if (badParents.length > 0) {
-        const details = badParents
-            .slice(0, 3)
-            .map((p) => `${p.id} (parent: ${p.parent})`)
-            .join(", ")
-        return `Invalid XML: Found cells with invalid parent references (${details}). Parent IDs must reference existing cells. Please regenerate the diagram with valid parent references.`
+        return {
+            code: "INVALID_PARENT",
+            message: "发现 parent 引用不存在的节点。",
+            cellIds: badParents.slice(0, 5).map((p) => p.id),
+            hint: 'parent 必须引用已有 mxCell id；常见为 parent="1" 或容器/泳道 id。',
+        }
     }
 
-    // Validate edge connections
     const invalidConnections: string[] = []
     edgesToValidate.forEach((edge) => {
         if (edge.source && !cellIds.has(edge.source)) {
-            invalidConnections.push(`${edge.id} (source: ${edge.source})`)
+            invalidConnections.push(`${edge.id} (source:${edge.source})`)
         }
         if (edge.target && !cellIds.has(edge.target)) {
-            invalidConnections.push(`${edge.id} (target: ${edge.target})`)
+            invalidConnections.push(`${edge.id} (target:${edge.target})`)
         }
     })
 
     if (invalidConnections.length > 0) {
-        return `Invalid XML: Found edges with invalid source/target references (${invalidConnections.slice(0, 3).join(", ")}). Edge source and target must reference existing cell IDs. Please regenerate the diagram with valid edge connections.`
+        return {
+            code: "INVALID_EDGE_REF",
+            message: "发现连线 source/target 引用不存在的节点。",
+            cellIds: invalidConnections.slice(0, 5),
+            hint: "edge 的 source/target 必须引用当前 XML 中存在的节点 id。",
+        }
     }
 
-    // Check for orphaned mxPoint elements (not inside <Array as="points"> and without 'as' attribute)
-    // These cause "Could not add object mxPoint" errors in draw.io
     const allMxPoints = doc.querySelectorAll("mxPoint")
     const orphanedMxPoints: string[] = []
     allMxPoints.forEach((point) => {
@@ -651,7 +682,6 @@ export function validateMxCellStructure(xml: string): string | null {
             point.parentElement?.getAttribute("as") === "points"
 
         if (!hasAsAttr && !parentIsArray) {
-            // Find the parent mxCell to report which edge has the problem
             let parent = point.parentElement
             while (parent && parent.tagName !== "mxCell") {
                 parent = parent.parentElement
@@ -664,10 +694,28 @@ export function validateMxCellStructure(xml: string): string | null {
     })
 
     if (orphanedMxPoints.length > 0) {
-        return `Invalid XML: Found orphaned mxPoint elements in cells (${orphanedMxPoints.slice(0, 3).join(", ")}). mxPoint elements must either have an 'as' attribute (e.g., as="sourcePoint") or be inside <Array as="points">. For edge waypoints, use: <Array as="points"><mxPoint x="..." y="..."/></Array>. Please fix the mxPoint structure.`
+        return {
+            code: "ORPHANED_MXPOINT",
+            message:
+                '发现不合法的 mxPoint（不在 <Array as="points"> 内且无 as 属性）。',
+            cellIds: orphanedMxPoints.slice(0, 5),
+            hint: '为 mxPoint 添加 as="sourcePoint/targetPoint"，或放入 <Array as="points"> 中作为折线路径点。',
+        }
     }
 
     return null
+}
+
+export function validateMxCellStructure(xml: string): string | null {
+    const detailed = validateMxCellStructureDetailed(xml)
+    if (!detailed) return null
+
+    const ids = detailed.cellIds?.length
+        ? ` IDs: ${detailed.cellIds.join(", ")}.`
+        : ""
+    const hint = detailed.hint ? ` Hint: ${detailed.hint}` : ""
+
+    return `Invalid XML [${detailed.code}]: ${detailed.message}${ids}${hint}`
 }
 
 export function extractDiagramXML(xml_svg_string: string): string {

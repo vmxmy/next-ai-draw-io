@@ -75,6 +75,25 @@ export function setTraceOutput(
     }
 }
 
+// Update trace with extra metadata (safe, no secrets)
+export function setTraceMetadata(metadata: Record<string, unknown>) {
+    if (!isLangfuseEnabled()) return
+
+    updateActiveTrace({ metadata })
+
+    const activeSpan = api.trace.getActiveSpan()
+    if (activeSpan) {
+        for (const [key, value] of Object.entries(metadata)) {
+            if (value === undefined) continue
+            try {
+                activeSpan.setAttribute(`app.${key}`, String(value))
+            } catch {
+                // ignore non-serializable values
+            }
+        }
+    }
+}
+
 // Get telemetry config for streamText
 export function getTelemetryConfig(params: {
     sessionId?: string

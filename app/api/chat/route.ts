@@ -8,21 +8,26 @@ import {
     streamText,
 } from "ai"
 import { z } from "zod"
-import { getAIModel, supportsPromptCaching } from "@/lib/ai-providers"
+import {
+    getAIModel,
+    supportsHistoryXmlReplace,
+    supportsPromptCaching,
+} from "@/lib/ai-providers"
 import { findCachedResponse } from "@/lib/cached-responses"
 import {
     getTelemetryConfig,
     setTraceInput,
+    setTraceMetadata,
     setTraceOutput,
     wrapWithObserve,
 } from "@/lib/langfuse"
+import { MAX_FILE_SIZE_BYTES, MAX_FILES } from "@/lib/limits"
+import { applyMessageWindow } from "@/lib/message-window"
 import { getSystemPrompt } from "@/lib/system-prompts"
+import { analyzeDiagramXml } from "@/lib/xml-analyzer"
+import { buildDiagramSummary } from "@/lib/xml-summary"
 
 export const maxDuration = 300
-
-// File upload limits (must match client-side)
-const MAX_FILE_SIZE = 2 * 1024 * 1024 // 2MB
-const MAX_FILES = 5
 
 // Helper function to validate file parts in messages
 function validateFileParts(messages: any[]): {
@@ -47,10 +52,10 @@ function validateFileParts(messages: any[]): {
             const base64Data = filePart.url.split(",")[1]
             if (base64Data) {
                 const sizeInBytes = Math.ceil((base64Data.length * 3) / 4)
-                if (sizeInBytes > MAX_FILE_SIZE) {
+                if (sizeInBytes > MAX_FILE_SIZE_BYTES) {
                     return {
                         valid: false,
-                        error: `File exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit.`,
+                        error: `File exceeds ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB limit.`,
                     }
                 }
             }
@@ -240,7 +245,13 @@ async function handleChatRequest(req: Request): Promise<Response> {
     )
 
     // Get the appropriate system prompt based on model (extended for Opus/Haiku 4.5)
-    const systemMessage = getSystemPrompt(modelId)
+    const baseSystemMessage = getSystemPrompt(modelId)
+    const enableAnalyzeTool = process.env.ENABLE_ANALYZE_TOOL !== "false"
+    const systemMessage = enableAnalyzeTool
+        ? `${baseSystemMessage}
+
+When the current diagram XML is non-empty and the user requests incremental changes, call analyze_diagram first to summarize nodes/edges/containers, then use edit_diagram for precise edits.`
+        : baseSystemMessage
 
     const lastMessage = messages[messages.length - 1]
 
@@ -264,10 +275,16 @@ ${lastMessageText}
     // Fix tool call inputs for Bedrock API (requires JSON objects, not strings)
     const fixedMessages = fixToolCallInputs(modelMessages)
 
-    // Replace historical tool call XML with placeholders to reduce tokens
-    // Disabled by default - some models (e.g. minimax) copy placeholders instead of generating XML
+    // Replace historical tool call XML with placeholders to reduce tokens.
+    // Some models copy placeholders; use a conservative whitelist unless forced by env.
+    const historyReplaceEnv = process.env.ENABLE_HISTORY_XML_REPLACE
     const enableHistoryReplace =
-        process.env.ENABLE_HISTORY_XML_REPLACE === "true"
+        historyReplaceEnv === "true"
+            ? true
+            : historyReplaceEnv === "false"
+              ? false
+              : supportsHistoryXmlReplace(modelId)
+
     const placeholderMessages = enableHistoryReplace
         ? replaceHistoricalToolInputs(fixedMessages)
         : fixedMessages
@@ -327,6 +344,11 @@ ${lastMessageText}
     // - Breakpoint 2: Current XML context - changes per diagram, but constant within a conversation turn
     // This allows: if only user message changes, both system caches are reused
     //              if XML changes, instruction cache is still reused
+    const enableXmlSummary = process.env.ENABLE_XML_SUMMARY !== "false"
+    const diagramSummary = !enableXmlSummary
+        ? null
+        : buildDiagramSummary(xml || "")
+
     const systemMessages = [
         // Cache breakpoint 1: Instructions (rarely change)
         {
@@ -338,6 +360,22 @@ ${lastMessageText}
                 },
             }),
         },
+        ...(diagramSummary
+            ? [
+                  {
+                      role: "system" as const,
+                      content:
+                          "Current diagram summary (non-authoritative, for quick reference):\n" +
+                          diagramSummary +
+                          "\n\nThe full Current diagram XML below is still the SINGLE SOURCE OF TRUTH.",
+                      ...(shouldCache && {
+                          providerOptions: {
+                              bedrock: { cachePoint: { type: "default" } },
+                          },
+                      }),
+                  },
+              ]
+            : []),
         // Cache breakpoint 2: Previous and Current diagram XML context
         {
             role: "system" as const,
@@ -350,12 +388,36 @@ ${lastMessageText}
         },
     ]
 
-    const allMessages = [...systemMessages, ...enhancedMessages]
+    const maxNonSystemMessages = Number(
+        process.env.MAX_NON_SYSTEM_MESSAGES || 12,
+    )
+    const windowedMessages = applyMessageWindow(
+        [...systemMessages, ...enhancedMessages],
+        {
+            maxNonSystemMessages: Number.isFinite(maxNonSystemMessages)
+                ? maxNonSystemMessages
+                : 12,
+        },
+    )
+
+    // Record safe trace metadata for observability
+    setTraceMetadata({
+        modelId,
+        provider: clientOverrides.provider || process.env.AI_PROVIDER || null,
+        promptCaching: shouldCache,
+        historyXmlReplace: enableHistoryReplace,
+        xmlSummary: enableXmlSummary,
+        analyzeTool: enableAnalyzeTool,
+        maxNonSystemMessages,
+        hasClientOverride: !!(
+            clientOverrides.provider && clientOverrides.apiKey
+        ),
+    })
 
     const result = streamText({
         model,
         stopWhen: stepCountIs(5),
-        messages: allMessages,
+        messages: windowedMessages,
         ...(providerOptions && { providerOptions }), // This now includes all reasoning configs
         ...(headers && { headers }),
         // Langfuse telemetry config (returns undefined if not configured)
@@ -471,6 +533,16 @@ IMPORTANT: Keep edits concise:
                             "Array of search/replace pairs to apply sequentially",
                         ),
                 }),
+            },
+            analyze_diagram: {
+                description:
+                    "Analyze the CURRENT diagram XML and return a concise structural summary (nodes, edges, containers, warnings). Use this before edit_diagram when the diagram is non-empty or complex. This tool is READ-ONLY and does not modify the diagram.",
+                inputSchema: z.object({
+                    xml: z.string().describe("Current diagram XML to analyze"),
+                }),
+                execute: async ({ xml }) => {
+                    return analyzeDiagramXml(xml)
+                },
             },
         },
         ...(process.env.TEMPERATURE !== undefined && {
