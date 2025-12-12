@@ -4,10 +4,14 @@ import { useChat } from "@ai-sdk/react"
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { DefaultChatTransport } from "ai"
 import {
+    AlertCircle,
     AlertTriangle,
+    CheckCircle2,
+    CloudOff,
     MessageSquarePlus,
     PanelRightClose,
     PanelRightOpen,
+    RefreshCw,
     Settings,
     Trash2,
 } from "lucide-react"
@@ -183,6 +187,12 @@ export default function ChatPanel({
         isDrawioReady,
     } = useDiagram()
 
+    // 避免 useEffect/useCallback 因为 context 中函数引用变化而反复触发，导致 setState 循环
+    const onDisplayChartRef = useRef(onDisplayChart)
+    useEffect(() => {
+        onDisplayChartRef.current = onDisplayChart
+    }, [onDisplayChart])
+
     const onFetchChart = useCallback(
         (saveToHistory = true) => {
             return Promise.race([
@@ -310,6 +320,32 @@ export default function ChatPanel({
     >(new Map())
     const syncPullInFlightRef = useRef(false)
     const syncPullOnceRef = useRef<(() => void) | null>(null)
+    const [isOnline, setIsOnline] = useState(() => {
+        if (typeof navigator === "undefined") return true
+        return navigator.onLine
+    })
+    const [syncInFlightCount, setSyncInFlightCount] = useState(0)
+    const [lastSyncOkAt, setLastSyncOkAt] = useState<number | null>(null)
+    const [lastSyncErrorAt, setLastSyncErrorAt] = useState<number | null>(null)
+
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true)
+        const handleOffline = () => setIsOnline(false)
+        window.addEventListener("online", handleOnline)
+        window.addEventListener("offline", handleOffline)
+        return () => {
+            window.removeEventListener("online", handleOnline)
+            window.removeEventListener("offline", handleOffline)
+        }
+    }, [])
+
+    const markSyncStart = useCallback(() => {
+        setSyncInFlightCount((c) => c + 1)
+    }, [])
+
+    const markSyncEnd = useCallback(() => {
+        setSyncInFlightCount((c) => Math.max(0, c - 1))
+    }, [])
 
     const getSyncCursor = useCallback((): string => {
         const userId = authSession?.user?.id
@@ -387,15 +423,25 @@ export default function ChatPanel({
             if (authStatus !== "authenticated") return
             const userId = authSession?.user?.id
             if (!userId) return
+            if (!isOnline) return
 
             const input = buildPushConversationInput(id, opts)
             // 非删除必须有 payload；否则跳过（避免把空数据覆盖到云端）
             if (!input.deleted && !input.payload) return
 
-            const res = await pushConversations.mutateAsync({
-                conversations: [input],
-            })
-            if (res?.cursor) setSyncCursor(res.cursor)
+            markSyncStart()
+            try {
+                const res = await pushConversations.mutateAsync({
+                    conversations: [input],
+                })
+                if (res?.cursor) setSyncCursor(res.cursor)
+                setLastSyncOkAt(Date.now())
+                setLastSyncErrorAt(null)
+            } catch {
+                setLastSyncErrorAt(Date.now())
+            } finally {
+                markSyncEnd()
+            }
 
             // push 成功后短延迟 pull 一次，尽快在其它设备体现
             setTimeout(() => {
@@ -406,6 +452,9 @@ export default function ChatPanel({
             authSession?.user?.id,
             authStatus,
             buildPushConversationInput,
+            isOnline,
+            markSyncEnd,
+            markSyncStart,
             pushConversations,
             setSyncCursor,
         ],
@@ -884,7 +933,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 // Load diagram if ready, else defer to DrawIO-ready effect
                 if (payload.xml) {
                     if (isDrawioReady) {
-                        onDisplayChart(payload.xml, true)
+                        onDisplayChartRef.current(payload.xml, true)
                         chartXMLRef.current = payload.xml
                     } else {
                         pendingDiagramXmlRef.current = payload.xml
@@ -901,7 +950,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 clearDiagram()
             }
         },
-        [clearDiagram, isDrawioReady, onDisplayChart, setMessages],
+        [clearDiagram, isDrawioReady, setMessages],
     )
 
     const applyRemoteConversations = useCallback(
@@ -1031,9 +1080,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const pullOnce = useCallback(async () => {
         if (authStatus !== "authenticated") return
         if (!authSession?.user?.id) return
+        if (!isOnline) return
         if (syncPullInFlightRef.current) return
 
         syncPullInFlightRef.current = true
+        markSyncStart()
         try {
             const cursor = getSyncCursor()
             const res = await pullConversations.mutateAsync({
@@ -1044,16 +1095,23 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             if (Array.isArray(res?.conversations) && res.conversations.length) {
                 applyRemoteConversations(res.conversations as any[])
             }
+            setLastSyncOkAt(Date.now())
+            setLastSyncErrorAt(null)
         } catch {
             // 自动同步失败不打扰用户；UI 只在需要时提示（后续可加状态指示）
+            setLastSyncErrorAt(Date.now())
         } finally {
             syncPullInFlightRef.current = false
+            markSyncEnd()
         }
     }, [
         applyRemoteConversations,
         authSession?.user?.id,
         authStatus,
         getSyncCursor,
+        isOnline,
+        markSyncEnd,
+        markSyncStart,
         pullConversations,
         setSyncCursor,
     ])
@@ -1274,11 +1332,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             }
         }
         if (xmlToLoad) {
-            onDisplayChart(xmlToLoad, true)
+            onDisplayChartRef.current(xmlToLoad, true)
             chartXMLRef.current = xmlToLoad
         }
         setTimeout(() => setCanSaveDiagram(true), 300)
-    }, [currentConversationId, isDrawioReady, onDisplayChart])
+    }, [currentConversationId, isDrawioReady])
 
     const persistCurrentConversation = useCallback(
         (overrides: Partial<ConversationPayload>) => {
@@ -2016,6 +2074,47 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         )}
                     </div>
                     <div className="flex items-center gap-1">
+                        {authStatus === "authenticated" && (
+                            <ButtonWithTooltip
+                                tooltipContent={
+                                    !isOnline
+                                        ? t("sync.status.offline")
+                                        : syncInFlightCount > 0
+                                          ? t("sync.status.syncing")
+                                          : lastSyncErrorAt &&
+                                              (!lastSyncOkAt ||
+                                                  lastSyncErrorAt >
+                                                      lastSyncOkAt)
+                                            ? t("sync.status.error")
+                                            : lastSyncOkAt
+                                              ? t("sync.status.okAt", {
+                                                    time: new Date(
+                                                        lastSyncOkAt,
+                                                    ).toLocaleTimeString(
+                                                        locale,
+                                                    ),
+                                                })
+                                              : t("sync.status.ok")
+                                }
+                                aria-label={t("sync.status.ok")}
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => void pullOnce()}
+                                className="hover:bg-accent"
+                            >
+                                {!isOnline ? (
+                                    <CloudOff className="h-4 w-4 text-muted-foreground" />
+                                ) : syncInFlightCount > 0 ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                                ) : lastSyncErrorAt &&
+                                  (!lastSyncOkAt ||
+                                      lastSyncErrorAt > lastSyncOkAt) ? (
+                                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                                ) : (
+                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                )}
+                            </ButtonWithTooltip>
+                        )}
                         {!isMobile && conversations.length > 1 && (
                             <div className="mr-1">
                                 <Select
