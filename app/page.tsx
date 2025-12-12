@@ -173,7 +173,6 @@ export default function Home() {
                                     onSave={(data) => {
                                         if (data?.xml) {
                                             syncDiagramXml(data.xml)
-                                            setShowDrawioSaveDialog(true)
                                         }
                                     }}
                                     baseUrl={drawioBaseUrl}

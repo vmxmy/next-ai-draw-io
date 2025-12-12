@@ -1661,7 +1661,34 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                                             "settings.sessions.delete",
                                                         )}
                                                         className="absolute right-2 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                        onPointerDown={(e) => {
+                                                        onPointerDownCapture={(
+                                                            e,
+                                                        ) => {
+                                                            // Radix Select 可能在 pointerdown 阶段就完成“选中并关闭”，
+                                                            // 导致 onClick 触发前组件已卸载，从而表现为“删除按钮无效”。
+                                                            // 在捕获阶段拦截并直接执行删除，可避免与 Item 的选择行为冲突。
+                                                            if (e.button !== 0)
+                                                                return
+                                                            e.preventDefault()
+                                                            e.stopPropagation()
+                                                            handleDeleteConversation(
+                                                                c.id,
+                                                            )
+                                                        }}
+                                                        onClickCapture={(e) => {
+                                                            e.preventDefault()
+                                                            e.stopPropagation()
+                                                        }}
+                                                        onKeyDownCapture={(
+                                                            e,
+                                                        ) => {
+                                                            if (
+                                                                e.key !==
+                                                                    "Enter" &&
+                                                                e.key !== " "
+                                                            ) {
+                                                                return
+                                                            }
                                                             e.preventDefault()
                                                             e.stopPropagation()
                                                             handleDeleteConversation(

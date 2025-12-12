@@ -181,14 +181,19 @@ function buildProviderOptions(
             const thinkingLevel = process.env.GOOGLE_THINKING_LEVEL
 
             // Google Gemini 2.5/3 models think by default, but need includeThoughts: true
-            // to return the reasoning in the response
-            if (
+            // to return the reasoning in the response.
+            // We only enable this if the user EXPLICITLY configures thinking params (budget/level),
+            // avoiding reliance on model names which can lead to "missing thought_signature" errors on standard models.
+            const isGemini2Or3 =
                 modelId &&
                 (modelId.includes("gemini-2") ||
                     modelId.includes("gemini-3") ||
                     modelId.includes("gemini2") ||
                     modelId.includes("gemini3"))
-            ) {
+
+            const hasThinkingConfig = !!(thinkingBudgetVal || thinkingLevel)
+
+            if (isGemini2Or3 && hasThinkingConfig) {
                 const thinkingConfig: Record<string, any> = {
                     includeThoughts: true,
                 }
