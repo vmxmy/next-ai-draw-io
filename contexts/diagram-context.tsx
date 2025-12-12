@@ -10,9 +10,9 @@ import {
     useState,
 } from "react"
 import type { DrawIoEmbedRef } from "react-drawio"
-import { STORAGE_DIAGRAM_XML_KEY } from "@/components/chat-panel"
 import type { ExportFormat } from "@/components/save-dialog"
-import { extractDiagramXML, validateMxCellStructure } from "../lib/utils"
+import { STORAGE_DIAGRAM_XML_KEY } from "@/lib/storage-keys"
+import { extractDiagramXML, validateMxCellStructure } from "@/lib/utils"
 
 interface DiagramContextType {
     chartXML: string

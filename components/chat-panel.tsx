@@ -37,6 +37,7 @@ import { useI18n } from "@/contexts/i18n-context"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
+import { STORAGE_DIAGRAM_XML_KEY } from "@/lib/storage-keys"
 import { api } from "@/lib/trpc/client"
 import { type FileData, useFileProcessor } from "@/lib/use-file-processor"
 import { useQuotaManager } from "@/lib/use-quota-manager"
@@ -48,7 +49,6 @@ import { ChatMessageDisplay } from "./chat-message-display"
 const STORAGE_MESSAGES_KEY = "next-ai-draw-io-messages"
 const STORAGE_XML_SNAPSHOTS_KEY = "next-ai-draw-io-xml-snapshots"
 const STORAGE_SESSION_ID_KEY = "next-ai-draw-io-session-id"
-export const STORAGE_DIAGRAM_XML_KEY = "next-ai-draw-io-diagram-xml"
 
 // Multi-session keys
 const STORAGE_CONVERSATIONS_KEY = "next-ai-draw-io-conversations"
@@ -186,12 +186,6 @@ export default function ChatPanel({
         clearDiagram,
         isDrawioReady,
     } = useDiagram()
-
-    // 避免 useEffect/useCallback 因为 context 中函数引用变化而反复触发，导致 setState 循环
-    const onDisplayChartRef = useRef(onDisplayChart)
-    useEffect(() => {
-        onDisplayChartRef.current = onDisplayChart
-    }, [onDisplayChart])
 
     const onFetchChart = useCallback(
         (saveToHistory = true) => {
@@ -933,7 +927,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 // Load diagram if ready, else defer to DrawIO-ready effect
                 if (payload.xml) {
                     if (isDrawioReady) {
-                        onDisplayChartRef.current(payload.xml, true)
+                        onDisplayChart(payload.xml, true)
                         chartXMLRef.current = payload.xml
                     } else {
                         pendingDiagramXmlRef.current = payload.xml
@@ -950,7 +944,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 clearDiagram()
             }
         },
-        [clearDiagram, isDrawioReady, setMessages],
+        [clearDiagram, isDrawioReady, onDisplayChart, setMessages],
     )
 
     const applyRemoteConversations = useCallback(
@@ -1332,11 +1326,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             }
         }
         if (xmlToLoad) {
-            onDisplayChartRef.current(xmlToLoad, true)
+            onDisplayChart(xmlToLoad, true)
             chartXMLRef.current = xmlToLoad
         }
         setTimeout(() => setCanSaveDiagram(true), 300)
-    }, [currentConversationId, isDrawioReady])
+    }, [currentConversationId, isDrawioReady, onDisplayChart])
 
     const persistCurrentConversation = useCallback(
         (overrides: Partial<ConversationPayload>) => {
