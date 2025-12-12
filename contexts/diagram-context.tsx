@@ -1,7 +1,14 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useRef, useState } from "react"
+import {
+    createContext,
+    useCallback,
+    useContext,
+    useMemo,
+    useRef,
+    useState,
+} from "react"
 import type { DrawIoEmbedRef } from "react-drawio"
 import { STORAGE_DIAGRAM_XML_KEY } from "@/components/chat-panel"
 import type { ExportFormat } from "@/components/save-dialog"
@@ -44,19 +51,19 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
     // Track if we're expecting an export for history (user-initiated)
     const expectHistoryExportRef = useRef<boolean>(false)
 
-    const onDrawioLoad = () => {
+    const onDrawioLoad = useCallback(() => {
         // Only set ready state once to prevent infinite loops
         if (hasCalledOnLoadRef.current) return
         hasCalledOnLoadRef.current = true
         // console.log("[DiagramContext] DrawIO loaded, setting ready state")
         setIsDrawioReady(true)
-    }
+    }, [])
 
-    const resetDrawioReady = () => {
+    const resetDrawioReady = useCallback(() => {
         // console.log("[DiagramContext] Resetting DrawIO ready state")
         hasCalledOnLoadRef.current = false
         setIsDrawioReady(false)
-    }
+    }, [])
 
     // Track if we're expecting an export for file save (stores raw export data)
     const saveResolverRef = useRef<{
@@ -64,7 +71,7 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
         format: ExportFormat | null
     }>({ resolver: null, format: null })
 
-    const handleExport = () => {
+    const handleExport = useCallback(() => {
         if (drawioRef.current) {
             // Mark that this export should be saved to history
             expectHistoryExportRef.current = true
@@ -72,53 +79,56 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
                 format: "xmlsvg",
             })
         }
-    }
+    }, [])
 
-    const handleExportWithoutHistory = () => {
+    const handleExportWithoutHistory = useCallback(() => {
         if (drawioRef.current) {
             // Export without saving to history (for edit_diagram fetching current state)
             drawioRef.current.exportDiagram({
                 format: "xmlsvg",
             })
         }
-    }
+    }, [])
 
-    const loadDiagram = (
-        chart: string,
-        skipValidation?: boolean,
-    ): string | null => {
-        // Validate XML structure before loading (unless skipped for internal use)
-        if (!skipValidation) {
-            const validationError = validateMxCellStructure(chart)
-            if (validationError) {
-                console.warn("[loadDiagram] Validation error:", validationError)
-                return validationError
+    const loadDiagram = useCallback(
+        (chart: string, skipValidation?: boolean): string | null => {
+            // Validate XML structure before loading (unless skipped for internal use)
+            if (!skipValidation) {
+                const validationError = validateMxCellStructure(chart)
+                if (validationError) {
+                    console.warn(
+                        "[loadDiagram] Validation error:",
+                        validationError,
+                    )
+                    return validationError
+                }
             }
-        }
 
-        // Keep chartXML in sync even when diagrams are injected (e.g., display_diagram tool)
-        setChartXML(chart)
+            // Keep chartXML in sync even when diagrams are injected (e.g., display_diagram tool)
+            setChartXML(chart)
 
-        if (drawioRef.current) {
-            drawioRef.current.load({
-                xml: chart,
-            })
-        }
+            if (drawioRef.current) {
+                drawioRef.current.load({
+                    xml: chart,
+                })
+            }
 
-        return null
-    }
+            return null
+        },
+        [],
+    )
 
     // Sync XML from draw.io save without reloading iframe.
-    const syncDiagramXml = (chart: string) => {
+    const syncDiagramXml = useCallback((chart: string) => {
         setChartXML(chart)
         try {
             localStorage.setItem(STORAGE_DIAGRAM_XML_KEY, chart)
         } catch {
             // ignore storage failures
         }
-    }
+    }, [])
 
-    const handleDiagramExport = (data: any) => {
+    const handleDiagramExport = useCallback((data: any) => {
         // Handle save to file if requested (process raw data before extraction)
         if (saveResolverRef.current.resolver) {
             const format = saveResolverRef.current.format
@@ -151,133 +161,151 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
             resolverRef.current(extractedXML)
             resolverRef.current = null
         }
-    }
+    }, [])
 
-    const clearDiagram = () => {
+    const clearDiagram = useCallback(() => {
         const emptyDiagram = `<mxfile><diagram name="Page-1" id="page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>`
         // Skip validation for trusted internal template (loadDiagram also sets chartXML)
         loadDiagram(emptyDiagram, true)
         setLatestSvg("")
         setDiagramHistory([])
-    }
-
-    const saveDiagramToFile = (
-        filename: string,
-        format: ExportFormat,
-        sessionId?: string,
-    ) => {
-        if (!drawioRef.current) {
-            console.warn("Draw.io editor not ready")
-            return
-        }
-
-        // Map format to draw.io export format
-        const drawioFormat = format === "drawio" ? "xmlsvg" : format
-
-        // Set up the resolver before triggering export
-        saveResolverRef.current = {
-            resolver: (exportData: string) => {
-                let fileContent: string | Blob
-                let mimeType: string
-                let extension: string
-
-                if (format === "drawio") {
-                    // Extract XML from SVG for .drawio format
-                    const xml = extractDiagramXML(exportData)
-                    let xmlContent = xml
-                    if (!xml.includes("<mxfile")) {
-                        xmlContent = `<mxfile><diagram name="Page-1" id="page-1">${xml}</diagram></mxfile>`
-                    }
-                    fileContent = xmlContent
-                    mimeType = "application/xml"
-                    extension = ".drawio"
-
-                    // Save to localStorage when user manually saves
-                    localStorage.setItem(STORAGE_DIAGRAM_XML_KEY, xmlContent)
-                } else if (format === "png") {
-                    // PNG data comes as base64 data URL
-                    fileContent = exportData
-                    mimeType = "image/png"
-                    extension = ".png"
-                } else {
-                    // SVG format
-                    fileContent = exportData
-                    mimeType = "image/svg+xml"
-                    extension = ".svg"
-                }
-
-                // Log save event to Langfuse (flags the trace)
-                logSaveToLangfuse(filename, format, sessionId)
-
-                // Handle download
-                let url: string
-                if (
-                    typeof fileContent === "string" &&
-                    fileContent.startsWith("data:")
-                ) {
-                    // Already a data URL (PNG)
-                    url = fileContent
-                } else {
-                    const blob = new Blob([fileContent], { type: mimeType })
-                    url = URL.createObjectURL(blob)
-                }
-
-                const a = document.createElement("a")
-                a.href = url
-                a.download = `${filename}${extension}`
-                document.body.appendChild(a)
-                a.click()
-                document.body.removeChild(a)
-
-                // Delay URL revocation to ensure download completes
-                if (!url.startsWith("data:")) {
-                    setTimeout(() => URL.revokeObjectURL(url), 100)
-                }
-            },
-            format,
-        }
-
-        // Export diagram - callback will be handled in handleDiagramExport
-        drawioRef.current.exportDiagram({ format: drawioFormat })
-    }
+    }, [loadDiagram])
 
     // Log save event to Langfuse (just flags the trace, doesn't send content)
-    const logSaveToLangfuse = async (
-        filename: string,
-        format: string,
-        sessionId?: string,
-    ) => {
-        try {
-            await fetch("/api/log-save", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ filename, format, sessionId }),
-            })
-        } catch (error) {
-            console.warn("Failed to log save to Langfuse:", error)
-        }
-    }
+    const logSaveToLangfuse = useCallback(
+        async (filename: string, format: string, sessionId?: string) => {
+            try {
+                await fetch("/api/log-save", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ filename, format, sessionId }),
+                })
+            } catch (error) {
+                console.warn("Failed to log save to Langfuse:", error)
+            }
+        },
+        [],
+    )
+
+    const saveDiagramToFile = useCallback(
+        (filename: string, format: ExportFormat, sessionId?: string) => {
+            if (!drawioRef.current) {
+                console.warn("Draw.io editor not ready")
+                return
+            }
+
+            // Map format to draw.io export format
+            const drawioFormat = format === "drawio" ? "xmlsvg" : format
+
+            // Set up the resolver before triggering export
+            saveResolverRef.current = {
+                resolver: (exportData: string) => {
+                    let fileContent: string | Blob
+                    let mimeType: string
+                    let extension: string
+
+                    if (format === "drawio") {
+                        // Extract XML from SVG for .drawio format
+                        const xml = extractDiagramXML(exportData)
+                        let xmlContent = xml
+                        if (!xml.includes("<mxfile")) {
+                            xmlContent = `<mxfile><diagram name="Page-1" id="page-1">${xml}</diagram></mxfile>`
+                        }
+                        fileContent = xmlContent
+                        mimeType = "application/xml"
+                        extension = ".drawio"
+
+                        // Save to localStorage when user manually saves
+                        localStorage.setItem(
+                            STORAGE_DIAGRAM_XML_KEY,
+                            xmlContent,
+                        )
+                    } else if (format === "png") {
+                        // PNG data comes as base64 data URL
+                        fileContent = exportData
+                        mimeType = "image/png"
+                        extension = ".png"
+                    } else {
+                        // SVG format
+                        fileContent = exportData
+                        mimeType = "image/svg+xml"
+                        extension = ".svg"
+                    }
+
+                    // Log save event to Langfuse (flags the trace)
+                    logSaveToLangfuse(filename, format, sessionId)
+
+                    // Handle download
+                    let url: string
+                    if (
+                        typeof fileContent === "string" &&
+                        fileContent.startsWith("data:")
+                    ) {
+                        // Already a data URL (PNG)
+                        url = fileContent
+                    } else {
+                        const blob = new Blob([fileContent], { type: mimeType })
+                        url = URL.createObjectURL(blob)
+                    }
+
+                    const a = document.createElement("a")
+                    a.href = url
+                    a.download = `${filename}${extension}`
+                    document.body.appendChild(a)
+                    a.click()
+                    document.body.removeChild(a)
+
+                    // Delay URL revocation to ensure download completes
+                    if (!url.startsWith("data:")) {
+                        setTimeout(() => URL.revokeObjectURL(url), 100)
+                    }
+                },
+                format,
+            }
+
+            // Export diagram - callback will be handled in handleDiagramExport
+            drawioRef.current.exportDiagram({ format: drawioFormat })
+        },
+        [logSaveToLangfuse],
+    )
+
+    const value = useMemo(
+        () => ({
+            chartXML,
+            latestSvg,
+            diagramHistory,
+            loadDiagram,
+            syncDiagramXml,
+            handleExport,
+            handleExportWithoutHistory,
+            resolverRef,
+            drawioRef,
+            handleDiagramExport,
+            clearDiagram,
+            saveDiagramToFile,
+            isDrawioReady,
+            onDrawioLoad,
+            resetDrawioReady,
+        }),
+        [
+            chartXML,
+            latestSvg,
+            diagramHistory,
+            loadDiagram,
+            syncDiagramXml,
+            handleExport,
+            handleExportWithoutHistory,
+            handleDiagramExport,
+            clearDiagram,
+            saveDiagramToFile,
+            isDrawioReady,
+            onDrawioLoad,
+            resetDrawioReady,
+        ],
+    )
 
     return (
-        <DiagramContext.Provider
-            value={{
-                chartXML,
-                latestSvg,
-                diagramHistory,
-                loadDiagram,
-                syncDiagramXml,
-                handleExport,
-                handleExportWithoutHistory,
-                resolverRef,
-                drawioRef,
-                handleDiagramExport,
-                clearDiagram,
-                saveDiagramToFile,
-                isDrawioReady,
-                onDrawioLoad,
-                resetDrawioReady,
-            }}
-        >
+        <DiagramContext.Provider value={value}>
             {children}
         </DiagramContext.Provider>
     )

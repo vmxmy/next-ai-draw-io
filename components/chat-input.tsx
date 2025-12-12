@@ -332,7 +332,7 @@ export function ChatInput({
                     onPaste={handlePaste}
                     placeholder={t("chat.placeholder")}
                     disabled={isDisabled}
-                    aria-label="Chat input"
+                    aria-label={t("chat.aria.input")}
                     className="min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent px-4 py-3 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
                 />
 

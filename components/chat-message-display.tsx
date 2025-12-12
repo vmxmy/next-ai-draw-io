@@ -53,6 +53,7 @@ interface ToolPartLike {
 }
 
 function EditDiffDisplay({ edits }: { edits: EditPair[] }) {
+    const { t } = useI18n()
     return (
         <div className="space-y-3">
             {edits.map((edit, index) => (
@@ -62,7 +63,7 @@ function EditDiffDisplay({ edits }: { edits: EditPair[] }) {
                 >
                     <div className="px-3 py-1.5 bg-muted/40 border-b border-border/30 flex items-center gap-2">
                         <span className="text-xs font-medium text-muted-foreground">
-                            Change {index + 1}
+                            {t("diff.change", { index: index + 1 })}
                         </span>
                     </div>
                     <div className="divide-y divide-border/30">
@@ -71,7 +72,7 @@ function EditDiffDisplay({ edits }: { edits: EditPair[] }) {
                             <div className="flex items-center gap-1.5 mb-1.5">
                                 <Minus className="w-3 h-3 text-red-500" />
                                 <span className="text-[10px] font-medium text-red-600 uppercase tracking-wide">
-                                    Remove
+                                    {t("diff.remove")}
                                 </span>
                             </div>
                             <pre className="text-[11px] font-mono text-red-700 bg-red-50 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all">
@@ -83,7 +84,7 @@ function EditDiffDisplay({ edits }: { edits: EditPair[] }) {
                             <div className="flex items-center gap-1.5 mb-1.5">
                                 <Plus className="w-3 h-3 text-green-500" />
                                 <span className="text-[10px] font-medium text-green-600 uppercase tracking-wide">
-                                    Add
+                                    {t("diff.add")}
                                 </span>
                             </div>
                             <pre className="text-[11px] font-mono text-green-700 bg-green-50 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all">
@@ -191,6 +192,7 @@ export function ChatMessageDisplay({
 }: ChatMessageDisplayProps) {
     const { t } = useI18n()
     const { chartXML, loadDiagram: onDisplayChart } = useDiagram()
+    const chartXMLRef = useRef(chartXML)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const previousXML = useRef<string>("")
     const processedToolCalls = processedToolCallsRef
@@ -211,6 +213,10 @@ export function ChatMessageDisplay({
     const [expandedPdfSections, setExpandedPdfSections] = useState<
         Record<string, boolean>
     >({})
+
+    useEffect(() => {
+        chartXMLRef.current = chartXML
+    }, [chartXML])
 
     const copyMessageToClipboard = async (messageId: string, text: string) => {
         try {
@@ -303,11 +309,18 @@ export function ChatMessageDisplay({
                 }
 
                 try {
-                    // If chartXML is empty, create a default mxfile structure to use with replaceNodes
-                    // This ensures the XML is properly wrapped in mxfile/diagram/mxGraphModel format
-                    const baseXML =
-                        chartXML ||
-                        `<mxfile><diagram name="Page-1" id="page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>`
+                    // replaceNodes 需要一个可被 XML 解析的 base 文档。
+                    // draw.io 的导出 XML 可能包含诸如 `&nbsp;` 等非 XML 实体，导致 DOMParser 直接失败。
+                    // 因此这里优先用 chartXML，但一旦解析失败就退回到安全骨架。
+                    const xmlSkeleton = `<mxfile><diagram name="Page-1" id="page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>`
+                    const baseCandidate = chartXMLRef.current || xmlSkeleton
+                    const baseDoc = parser.parseFromString(
+                        baseCandidate,
+                        "text/xml",
+                    )
+                    const baseXML = baseDoc.querySelector("parsererror")
+                        ? xmlSkeleton
+                        : baseCandidate
                     const replacedXML = replaceNodes(baseXML, convertedXml)
 
                     const validationError = validateMxCellStructure(replacedXML)
@@ -316,7 +329,7 @@ export function ChatMessageDisplay({
                         // Skip validation in loadDiagram since we already validated above
                         onDisplayChart(replacedXML, true)
                     } else {
-                        console.error(
+                        console.warn(
                             "[ChatMessageDisplay] XML validation failed:",
                             validationError,
                         )
@@ -337,7 +350,7 @@ export function ChatMessageDisplay({
                 }
             }
         },
-        [chartXML, onDisplayChart],
+        [onDisplayChart],
     )
 
     useEffect(() => {
@@ -353,45 +366,72 @@ export function ChatMessageDisplay({
     }, [editingMessageId])
 
     useEffect(() => {
-        messages.forEach((message) => {
-            if (message.parts) {
-                message.parts.forEach((part) => {
-                    if (part.type?.startsWith("tool-")) {
-                        const toolPart = part as ToolPartLike
-                        const { toolCallId, state, input } = toolPart
+        const idsToCollapse = new Set<string>()
+        const diagramUpdates: Array<{
+            toolCallId: string
+            xml: string
+            showToast: boolean
+        }> = []
 
-                        if (state === "output-available") {
-                            setExpandedTools((prev) => ({
-                                ...prev,
-                                [toolCallId]: false,
-                            }))
-                        }
+        for (const message of messages) {
+            if (!message.parts) continue
+            for (const part of message.parts) {
+                if (!part.type?.startsWith("tool-")) continue
+                const toolPart = part as ToolPartLike
+                const { toolCallId, state, input } = toolPart
 
-                        if (
-                            part.type === "tool-display_diagram" &&
-                            input?.xml
-                        ) {
-                            const xml = input.xml as string
-                            if (
-                                state === "input-streaming" ||
-                                state === "input-available"
-                            ) {
-                                // During streaming, don't show toast (XML may be incomplete)
-                                handleDisplayChart(xml, false)
-                            } else if (
-                                state === "output-available" &&
-                                !processedToolCalls.current.has(toolCallId)
-                            ) {
-                                // Show toast only if final XML is malformed
-                                handleDisplayChart(xml, true)
-                                processedToolCalls.current.add(toolCallId)
-                            }
-                        }
+                if (state === "output-available") {
+                    idsToCollapse.add(toolCallId)
+                }
+
+                if (part.type === "tool-display_diagram" && input?.xml) {
+                    const xml = input.xml as string
+                    if (
+                        state === "input-streaming" ||
+                        state === "input-available"
+                    ) {
+                        diagramUpdates.push({
+                            toolCallId,
+                            xml,
+                            showToast: false,
+                        })
+                    } else if (
+                        state === "output-available" &&
+                        !processedToolCalls.current.has(toolCallId)
+                    ) {
+                        diagramUpdates.push({
+                            toolCallId,
+                            xml,
+                            showToast: true,
+                        })
                     }
-                })
+                }
             }
-        })
-    }, [messages, handleDisplayChart])
+        }
+
+        if (idsToCollapse.size > 0) {
+            setExpandedTools((prev) => {
+                let changed = false
+                let next = prev
+                for (const id of idsToCollapse) {
+                    if (prev[id] === false) continue
+                    if (!changed) {
+                        next = { ...prev }
+                        changed = true
+                    }
+                    next[id] = false
+                }
+                return changed ? next : prev
+            })
+        }
+
+        for (const update of diagramUpdates) {
+            handleDisplayChart(update.xml, update.showToast)
+            if (update.showToast) {
+                processedToolCalls.current.add(update.toolCallId)
+            }
+        }
+    }, [messages, handleDisplayChart, processedToolCalls])
 
     const renderToolPart = (part: ToolPartLike) => {
         const callId = part.toolCallId
@@ -548,7 +588,9 @@ export function ChatMessageDisplay({
                                                             )
                                                         }}
                                                         className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted transition-colors"
-                                                        title="Edit message"
+                                                        title={t(
+                                                            "chat.tooltip.edit",
+                                                        )}
                                                     >
                                                         <Pencil className="h-3.5 w-3.5" />
                                                     </button>
@@ -565,11 +607,17 @@ export function ChatMessageDisplay({
                                                 title={
                                                     copiedMessageId ===
                                                     message.id
-                                                        ? "Copied!"
+                                                        ? t(
+                                                              "chat.tooltip.copied",
+                                                          )
                                                         : copyFailedMessageId ===
                                                             message.id
-                                                          ? "Failed to copy"
-                                                          : "Copy message"
+                                                          ? t(
+                                                                "chat.tooltip.copyFailed",
+                                                            )
+                                                          : t(
+                                                                "chat.tooltip.copyMessage",
+                                                            )
                                                 }
                                             >
                                                 {copiedMessageId ===
@@ -1041,8 +1089,10 @@ export function ChatMessageDisplay({
                                                 title={
                                                     copiedMessageId ===
                                                     message.id
-                                                        ? "Copied!"
-                                                        : "Copy response"
+                                                        ? t(
+                                                              "chat.tooltip.copied",
+                                                          )
+                                                        : t("chat.tooltip.copy")
                                                 }
                                             >
                                                 {copiedMessageId ===
@@ -1068,7 +1118,9 @@ export function ChatMessageDisplay({
                                                             )
                                                         }
                                                         className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
-                                                        title="Regenerate response"
+                                                        title={t(
+                                                            "chat.tooltip.regenerate",
+                                                        )}
                                                     >
                                                         <RotateCcw className="h-3.5 w-3.5" />
                                                     </button>
@@ -1090,7 +1142,7 @@ export function ChatMessageDisplay({
                                                         ? "text-green-600 bg-green-100"
                                                         : "text-muted-foreground/60 hover:text-green-600 hover:bg-green-50"
                                                 }`}
-                                                title="Good response"
+                                                title={t("chat.tooltip.good")}
                                             >
                                                 <ThumbsUp className="h-3.5 w-3.5" />
                                             </button>
@@ -1109,7 +1161,7 @@ export function ChatMessageDisplay({
                                                         ? "text-red-600 bg-red-100"
                                                         : "text-muted-foreground/60 hover:text-red-600 hover:bg-red-50"
                                                 }`}
-                                                title="Bad response"
+                                                title={t("chat.tooltip.bad")}
                                             >
                                                 <ThumbsDown className="h-3.5 w-3.5" />
                                             </button>

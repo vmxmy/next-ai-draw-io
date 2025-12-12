@@ -196,7 +196,7 @@ export default function Home() {
                     </div>
                 </ResizablePanel>
 
-                <ResizableHandle withHandle />
+                <ResizableHandle id="main-panel-resize-handle" withHandle />
 
                 {/* Chat Panel */}
                 <ResizablePanel

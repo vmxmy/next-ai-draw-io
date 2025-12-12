@@ -227,21 +227,35 @@ export function useQuotaManager(config: QuotaConfig): {
         )
     }, [tpmLimit])
 
-    return {
-        // Check functions
-        hasOwnApiKey,
-        checkDailyLimit,
-        checkTokenLimit,
-        checkTPMLimit,
+    return useMemo(
+        () => ({
+            // Check functions
+            hasOwnApiKey,
+            checkDailyLimit,
+            checkTokenLimit,
+            checkTPMLimit,
 
-        // Increment functions
-        incrementRequestCount,
-        incrementTokenCount,
-        incrementTPMCount,
+            // Increment functions
+            incrementRequestCount,
+            incrementTokenCount,
+            incrementTPMCount,
 
-        // Toast functions
-        showQuotaLimitToast,
-        showTokenLimitToast,
-        showTPMLimitToast,
-    }
+            // Toast functions
+            showQuotaLimitToast,
+            showTokenLimitToast,
+            showTPMLimitToast,
+        }),
+        [
+            checkDailyLimit,
+            checkTPMLimit,
+            checkTokenLimit,
+            hasOwnApiKey,
+            incrementRequestCount,
+            incrementTPMCount,
+            incrementTokenCount,
+            showQuotaLimitToast,
+            showTPMLimitToast,
+            showTokenLimitToast,
+        ],
+    )
 }

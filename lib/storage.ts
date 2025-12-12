@@ -2,11 +2,16 @@
 // Consolidates all storage keys from chat-panel.tsx and settings-dialog.tsx
 
 export const STORAGE_KEYS = {
-    // Chat data
+    // Chat data (legacy single-session keys, kept for migration)
     messages: "next-ai-draw-io-messages",
     xmlSnapshots: "next-ai-draw-io-xml-snapshots",
     diagramXml: "next-ai-draw-io-diagram-xml",
     sessionId: "next-ai-draw-io-session-id",
+
+    // Chat data (multi-session)
+    conversations: "next-ai-draw-io-conversations",
+    currentConversationId: "next-ai-draw-io-current-conversation-id",
+    conversationPrefix: "next-ai-draw-io-conversation:",
 
     // Quota tracking
     requestCount: "next-ai-draw-io-request-count",

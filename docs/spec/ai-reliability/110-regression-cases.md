@@ -103,6 +103,12 @@
 - 预期：客户端配额检查 bypass；Langfuse metadata `hasClientOverride=true`。  
 - 验收点：不弹配额 toast；trace 中标记正确。
 
+### Case 15：replaceNodes 兼容 draw.io 编码的 `<diagram>`
+- 前置：当前画布 XML 为标准 `<mxfile>`，但 `<diagram>` 内是编码文本（没有 `<mxGraphModel>`）。  
+- 输入：触发一次 `display_diagram` 返回包含 `<mxGraphModel><root>...</root></mxGraphModel>` 的 XML。  
+- 预期：`replaceNodes()` 能在 `<diagram>` 下构建正确结构并替换节点，不抛 `HierarchyRequestError`。  
+- 验收点：控制台无 `Only one element on document allowed`；图正常渲染。
+
 ## 4. 维护与扩展
 - 每次对 system prompt/工具链路的重大修改前后至少跑完 Case 01–10。  
 - 新功能加入时补充对应 case，并在标题编号后追加（如 Case 15+）。  

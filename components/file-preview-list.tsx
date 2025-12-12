@@ -3,6 +3,7 @@
 import { FileCode, FileText, Loader2, X } from "lucide-react"
 import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
+import { useI18n } from "@/contexts/i18n-context"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 
 function formatCharCount(count: number): string {
@@ -26,6 +27,7 @@ export function FilePreviewList({
     onRemoveFile,
     pdfData = new Map(),
 }: FilePreviewListProps) {
+    const { t } = useI18n()
     const [selectedImage, setSelectedImage] = useState<string | null>(null)
     const [imageUrls, setImageUrls] = useState<Map<File, string>>(new Map())
     const imageUrlsRef = useRef<Map<File, string>>(new Map())
@@ -126,14 +128,15 @@ export function FilePreviewList({
                                         </span>
                                         {pdfInfo?.isExtracting ? (
                                             <span className="text-[10px] text-muted-foreground">
-                                                Reading...
+                                                {t("files.reading")}
                                             </span>
                                         ) : pdfInfo?.charCount ? (
                                             <span className="text-[10px] text-green-600 font-medium">
-                                                {formatCharCount(
-                                                    pdfInfo.charCount,
-                                                )}{" "}
-                                                chars
+                                                {t("files.chars", {
+                                                    count: formatCharCount(
+                                                        pdfInfo.charCount,
+                                                    ),
+                                                })}
                                             </span>
                                         ) : null}
                                     </div>
@@ -147,7 +150,7 @@ export function FilePreviewList({
                                 type="button"
                                 onClick={() => onRemoveFile(file)}
                                 className="absolute -top-2 -right-2 bg-destructive rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                aria-label="Remove file"
+                                aria-label={t("files.removeFile")}
                             >
                                 <X className="h-3 w-3" />
                             </button>
@@ -165,14 +168,14 @@ export function FilePreviewList({
                     <button
                         className="absolute top-4 right-4 z-10 bg-white rounded-full p-2 hover:bg-gray-200 transition-colors"
                         onClick={() => setSelectedImage(null)}
-                        aria-label="Close"
+                        aria-label={t("common.close")}
                     >
                         <X className="h-6 w-6" />
                     </button>
                     <div className="relative w-auto h-auto max-w-[90vw] max-h-[90vh]">
                         <Image
                             src={selectedImage}
-                            alt="Full size preview of uploaded diagram or image"
+                            alt={t("files.previewAlt")}
                             width={1200}
                             height={900}
                             className="object-contain max-w-full max-h-[90vh] w-auto h-auto"

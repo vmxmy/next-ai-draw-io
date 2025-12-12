@@ -158,15 +158,53 @@ export function replaceNodes(currentXML: string, nodes: string): string {
         const nodesDoc = parser.parseFromString(nodesString, "text/xml")
 
         // Find the root element in the current document
-        let currentRoot = currentDoc.querySelector("mxGraphModel > root")
+        let currentRoot =
+            currentDoc.querySelector("mxGraphModel > root") ||
+            currentDoc.querySelector("root")
+
         if (!currentRoot) {
-            // If no root element is found, create the proper structure
+            // If no <root> exists, create a valid draw.io structure under <diagram>.
+            // Important: Do NOT append elements directly to Document when it already has a documentElement,
+            // otherwise DOM will throw "Only one element on document allowed".
             const mxGraphModel =
                 currentDoc.querySelector("mxGraphModel") ||
                 currentDoc.createElement("mxGraphModel")
 
             if (!currentDoc.contains(mxGraphModel)) {
-                currentDoc.appendChild(mxGraphModel)
+                // Prefer placing mxGraphModel inside <diagram> if present
+                let diagram = currentDoc.querySelector("mxfile > diagram")
+                if (!diagram) {
+                    diagram =
+                        currentDoc.querySelector("diagram") ||
+                        currentDoc.createElement("diagram")
+
+                    if (!diagram.getAttribute("name")) {
+                        diagram.setAttribute("name", "Page-1")
+                    }
+                    if (!diagram.getAttribute("id")) {
+                        diagram.setAttribute("id", "page-1")
+                    }
+
+                    const mxfile =
+                        currentDoc.querySelector("mxfile") ||
+                        currentDoc.documentElement
+
+                    if (mxfile && mxfile.nodeName === "mxfile") {
+                        if (!mxfile.contains(diagram)) {
+                            mxfile.appendChild(diagram)
+                        }
+                    } else if (!currentDoc.documentElement) {
+                        // Extremely defensive: document has no root element.
+                        currentDoc.appendChild(diagram)
+                    }
+                }
+
+                // If diagram contains encoded text, replace its content with XML model
+                while (diagram.firstChild) {
+                    diagram.removeChild(diagram.firstChild)
+                }
+
+                diagram.appendChild(mxGraphModel)
             }
 
             currentRoot = currentDoc.createElement("root")

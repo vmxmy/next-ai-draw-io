@@ -18,8 +18,14 @@ import { FaGithub } from "react-icons/fa"
 import { Toaster, toast } from "sonner"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
-import { ResetWarningModal } from "@/components/reset-warning-modal"
 import { SettingsDialog } from "@/components/settings-dialog"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useI18n } from "@/contexts/i18n-context"
 import { getAIConfig } from "@/lib/ai-config"
@@ -31,10 +37,18 @@ import { formatXML, wrapWithMxFile } from "@/lib/utils"
 import { ChatMessageDisplay } from "./chat-message-display"
 
 // localStorage keys for persistence
+// Legacy single-session keys (used only for migration)
 const STORAGE_MESSAGES_KEY = "next-ai-draw-io-messages"
 const STORAGE_XML_SNAPSHOTS_KEY = "next-ai-draw-io-xml-snapshots"
 const STORAGE_SESSION_ID_KEY = "next-ai-draw-io-session-id"
 export const STORAGE_DIAGRAM_XML_KEY = "next-ai-draw-io-diagram-xml"
+
+// Multi-session keys
+const STORAGE_CONVERSATIONS_KEY = "next-ai-draw-io-conversations"
+const STORAGE_CURRENT_CONVERSATION_ID_KEY =
+    "next-ai-draw-io-current-conversation-id"
+const conversationStorageKey = (id: string) =>
+    `next-ai-draw-io-conversation:${id}`
 
 // Type for message parts (tool calls and their states)
 interface MessagePart {
@@ -49,6 +63,26 @@ interface ChatMessage {
     parts?: MessagePart[]
     [key: string]: unknown
 }
+
+interface ConversationMeta {
+    id: string
+    createdAt: number
+    updatedAt: number
+    title?: string
+}
+
+interface ConversationPayload {
+    messages: ChatMessage[]
+    xml: string
+    snapshots: [number, string][]
+    sessionId: string
+}
+
+const createConversationId = () =>
+    `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+const createSessionId = () =>
+    `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
 interface ChatPanelProps {
     isVisible: boolean
@@ -130,7 +164,7 @@ export default function ChatPanel({
     isMobile = false,
     onCloseProtectionChange,
 }: ChatPanelProps) {
-    const { t } = useI18n()
+    const { t, locale } = useI18n()
     const {
         loadDiagram: onDisplayChart,
         handleExport: onExport,
@@ -141,31 +175,34 @@ export default function ChatPanel({
         isDrawioReady,
     } = useDiagram()
 
-    const onFetchChart = (saveToHistory = true) => {
-        return Promise.race([
-            new Promise<string>((resolve) => {
-                if (resolverRef && "current" in resolverRef) {
-                    resolverRef.current = resolve
-                }
-                if (saveToHistory) {
-                    onExport()
-                } else {
-                    handleExportWithoutHistory()
-                }
-            }),
-            new Promise<string>((_, reject) =>
-                setTimeout(
-                    () =>
-                        reject(
-                            new Error(
-                                "Chart export timed out after 10 seconds",
+    const onFetchChart = useCallback(
+        (saveToHistory = true) => {
+            return Promise.race([
+                new Promise<string>((resolve) => {
+                    if (resolverRef && "current" in resolverRef) {
+                        resolverRef.current = resolve
+                    }
+                    if (saveToHistory) {
+                        onExport()
+                    } else {
+                        handleExportWithoutHistory()
+                    }
+                }),
+                new Promise<string>((_, reject) =>
+                    setTimeout(
+                        () =>
+                            reject(
+                                new Error(
+                                    "Chart export timed out after 10 seconds",
+                                ),
                             ),
-                        ),
-                    10000,
+                        10000,
+                    ),
                 ),
-            ),
-        ])
-    }
+            ])
+        },
+        [handleExportWithoutHistory, onExport, resolverRef],
+    )
 
     // File processing using extracted hook
     const { files, pdfData, handleFileChange, setFiles } = useFileProcessor()
@@ -177,7 +214,31 @@ export default function ChatPanel({
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
     const [dailyTokenLimit, setDailyTokenLimit] = useState(0)
     const [tpmLimit, setTpmLimit] = useState(0)
-    const [showNewChatDialog, setShowNewChatDialog] = useState(false)
+    // Conversation sessions (multi-session)
+    const [conversations, setConversations] = useState<ConversationMeta[]>([])
+    const [currentConversationId, setCurrentConversationId] = useState(() => {
+        if (typeof window !== "undefined") {
+            return (
+                localStorage.getItem(STORAGE_CURRENT_CONVERSATION_ID_KEY) || ""
+            )
+        }
+        return ""
+    })
+
+    const getConversationDisplayTitle = useCallback(
+        (id: string): string => {
+            const idx = conversations.findIndex((c) => c.id === id)
+            const meta = idx >= 0 ? conversations[idx] : undefined
+            if (meta?.title) return meta.title
+            if (idx >= 0) {
+                return locale === "zh-CN"
+                    ? `会话 ${idx + 1}`
+                    : `Session ${idx + 1}`
+            }
+            return id
+        },
+        [conversations, locale],
+    )
 
     // Check config on mount
     useEffect(() => {
@@ -199,14 +260,8 @@ export default function ChatPanel({
         tpmLimit,
     })
 
-    // Generate a unique session ID for Langfuse tracing (restore from localStorage if available)
-    const [sessionId, setSessionId] = useState(() => {
-        if (typeof window !== "undefined") {
-            const saved = localStorage.getItem(STORAGE_SESSION_ID_KEY)
-            if (saved) return saved
-        }
-        return `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
-    })
+    // Session ID for Langfuse tracing (per conversation)
+    const [sessionId, setSessionId] = useState(() => createSessionId())
 
     // Store XML snapshots for each user message (keyed by message index)
     const xmlSnapshotsRef = useRef<Map<number, string>>(new Map())
@@ -642,113 +697,285 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
-    // Restore messages and XML snapshots from localStorage on mount
+    const pendingDiagramXmlRef = useRef<string | null>(null)
+
+    const deriveConversationTitle = useCallback(
+        (msgs: ChatMessage[]): string | undefined => {
+            const firstUser = msgs.find((m) => m.role === "user") as any
+            const textPart =
+                firstUser?.parts?.find((p: any) => p.type === "text")?.text ||
+                ""
+            const trimmed = String(textPart).trim()
+            if (!trimmed) return undefined
+            return trimmed.slice(0, 24)
+        },
+        [],
+    )
+
+    const loadConversation = useCallback(
+        (id: string) => {
+            try {
+                const raw = localStorage.getItem(conversationStorageKey(id))
+                const payload: ConversationPayload = raw
+                    ? JSON.parse(raw)
+                    : {
+                          messages: [],
+                          xml: "",
+                          snapshots: [],
+                          sessionId: createSessionId(),
+                      }
+
+                setMessages((payload.messages || []) as any)
+                xmlSnapshotsRef.current = new Map(payload.snapshots || [])
+                setSessionId(payload.sessionId || createSessionId())
+
+                processedToolCallsRef.current = new Set()
+                autoRetryCountRef.current = 0
+                editFailureCountRef.current = 0
+                forceDisplayNextRef.current = false
+
+                // Load diagram if ready, else defer to DrawIO-ready effect
+                if (payload.xml) {
+                    if (isDrawioReady) {
+                        onDisplayChart(payload.xml, true)
+                        chartXMLRef.current = payload.xml
+                    } else {
+                        pendingDiagramXmlRef.current = payload.xml
+                    }
+                } else {
+                    clearDiagram()
+                    chartXMLRef.current = ""
+                }
+            } catch (error) {
+                console.error("Failed to load conversation:", error)
+                setMessages([])
+                xmlSnapshotsRef.current = new Map()
+                setSessionId(createSessionId())
+                clearDiagram()
+            }
+        },
+        [clearDiagram, isDrawioReady, onDisplayChart, setMessages],
+    )
+
+    // Restore conversations on mount (with legacy migration)
     useEffect(() => {
         if (hasRestoredRef.current) return
         hasRestoredRef.current = true
 
         try {
-            // Restore messages
-            const savedMessages = localStorage.getItem(STORAGE_MESSAGES_KEY)
-            if (savedMessages) {
-                const parsed = JSON.parse(savedMessages)
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setMessages(parsed)
-                }
-            }
+            const stored = localStorage.getItem(STORAGE_CONVERSATIONS_KEY)
+            let metas: ConversationMeta[] = stored ? JSON.parse(stored) : []
+            if (!Array.isArray(metas)) metas = []
 
-            // Restore XML snapshots
-            const savedSnapshots = localStorage.getItem(
+            const legacyMessages = localStorage.getItem(STORAGE_MESSAGES_KEY)
+            const legacySnapshots = localStorage.getItem(
                 STORAGE_XML_SNAPSHOTS_KEY,
             )
-            if (savedSnapshots) {
-                const parsed = JSON.parse(savedSnapshots)
-                xmlSnapshotsRef.current = new Map(parsed)
-            }
-        } catch (error) {
-            console.error("Failed to restore from localStorage:", error)
-        }
-    }, [setMessages])
+            const legacyXml = localStorage.getItem(STORAGE_DIAGRAM_XML_KEY)
+            const legacySession = localStorage.getItem(STORAGE_SESSION_ID_KEY)
 
-    // Restore diagram XML when DrawIO becomes ready
-    const hasDiagramRestoredRef = useRef(false)
+            if (
+                metas.length === 0 &&
+                (legacyMessages || legacySnapshots || legacyXml)
+            ) {
+                const id = createConversationId()
+                const payload: ConversationPayload = {
+                    messages: legacyMessages ? JSON.parse(legacyMessages) : [],
+                    xml: legacyXml || "",
+                    snapshots: legacySnapshots
+                        ? JSON.parse(legacySnapshots)
+                        : [],
+                    sessionId: legacySession || createSessionId(),
+                }
+                localStorage.setItem(
+                    conversationStorageKey(id),
+                    JSON.stringify(payload),
+                )
+                metas = [
+                    {
+                        id,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        title: deriveConversationTitle(payload.messages),
+                    },
+                ]
+                localStorage.setItem(
+                    STORAGE_CONVERSATIONS_KEY,
+                    JSON.stringify(metas),
+                )
+                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
+                setCurrentConversationId(id)
+
+                // Clean up legacy keys
+                localStorage.removeItem(STORAGE_MESSAGES_KEY)
+                localStorage.removeItem(STORAGE_XML_SNAPSHOTS_KEY)
+                localStorage.removeItem(STORAGE_DIAGRAM_XML_KEY)
+                localStorage.removeItem(STORAGE_SESSION_ID_KEY)
+            }
+
+            if (metas.length === 0) {
+                const id = createConversationId()
+                metas = [{ id, createdAt: Date.now(), updatedAt: Date.now() }]
+                localStorage.setItem(
+                    STORAGE_CONVERSATIONS_KEY,
+                    JSON.stringify(metas),
+                )
+                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
+                localStorage.setItem(
+                    conversationStorageKey(id),
+                    JSON.stringify({
+                        messages: [],
+                        xml: "",
+                        snapshots: [],
+                        sessionId: createSessionId(),
+                    } satisfies ConversationPayload),
+                )
+                setCurrentConversationId(id)
+            } else if (!currentConversationId) {
+                const id = metas[0].id
+                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
+                setCurrentConversationId(id)
+            }
+
+            setConversations(metas)
+        } catch (error) {
+            console.error("Failed to restore conversations:", error)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    // Load conversation when current ID changes
+    useEffect(() => {
+        if (!currentConversationId) return
+        loadConversation(currentConversationId)
+    }, [currentConversationId, loadConversation])
+
+    // Restore diagram XML when DrawIO becomes ready, per conversations
     const [canSaveDiagram, setCanSaveDiagram] = useState(false)
     useEffect(() => {
-        // Reset restore flag when DrawIO is not ready (e.g., theme/UI change remounts it)
         if (!isDrawioReady) {
-            hasDiagramRestoredRef.current = false
             setCanSaveDiagram(false)
             return
         }
-        if (hasDiagramRestoredRef.current) return
-        hasDiagramRestoredRef.current = true
-
-        try {
-            const savedDiagramXml = localStorage.getItem(
-                STORAGE_DIAGRAM_XML_KEY,
-            )
-            console.log(
-                "[ChatPanel] Restoring diagram, has saved XML:",
-                !!savedDiagramXml,
-            )
-            if (savedDiagramXml) {
-                console.log(
-                    "[ChatPanel] Loading saved diagram XML, length:",
-                    savedDiagramXml.length,
+        const pending = pendingDiagramXmlRef.current
+        pendingDiagramXmlRef.current = null
+        let xmlToLoad = pending
+        if (!xmlToLoad && currentConversationId) {
+            try {
+                const raw = localStorage.getItem(
+                    conversationStorageKey(currentConversationId),
                 )
-                // Skip validation for trusted saved diagrams
-                onDisplayChart(savedDiagramXml, true)
-                chartXMLRef.current = savedDiagramXml
+                if (raw) {
+                    const payload = JSON.parse(raw) as ConversationPayload
+                    xmlToLoad = payload?.xml || ""
+                }
+            } catch {
+                xmlToLoad = ""
             }
-        } catch (error) {
-            console.error("Failed to restore diagram from localStorage:", error)
         }
+        if (xmlToLoad) {
+            onDisplayChart(xmlToLoad, true)
+            chartXMLRef.current = xmlToLoad
+        }
+        setTimeout(() => setCanSaveDiagram(true), 300)
+    }, [currentConversationId, isDrawioReady, onDisplayChart])
 
-        // Allow saving after restore is complete
-        setTimeout(() => {
-            console.log("[ChatPanel] Enabling diagram save")
-            setCanSaveDiagram(true)
-        }, 500)
-    }, [isDrawioReady, onDisplayChart])
+    const persistCurrentConversation = useCallback(
+        (overrides: Partial<ConversationPayload>) => {
+            if (!currentConversationId) return
+            try {
+                const raw = localStorage.getItem(
+                    conversationStorageKey(currentConversationId),
+                )
+                const existing: ConversationPayload = raw
+                    ? JSON.parse(raw)
+                    : {
+                          messages: [],
+                          xml: "",
+                          snapshots: [],
+                          sessionId,
+                      }
 
-    // Save messages to localStorage whenever they change
+                const merged: ConversationPayload = {
+                    messages:
+                        overrides.messages ?? existing.messages ?? ([] as any),
+                    xml: overrides.xml ?? existing.xml ?? "",
+                    snapshots: overrides.snapshots ?? existing.snapshots ?? [],
+                    sessionId:
+                        overrides.sessionId ?? existing.sessionId ?? sessionId,
+                }
+
+                localStorage.setItem(
+                    conversationStorageKey(currentConversationId),
+                    JSON.stringify(merged),
+                )
+
+                setConversations((prev) => {
+                    const now = Date.now()
+                    let found = false
+                    const next = prev.map((m) => {
+                        if (m.id !== currentConversationId) return m
+                        found = true
+                        return {
+                            ...m,
+                            updatedAt: now,
+                            title:
+                                m.title ||
+                                deriveConversationTitle(merged.messages),
+                        }
+                    })
+                    if (!found) {
+                        next.unshift({
+                            id: currentConversationId,
+                            createdAt: now,
+                            updatedAt: now,
+                            title: deriveConversationTitle(merged.messages),
+                        })
+                    }
+                    localStorage.setItem(
+                        STORAGE_CONVERSATIONS_KEY,
+                        JSON.stringify(next),
+                    )
+                    return next
+                })
+            } catch (error) {
+                console.error("Failed to persist current conversation:", error)
+            }
+        },
+        [
+            currentConversationId,
+            deriveConversationTitle,
+            sessionId,
+            setConversations,
+        ],
+    )
+
+    // Save messages to current conversation
     useEffect(() => {
         if (!hasRestoredRef.current) return
-        try {
-            localStorage.setItem(STORAGE_MESSAGES_KEY, JSON.stringify(messages))
-        } catch (error) {
-            console.error("Failed to save messages to localStorage:", error)
-        }
-    }, [messages])
+        persistCurrentConversation({ messages: messages as any })
+    }, [messages, persistCurrentConversation])
 
-    // Save diagram XML to localStorage whenever it changes
+    // Save diagram XML to current conversation whenever it changes
     useEffect(() => {
         if (!canSaveDiagram) return
         if (chartXML && chartXML.length > 300) {
-            localStorage.setItem(STORAGE_DIAGRAM_XML_KEY, chartXML)
+            persistCurrentConversation({ xml: chartXML })
+        } else if (chartXML === "") {
+            persistCurrentConversation({ xml: "" })
         }
-    }, [chartXML, canSaveDiagram])
+    }, [chartXML, canSaveDiagram, persistCurrentConversation])
 
-    // Save XML snapshots to localStorage whenever they change
+    // Save XML snapshots to current conversation whenever they change
     const saveXmlSnapshots = useCallback(() => {
-        try {
-            const snapshotsArray = Array.from(xmlSnapshotsRef.current.entries())
-            localStorage.setItem(
-                STORAGE_XML_SNAPSHOTS_KEY,
-                JSON.stringify(snapshotsArray),
-            )
-        } catch (error) {
-            console.error(
-                "Failed to save XML snapshots to localStorage:",
-                error,
-            )
-        }
-    }, [])
+        const snapshotsArray = Array.from(xmlSnapshotsRef.current.entries())
+        persistCurrentConversation({ snapshots: snapshotsArray })
+    }, [persistCurrentConversation])
 
-    // Save session ID to localStorage
+    // Save session ID to current conversation
     useEffect(() => {
-        localStorage.setItem(STORAGE_SESSION_ID_KEY, sessionId)
-    }, [sessionId])
+        persistCurrentConversation({ sessionId })
+    }, [sessionId, persistCurrentConversation])
 
     useEffect(() => {
         if (messagesEndRef.current) {
@@ -759,22 +986,42 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     // Save state right before page unload (refresh/close)
     useEffect(() => {
         const handleBeforeUnload = () => {
+            if (!currentConversationId) return
             try {
-                localStorage.setItem(
-                    STORAGE_MESSAGES_KEY,
-                    JSON.stringify(messagesRef.current),
-                )
-                localStorage.setItem(
-                    STORAGE_XML_SNAPSHOTS_KEY,
-                    JSON.stringify(
-                        Array.from(xmlSnapshotsRef.current.entries()),
-                    ),
-                )
-                const xml = chartXMLRef.current
-                if (xml && xml.length > 300) {
-                    localStorage.setItem(STORAGE_DIAGRAM_XML_KEY, xml)
+                const payload: ConversationPayload = {
+                    messages: messagesRef.current as any,
+                    xml: chartXMLRef.current || "",
+                    snapshots: Array.from(xmlSnapshotsRef.current.entries()),
+                    sessionId,
                 }
-                localStorage.setItem(STORAGE_SESSION_ID_KEY, sessionId)
+                localStorage.setItem(
+                    conversationStorageKey(currentConversationId),
+                    JSON.stringify(payload),
+                )
+                const stored = localStorage.getItem(STORAGE_CONVERSATIONS_KEY)
+                const metas: ConversationMeta[] = stored
+                    ? JSON.parse(stored)
+                    : []
+                const now = Date.now()
+                const next = Array.isArray(metas)
+                    ? metas.map((m) =>
+                          m.id === currentConversationId
+                              ? {
+                                    ...m,
+                                    updatedAt: now,
+                                    title:
+                                        m.title ||
+                                        deriveConversationTitle(
+                                            payload.messages,
+                                        ),
+                                }
+                              : m,
+                      )
+                    : []
+                localStorage.setItem(
+                    STORAGE_CONVERSATIONS_KEY,
+                    JSON.stringify(next),
+                )
             } catch (error) {
                 console.error("Failed to persist state before unload:", error)
             }
@@ -783,7 +1030,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         window.addEventListener("beforeunload", handleBeforeUnload)
         return () =>
             window.removeEventListener("beforeunload", handleBeforeUnload)
-    }, [sessionId])
+    }, [currentConversationId, deriveConversationTitle, sessionId])
 
     const onFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -883,28 +1130,59 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     }
 
     const handleNewChat = useCallback(() => {
-        setMessages([])
-        clearDiagram()
-        handleFileChange([]) // Use handleFileChange to also clear pdfData
-        const newSessionId = `session-${Date.now()}-${Math.random()
-            .toString(36)
-            .slice(2, 9)}`
-        setSessionId(newSessionId)
-        xmlSnapshotsRef.current.clear()
-        // Clear localStorage with error handling
-        try {
-            localStorage.removeItem(STORAGE_MESSAGES_KEY)
-            localStorage.removeItem(STORAGE_XML_SNAPSHOTS_KEY)
-            localStorage.removeItem(STORAGE_DIAGRAM_XML_KEY)
-            localStorage.setItem(STORAGE_SESSION_ID_KEY, newSessionId)
-            toast.success(t("toast.startedFreshChat"))
-        } catch (error) {
-            console.error("Failed to clear localStorage:", error)
-            toast.warning(t("toast.storageUpdateFailed"))
+        const id = createConversationId()
+        const now = Date.now()
+        const payload: ConversationPayload = {
+            messages: [],
+            xml: "",
+            snapshots: [],
+            sessionId: createSessionId(),
         }
 
-        setShowNewChatDialog(false)
-    }, [clearDiagram, handleFileChange, setMessages, setSessionId])
+        try {
+            // 先保存当前会话，避免未落盘的内容丢失
+            persistCurrentConversation({})
+
+            localStorage.setItem(
+                conversationStorageKey(id),
+                JSON.stringify(payload),
+            )
+            const nextMetas = [
+                {
+                    id,
+                    createdAt: now,
+                    updatedAt: now,
+                } satisfies ConversationMeta,
+                ...conversations,
+            ]
+            localStorage.setItem(
+                STORAGE_CONVERSATIONS_KEY,
+                JSON.stringify(nextMetas),
+            )
+            localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
+
+            // Reset UI state
+            setMessages([])
+            clearDiagram()
+            handleFileChange([]) // Also clears pdfData
+            xmlSnapshotsRef.current.clear()
+            setSessionId(payload.sessionId)
+            setConversations(nextMetas)
+            setCurrentConversationId(id)
+
+            toast.success(t("toast.startedFreshChat"))
+        } catch (error) {
+            console.error("Failed to create new conversation:", error)
+            toast.warning(t("toast.storageUpdateFailed"))
+        }
+    }, [
+        clearDiagram,
+        conversations,
+        handleFileChange,
+        persistCurrentConversation,
+        setMessages,
+        t,
+    ])
 
     const handleInputChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -912,35 +1190,115 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         setInput(e.target.value)
     }
 
+    const handleSelectConversation = useCallback(
+        (id: string) => {
+            if (!id || id === currentConversationId) return
+            try {
+                localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
+                setCurrentConversationId(id)
+            } catch (error) {
+                console.error("Failed to select conversation:", error)
+                toast.warning(t("toast.storageUpdateFailed"))
+            }
+        },
+        [currentConversationId, t],
+    )
+
+    const handleDeleteConversation = useCallback(
+        (id: string) => {
+            try {
+                localStorage.removeItem(conversationStorageKey(id))
+                const nextMetas = conversations.filter((c) => c.id !== id)
+                localStorage.setItem(
+                    STORAGE_CONVERSATIONS_KEY,
+                    JSON.stringify(nextMetas),
+                )
+                setConversations(nextMetas)
+
+                if (id === currentConversationId) {
+                    const nextId = nextMetas[0]?.id
+                    if (nextId) {
+                        localStorage.setItem(
+                            STORAGE_CURRENT_CONVERSATION_ID_KEY,
+                            nextId,
+                        )
+                        setCurrentConversationId(nextId)
+                    } else {
+                        // If all sessions removed, create a fresh one
+                        const newId = createConversationId()
+                        const now = Date.now()
+                        const payload: ConversationPayload = {
+                            messages: [],
+                            xml: "",
+                            snapshots: [],
+                            sessionId: createSessionId(),
+                        }
+                        localStorage.setItem(
+                            conversationStorageKey(newId),
+                            JSON.stringify(payload),
+                        )
+                        const metas = [
+                            {
+                                id: newId,
+                                createdAt: now,
+                                updatedAt: now,
+                            } satisfies ConversationMeta,
+                        ]
+                        localStorage.setItem(
+                            STORAGE_CONVERSATIONS_KEY,
+                            JSON.stringify(metas),
+                        )
+                        localStorage.setItem(
+                            STORAGE_CURRENT_CONVERSATION_ID_KEY,
+                            newId,
+                        )
+                        setConversations(metas)
+                        setCurrentConversationId(newId)
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to delete conversation:", error)
+                toast.warning(t("toast.storageUpdateFailed"))
+            }
+        },
+        [conversations, currentConversationId, t],
+    )
+
     // Helper functions for message actions (regenerate/edit)
     // Extract previous XML snapshot before a given message index
-    const getPreviousXml = (beforeIndex: number): string => {
+    const getPreviousXml = useCallback((beforeIndex: number): string => {
         const snapshotKeys = Array.from(xmlSnapshotsRef.current.keys())
             .filter((k) => k < beforeIndex)
             .sort((a, b) => b - a)
         return snapshotKeys.length > 0
             ? xmlSnapshotsRef.current.get(snapshotKeys[0]) || ""
             : ""
-    }
+    }, [])
 
     // Restore diagram from snapshot and update ref
-    const restoreDiagramFromSnapshot = (savedXml: string) => {
-        onDisplayChart(savedXml, true) // Skip validation for trusted snapshots
-        chartXMLRef.current = savedXml
-    }
+    const restoreDiagramFromSnapshot = useCallback(
+        (savedXml: string) => {
+            onDisplayChart(savedXml, true) // Skip validation for trusted snapshots
+            chartXMLRef.current = savedXml
+        },
+        [onDisplayChart],
+    )
 
     // Clean up snapshots after a given message index
-    const cleanupSnapshotsAfter = (messageIndex: number) => {
-        for (const key of xmlSnapshotsRef.current.keys()) {
-            if (key > messageIndex) {
-                xmlSnapshotsRef.current.delete(key)
+    const cleanupSnapshotsAfter = useCallback(
+        (messageIndex: number) => {
+            for (const key of xmlSnapshotsRef.current.keys()) {
+                if (key > messageIndex) {
+                    xmlSnapshotsRef.current.delete(key)
+                }
             }
-        }
-        saveXmlSnapshots()
-    }
+            saveXmlSnapshots()
+        },
+        [saveXmlSnapshots],
+    )
 
     // Check all quota limits (daily requests, tokens, TPM)
-    const checkAllQuotaLimits = (): boolean => {
+    const checkAllQuotaLimits = useCallback((): boolean => {
         const limitCheck = quotaManager.checkDailyLimit()
         if (!limitCheck.allowed) {
             quotaManager.showQuotaLimitToast()
@@ -960,43 +1318,43 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         }
 
         return true
-    }
+    }, [quotaManager])
 
     // Send chat message with headers and increment quota
-    const sendChatMessage = (
-        parts: any,
-        xml: string,
-        previousXml: string,
-        sessionId: string,
-    ) => {
-        // Reset auto-retry count on user-initiated message
-        autoRetryCountRef.current = 0
-        editFailureCountRef.current = 0
-        forceDisplayNextRef.current = false
+    const sendChatMessage = useCallback(
+        (parts: any, xml: string, previousXml: string, sessionId: string) => {
+            // Reset auto-retry count on user-initiated message
+            autoRetryCountRef.current = 0
+            editFailureCountRef.current = 0
+            forceDisplayNextRef.current = false
 
-        const config = getAIConfig()
+            const config = getAIConfig()
 
-        sendMessage(
-            { parts },
-            {
-                body: { xml, previousXml, sessionId },
-                headers: {
-                    "x-access-code": config.accessCode,
-                    ...(config.aiProvider && {
-                        "x-ai-provider": config.aiProvider,
-                        ...(config.aiBaseUrl && {
-                            "x-ai-base-url": config.aiBaseUrl,
+            sendMessage(
+                { parts },
+                {
+                    body: { xml, previousXml, sessionId },
+                    headers: {
+                        "x-access-code": config.accessCode,
+                        ...(config.aiProvider && {
+                            "x-ai-provider": config.aiProvider,
+                            ...(config.aiBaseUrl && {
+                                "x-ai-base-url": config.aiBaseUrl,
+                            }),
+                            ...(config.aiApiKey && {
+                                "x-ai-api-key": config.aiApiKey,
+                            }),
+                            ...(config.aiModel && {
+                                "x-ai-model": config.aiModel,
+                            }),
                         }),
-                        ...(config.aiApiKey && {
-                            "x-ai-api-key": config.aiApiKey,
-                        }),
-                        ...(config.aiModel && { "x-ai-model": config.aiModel }),
-                    }),
+                    },
                 },
-            },
-        )
-        quotaManager.incrementRequestCount()
-    }
+            )
+            quotaManager.incrementRequestCount()
+        },
+        [quotaManager, sendMessage],
+    )
 
     // Process files and append content to user text (handles PDF, text, and optionally images)
     const processFilesAndAppendContent = async (
@@ -1037,107 +1395,135 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         return userText
     }
 
-    const handleRegenerate = async (messageIndex: number) => {
-        const isProcessing = status === "streaming" || status === "submitted"
-        if (isProcessing) return
+    const handleRegenerate = useCallback(
+        async (messageIndex: number) => {
+            const isProcessing =
+                status === "streaming" || status === "submitted"
+            if (isProcessing) return
 
-        // Find the user message before this assistant message
-        let userMessageIndex = messageIndex - 1
-        while (
-            userMessageIndex >= 0 &&
-            messages[userMessageIndex].role !== "user"
-        ) {
-            userMessageIndex--
-        }
-
-        if (userMessageIndex < 0) return
-
-        const userMessage = messages[userMessageIndex]
-        const userParts = userMessage.parts
-
-        // Get the text from the user message
-        const textPart = userParts?.find((p: any) => p.type === "text")
-        if (!textPart) return
-
-        // Get the saved XML snapshot for this user message
-        const savedXml = xmlSnapshotsRef.current.get(userMessageIndex)
-        if (!savedXml) {
-            console.error(
-                "No saved XML snapshot for message index:",
-                userMessageIndex,
-            )
-            return
-        }
-
-        // Get previous XML and restore diagram state
-        const previousXml = getPreviousXml(userMessageIndex)
-        restoreDiagramFromSnapshot(savedXml)
-
-        // Clean up snapshots for messages after the user message (they will be removed)
-        cleanupSnapshotsAfter(userMessageIndex)
-
-        // Remove the user message AND assistant message onwards (sendMessage will re-add the user message)
-        // Use flushSync to ensure state update is processed synchronously before sending
-        const newMessages = messages.slice(0, userMessageIndex)
-        flushSync(() => {
-            setMessages(newMessages)
-        })
-
-        // Check all quota limits
-        if (!checkAllQuotaLimits()) return
-
-        // Now send the message after state is guaranteed to be updated
-        sendChatMessage(userParts, savedXml, previousXml, sessionId)
-
-        // Token count is tracked in onFinish with actual server usage
-    }
-
-    const handleEditMessage = async (messageIndex: number, newText: string) => {
-        const isProcessing = status === "streaming" || status === "submitted"
-        if (isProcessing) return
-
-        const message = messages[messageIndex]
-        if (!message || message.role !== "user") return
-
-        // Get the saved XML snapshot for this user message
-        const savedXml = xmlSnapshotsRef.current.get(messageIndex)
-        if (!savedXml) {
-            console.error(
-                "No saved XML snapshot for message index:",
-                messageIndex,
-            )
-            return
-        }
-
-        // Get previous XML and restore diagram state
-        const previousXml = getPreviousXml(messageIndex)
-        restoreDiagramFromSnapshot(savedXml)
-
-        // Clean up snapshots for messages after the user message (they will be removed)
-        cleanupSnapshotsAfter(messageIndex)
-
-        // Create new parts with updated text
-        const newParts = message.parts?.map((part: any) => {
-            if (part.type === "text") {
-                return { ...part, text: newText }
+            // Find the user message before this assistant message
+            let userMessageIndex = messageIndex - 1
+            while (
+                userMessageIndex >= 0 &&
+                messages[userMessageIndex].role !== "user"
+            ) {
+                userMessageIndex--
             }
-            return part
-        }) || [{ type: "text", text: newText }]
 
-        // Remove the user message AND assistant message onwards (sendMessage will re-add the user message)
-        // Use flushSync to ensure state update is processed synchronously before sending
-        const newMessages = messages.slice(0, messageIndex)
-        flushSync(() => {
-            setMessages(newMessages)
-        })
+            if (userMessageIndex < 0) return
 
-        // Check all quota limits
-        if (!checkAllQuotaLimits()) return
+            const userMessage = messages[userMessageIndex]
+            const userParts = userMessage.parts
 
-        // Now send the edited message after state is guaranteed to be updated
-        sendChatMessage(newParts, savedXml, previousXml, sessionId)
-        // Token count is tracked in onFinish with actual server usage
-    }
+            // Get the text from the user message
+            const textPart = userParts?.find((p: any) => p.type === "text")
+            if (!textPart) return
+
+            // Get the saved XML snapshot for this user message
+            const savedXml = xmlSnapshotsRef.current.get(userMessageIndex)
+            if (!savedXml) {
+                console.error(
+                    "No saved XML snapshot for message index:",
+                    userMessageIndex,
+                )
+                return
+            }
+
+            // Get previous XML and restore diagram state
+            const previousXml = getPreviousXml(userMessageIndex)
+            restoreDiagramFromSnapshot(savedXml)
+
+            // Clean up snapshots for messages after the user message (they will be removed)
+            cleanupSnapshotsAfter(userMessageIndex)
+
+            // Remove the user message AND assistant message onwards (sendMessage will re-add the user message)
+            // Use flushSync to ensure state update is processed synchronously before sending
+            const newMessages = messages.slice(0, userMessageIndex)
+            flushSync(() => {
+                setMessages(newMessages)
+            })
+
+            // Check all quota limits
+            if (!checkAllQuotaLimits()) return
+
+            // Now send the message after state is guaranteed to be updated
+            sendChatMessage(userParts, savedXml, previousXml, sessionId)
+
+            // Token count is tracked in onFinish with actual server usage
+        },
+        [
+            checkAllQuotaLimits,
+            cleanupSnapshotsAfter,
+            getPreviousXml,
+            messages,
+            restoreDiagramFromSnapshot,
+            sendChatMessage,
+            sessionId,
+            setMessages,
+            status,
+        ],
+    )
+
+    const handleEditMessage = useCallback(
+        async (messageIndex: number, newText: string) => {
+            const isProcessing =
+                status === "streaming" || status === "submitted"
+            if (isProcessing) return
+
+            const message = messages[messageIndex]
+            if (!message || message.role !== "user") return
+
+            // Get the saved XML snapshot for this user message
+            const savedXml = xmlSnapshotsRef.current.get(messageIndex)
+            if (!savedXml) {
+                console.error(
+                    "No saved XML snapshot for message index:",
+                    messageIndex,
+                )
+                return
+            }
+
+            // Get previous XML and restore diagram state
+            const previousXml = getPreviousXml(messageIndex)
+            restoreDiagramFromSnapshot(savedXml)
+
+            // Clean up snapshots for messages after the user message (they will be removed)
+            cleanupSnapshotsAfter(messageIndex)
+
+            // Create new parts with updated text
+            const newParts = message.parts?.map((part: any) => {
+                if (part.type === "text") {
+                    return { ...part, text: newText }
+                }
+                return part
+            }) || [{ type: "text", text: newText }]
+
+            // Remove the user message AND assistant message onwards (sendMessage will re-add the user message)
+            // Use flushSync to ensure state update is processed synchronously before sending
+            const newMessages = messages.slice(0, messageIndex)
+            flushSync(() => {
+                setMessages(newMessages)
+            })
+
+            // Check all quota limits
+            if (!checkAllQuotaLimits()) return
+
+            // Now send the edited message after state is guaranteed to be updated
+            sendChatMessage(newParts, savedXml, previousXml, sessionId)
+            // Token count is tracked in onFinish with actual server usage
+        },
+        [
+            checkAllQuotaLimits,
+            cleanupSnapshotsAfter,
+            getPreviousXml,
+            messages,
+            restoreDiagramFromSnapshot,
+            sendChatMessage,
+            sessionId,
+            setMessages,
+            status,
+        ],
+    )
 
     // Collapsed view (desktop only)
     if (!isVisible && !isMobile) {
@@ -1229,11 +1615,36 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         )}
                     </div>
                     <div className="flex items-center gap-1">
+                        {!isMobile && conversations.length > 1 && (
+                            <div className="mr-1">
+                                <Select
+                                    value={currentConversationId}
+                                    onValueChange={handleSelectConversation}
+                                >
+                                    <SelectTrigger className="h-8 w-[160px]">
+                                        <SelectValue
+                                            placeholder={t(
+                                                "chat.header.sessionSwitcher",
+                                            )}
+                                        />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {conversations.map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                {getConversationDisplayTitle(
+                                                    c.id,
+                                                )}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         <ButtonWithTooltip
-                            tooltipContent={t("chat.header.newChatTooltip")}
+                            tooltipContent={t("chat.header.newSessionTooltip")}
                             variant="ghost"
                             size="icon"
-                            onClick={() => setShowNewChatDialog(true)}
+                            onClick={() => handleNewChat()}
                             className="hover:bg-accent"
                         >
                             <MessageSquarePlus
@@ -1319,12 +1730,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 onToggleDrawioUi={onToggleDrawioUi}
                 darkMode={darkMode}
                 onToggleDarkMode={onToggleDarkMode}
-            />
-
-            <ResetWarningModal
-                open={showNewChatDialog}
-                onOpenChange={setShowNewChatDialog}
-                onClear={handleNewChat}
+                conversations={conversations}
+                currentConversationId={currentConversationId}
+                onNewConversation={handleNewChat}
+                onSelectConversation={handleSelectConversation}
+                onDeleteConversation={handleDeleteConversation}
             />
         </div>
     )

@@ -132,6 +132,31 @@ type I18nKey =
     | "chat.header.aiChatLabel"
     | "toast.storageUpdateFailed"
     | "toast.imageNotSupported"
+    | "diff.change"
+    | "diff.remove"
+    | "diff.add"
+    | "chat.tooltip.copy"
+    | "chat.tooltip.copied"
+    | "chat.tooltip.regenerate"
+    | "chat.tooltip.good"
+    | "chat.tooltip.bad"
+    | "settings.sessions.title"
+    | "settings.sessions.note"
+    | "settings.sessions.new"
+    | "settings.sessions.empty"
+    | "settings.sessions.delete"
+    | "settings.sessions.current"
+    | "chat.header.sessionSwitcher"
+    | "chat.header.newSessionTooltip"
+    | "chat.tooltip.edit"
+    | "chat.aria.input"
+    | "files.removeFile"
+    | "common.close"
+    | "chat.tooltip.copyMessage"
+    | "chat.tooltip.copyFailed"
+    | "files.reading"
+    | "files.chars"
+    | "files.previewAlt"
 
 const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
     en: {
@@ -274,6 +299,32 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "toast.storageUpdateFailed":
             "Chat cleared but browser storage could not be updated",
         "toast.imageNotSupported": "This model doesn't support image input.",
+        "diff.change": "Change {index}",
+        "diff.remove": "Remove",
+        "diff.add": "Add",
+        "chat.tooltip.copy": "Copy response",
+        "chat.tooltip.copied": "Copied!",
+        "chat.tooltip.regenerate": "Regenerate response",
+        "chat.tooltip.good": "Good response",
+        "chat.tooltip.bad": "Bad response",
+        "settings.sessions.title": "Sessions",
+        "settings.sessions.note":
+            "Manage local conversation sessions on this device.",
+        "settings.sessions.new": "New session",
+        "settings.sessions.empty": "No sessions yet.",
+        "settings.sessions.delete": "Delete",
+        "settings.sessions.current": "Current",
+        "chat.header.sessionSwitcher": "Switch session",
+        "chat.header.newSessionTooltip": "New session",
+        "chat.tooltip.edit": "Edit message",
+        "chat.aria.input": "Chat input",
+        "files.removeFile": "Remove file",
+        "common.close": "Close",
+        "chat.tooltip.copyMessage": "Copy message",
+        "chat.tooltip.copyFailed": "Failed to copy",
+        "files.reading": "Reading...",
+        "files.chars": "{count} chars",
+        "files.previewAlt": "Full size preview of uploaded diagram or image",
     },
     "zh-CN": {
         "tool.generate": "生成图表",
@@ -402,6 +453,31 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.header.aiChatLabel": "AI 聊天",
         "toast.storageUpdateFailed": "对话已清空，但浏览器存储未能更新",
         "toast.imageNotSupported": "当前模型不支持图片输入。",
+        "diff.change": "变更 {index}",
+        "diff.remove": "删除",
+        "diff.add": "新增",
+        "chat.tooltip.copy": "复制回复",
+        "chat.tooltip.copied": "已复制！",
+        "chat.tooltip.regenerate": "重新生成回复",
+        "chat.tooltip.good": "有帮助",
+        "chat.tooltip.bad": "没帮助",
+        "settings.sessions.title": "会话管理",
+        "settings.sessions.note": "在本设备本地管理对话会话。",
+        "settings.sessions.new": "新建会话",
+        "settings.sessions.empty": "暂无会话。",
+        "settings.sessions.delete": "删除",
+        "settings.sessions.current": "当前",
+        "chat.header.sessionSwitcher": "切换会话",
+        "chat.header.newSessionTooltip": "新建会话",
+        "chat.tooltip.edit": "编辑消息",
+        "chat.aria.input": "聊天输入框",
+        "files.removeFile": "移除文件",
+        "common.close": "关闭",
+        "chat.tooltip.copyMessage": "复制消息",
+        "chat.tooltip.copyFailed": "复制失败",
+        "files.reading": "读取中…",
+        "files.chars": "{count} 字符",
+        "files.previewAlt": "上传的图表或图片的全尺寸预览",
     },
 }
 
