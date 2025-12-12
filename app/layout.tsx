@@ -2,9 +2,7 @@ import { GoogleAnalytics } from "@next/third-parties/google"
 import { Analytics } from "@vercel/analytics/react"
 import type { Metadata, Viewport } from "next"
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google"
-import { TooltipProvider } from "@/components/ui/tooltip"
-import { DiagramProvider } from "@/contexts/diagram-context"
-import { I18nProvider } from "@/contexts/i18n-context"
+import { Providers } from "@/app/providers"
 
 import "./globals.css"
 
@@ -118,11 +116,7 @@ export default function RootLayout({
             <body
                 className={`${plusJakarta.variable} ${jetbrainsMono.variable} antialiased`}
             >
-                <TooltipProvider>
-                    <I18nProvider>
-                        <DiagramProvider>{children}</DiagramProvider>
-                    </I18nProvider>
-                </TooltipProvider>
+                <Providers>{children}</Providers>
                 <Analytics />
             </body>
             {process.env.NEXT_PUBLIC_GA_ID && (
