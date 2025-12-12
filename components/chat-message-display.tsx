@@ -70,24 +70,24 @@ function EditDiffDisplay({ edits }: { edits: EditPair[] }) {
                         {/* Search (old) */}
                         <div className="px-3 py-2">
                             <div className="flex items-center gap-1.5 mb-1.5">
-                                <Minus className="w-3 h-3 text-red-500" />
-                                <span className="text-[10px] font-medium text-red-600 uppercase tracking-wide">
+                                <Minus className="w-3 h-3 text-red-500 dark:text-red-400" />
+                                <span className="text-[10px] font-medium text-red-600 dark:text-red-400 uppercase tracking-wide">
                                     {t("diff.remove")}
                                 </span>
                             </div>
-                            <pre className="text-[11px] font-mono text-red-700 bg-red-50 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all">
+                            <pre className="text-[11px] font-mono text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-300 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all">
                                 {edit.search}
                             </pre>
                         </div>
                         {/* Replace (new) */}
                         <div className="px-3 py-2">
                             <div className="flex items-center gap-1.5 mb-1.5">
-                                <Plus className="w-3 h-3 text-green-500" />
-                                <span className="text-[10px] font-medium text-green-600 uppercase tracking-wide">
+                                <Plus className="w-3 h-3 text-green-500 dark:text-green-400" />
+                                <span className="text-[10px] font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">
                                     {t("diff.add")}
                                 </span>
                             </div>
-                            <pre className="text-[11px] font-mono text-green-700 bg-green-50 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all">
+                            <pre className="text-[11px] font-mono text-green-700 bg-green-50 dark:bg-green-900/30 dark:text-green-300 rounded px-2 py-1.5 overflow-x-auto whitespace-pre-wrap break-all">
                                 {edit.replace}
                             </pre>
                         </div>

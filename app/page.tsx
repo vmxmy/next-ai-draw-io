@@ -150,7 +150,7 @@ export default function Home() {
                         }`}
                     >
                         {/* Export button (right-middle, avoid draw.io corner toolbars) */}
-                        <div className="absolute top-1/2 right-3 -translate-y-1/2 z-20">
+                        <div className="absolute top-3 right-3 z-20">
                             <ButtonWithTooltip
                                 type="button"
                                 variant="secondary"

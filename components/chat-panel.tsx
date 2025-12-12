@@ -1,6 +1,7 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
+import * as SelectPrimitive from "@radix-ui/react-select"
 import { DefaultChatTransport } from "ai"
 import {
     AlertTriangle,
@@ -8,6 +9,7 @@ import {
     PanelRightClose,
     PanelRightOpen,
     Settings,
+    Trash2,
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -22,7 +24,6 @@ import { SettingsDialog } from "@/components/settings-dialog"
 import {
     Select,
     SelectContent,
-    SelectItem,
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
@@ -1590,16 +1591,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                 href="/about"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-sm text-muted-foreground hover:text-foreground transition-colors ml-2"
-                            >
-                                {t("chat.header.about")}
-                            </Link>
-                        )}
-                        {!isMobile && (
-                            <Link
-                                href="/about"
-                                target="_blank"
-                                rel="noopener noreferrer"
                             >
                                 <ButtonWithTooltip
                                     tooltipContent={t(
@@ -1607,7 +1598,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                     )}
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 text-amber-500 hover:text-amber-600"
+                                    className="h-6 w-6 text-amber-500 hover:text-amber-600 ml-1"
                                 >
                                     <AlertTriangle className="h-4 w-4" />
                                 </ButtonWithTooltip>
@@ -1626,16 +1617,63 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                             placeholder={t(
                                                 "chat.header.sessionSwitcher",
                                             )}
-                                        />
+                                        >
+                                            {currentConversationId
+                                                ? getConversationDisplayTitle(
+                                                      currentConversationId,
+                                                  )
+                                                : undefined}
+                                        </SelectValue>
                                     </SelectTrigger>
-                                    <SelectContent>
-                                        {conversations.map((c) => (
-                                            <SelectItem key={c.id} value={c.id}>
-                                                {getConversationDisplayTitle(
+                                    <SelectContent
+                                        key={currentConversationId || "none"}
+                                    >
+                                        {conversations.map((c) => {
+                                            const displayTitle =
+                                                getConversationDisplayTitle(
                                                     c.id,
-                                                )}
-                                            </SelectItem>
-                                        ))}
+                                                )
+                                            const time = new Date(
+                                                c.updatedAt || c.createdAt,
+                                            ).toLocaleString(locale)
+                                            return (
+                                                <SelectPrimitive.Item
+                                                    key={c.id}
+                                                    value={c.id}
+                                                    className="relative flex w-full cursor-default items-center rounded-sm py-1.5 pl-2 pr-10 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
+                                                >
+                                                    <SelectPrimitive.ItemText>
+                                                        <span className="flex flex-col gap-0.5">
+                                                            <span className="truncate">
+                                                                {displayTitle}
+                                                            </span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {time}
+                                                            </span>
+                                                        </span>
+                                                    </SelectPrimitive.ItemText>
+                                                    <button
+                                                        type="button"
+                                                        title={t(
+                                                            "settings.sessions.delete",
+                                                        )}
+                                                        aria-label={t(
+                                                            "settings.sessions.delete",
+                                                        )}
+                                                        className="absolute right-2 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        onPointerDown={(e) => {
+                                                            e.preventDefault()
+                                                            e.stopPropagation()
+                                                            handleDeleteConversation(
+                                                                c.id,
+                                                            )
+                                                        }}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </SelectPrimitive.Item>
+                                            )
+                                        })}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -1730,11 +1768,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 onToggleDrawioUi={onToggleDrawioUi}
                 darkMode={darkMode}
                 onToggleDarkMode={onToggleDarkMode}
-                conversations={conversations}
-                currentConversationId={currentConversationId}
-                onNewConversation={handleNewChat}
-                onSelectConversation={handleSelectConversation}
-                onDeleteConversation={handleDeleteConversation}
             />
         </div>
     )

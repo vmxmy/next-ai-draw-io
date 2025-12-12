@@ -30,16 +30,6 @@ interface SettingsDialogProps {
     onToggleDrawioUi: () => void
     darkMode: boolean
     onToggleDarkMode: () => void
-    conversations?: {
-        id: string
-        createdAt: number
-        updatedAt: number
-        title?: string
-    }[]
-    currentConversationId?: string
-    onNewConversation?: () => void
-    onSelectConversation?: (id: string) => void
-    onDeleteConversation?: (id: string) => void
 }
 
 export const STORAGE_ACCESS_CODE_KEY = "next-ai-draw-io-access-code"
@@ -65,11 +55,6 @@ export function SettingsDialog({
     onToggleDrawioUi,
     darkMode,
     onToggleDarkMode,
-    conversations = [],
-    currentConversationId,
-    onNewConversation,
-    onSelectConversation,
-    onDeleteConversation,
 }: SettingsDialogProps) {
     const { t, locale, setLocale } = useI18n()
     const [accessCode, setAccessCode] = useState("")
@@ -468,89 +453,6 @@ export function SettingsDialog({
                             </SelectContent>
                         </Select>
                     </div>
-
-                    {onNewConversation && onSelectConversation && (
-                        <div className="space-y-2">
-                            <Label>{t("settings.sessions.title")}</Label>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                {t("settings.sessions.note")}
-                            </p>
-                            <div className="space-y-1 max-h-40 overflow-auto rounded-md border border-border/60 bg-muted/30 p-2">
-                                {conversations.length === 0 ? (
-                                    <div className="text-xs text-muted-foreground py-1">
-                                        {t("settings.sessions.empty")}
-                                    </div>
-                                ) : (
-                                    conversations.map((c, idx) => {
-                                        const fallbackTitle =
-                                            locale === "zh-CN"
-                                                ? `会话 ${idx + 1}`
-                                                : `Session ${idx + 1}`
-                                        const isCurrent =
-                                            c.id === currentConversationId
-                                        return (
-                                            <div
-                                                key={c.id}
-                                                className="flex items-center justify-between gap-2"
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        onSelectConversation(
-                                                            c.id,
-                                                        )
-                                                    }
-                                                    className={`flex-1 text-left px-2 py-1 rounded hover:bg-muted transition-colors ${
-                                                        isCurrent
-                                                            ? "bg-background/70"
-                                                            : ""
-                                                    }`}
-                                                >
-                                                    <span className="text-sm truncate">
-                                                        {c.title ||
-                                                            fallbackTitle}
-                                                    </span>
-                                                    {isCurrent && (
-                                                        <span className="ml-2 text-[10px] text-primary">
-                                                            {t(
-                                                                "settings.sessions.current",
-                                                            )}
-                                                        </span>
-                                                    )}
-                                                </button>
-                                                {onDeleteConversation &&
-                                                    conversations.length >
-                                                        1 && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                onDeleteConversation(
-                                                                    c.id,
-                                                                )
-                                                            }
-                                                        >
-                                                            {t(
-                                                                "settings.sessions.delete",
-                                                            )}
-                                                        </Button>
-                                                    )}
-                                            </div>
-                                        )
-                                    })
-                                )}
-                            </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={onNewConversation}
-                            >
-                                {t("settings.sessions.new")}
-                            </Button>
-                        </div>
-                    )}
 
                     <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
