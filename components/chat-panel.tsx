@@ -65,6 +65,22 @@ const TOOL_ERROR_STATE = "output-error" as const
 const DEBUG = process.env.NODE_ENV === "development"
 const MAX_AUTO_RETRY_COUNT = 3
 
+function extractIdFromSearch(search: string): string | null {
+    const match = search.match(/id="([^"]+)"/)
+    return match?.[1] ?? null
+}
+
+function findMxCellLineById(xml: string, id: string): string | null {
+    const lineMatch = xml.match(
+        new RegExp(`<mxCell[^\\n>]*\\bid="${id}"[^\\n>]*>.*`, "i"),
+    )
+    if (lineMatch?.[0]) return lineMatch[0]
+    const selfClosingMatch = xml.match(
+        new RegExp(`<mxCell[^\\n>]*\\bid="${id}"[^\\n>]*/>`, "i"),
+    )
+    return selfClosingMatch?.[0] ?? null
+}
+
 /**
  * Check if auto-resubmit should happen based on tool errors.
  * Does NOT handle retry count or quota - those are handled by the caller.
@@ -85,6 +101,22 @@ function hasToolErrors(messages: ChatMessage[]): boolean {
     }
 
     return toolParts.some((part) => part.state === TOOL_ERROR_STATE)
+}
+
+function getLastToolErrorName(messages: ChatMessage[]): string | null {
+    const lastMessage = messages[messages.length - 1]
+    if (!lastMessage || lastMessage.role !== "assistant") {
+        return null
+    }
+
+    const toolParts =
+        (lastMessage.parts as MessagePart[] | undefined)?.filter((part) =>
+            part.type?.startsWith("tool-"),
+        ) || []
+
+    const lastError = toolParts.find((part) => part.state === TOOL_ERROR_STATE)
+
+    return lastError?.toolName || null
 }
 
 export default function ChatPanel({
@@ -191,6 +223,10 @@ export default function ChatPanel({
 
     // Ref to track consecutive auto-retry count (reset on user action)
     const autoRetryCountRef = useRef(0)
+    // Ref to track consecutive edit_diagram failures
+    const editFailureCountRef = useRef(0)
+    // When true, we inject a system hint to force display_diagram on next attempt
+    const forceDisplayNextRef = useRef(false)
 
     // Persist processed tool call IDs so collapsing the chat doesn't replay old tool outputs
     const processedToolCallsRef = useRef<Set<string>>(new Set())
@@ -300,7 +336,67 @@ ${xml}
                         )
                     }
 
-                    const { replaceXMLParts } = await import("@/lib/utils")
+                    const { replaceXMLParts, formatXML } = await import(
+                        "@/lib/utils"
+                    )
+
+                    // Pattern precheck: ensure each search block exists in current XML
+                    const formattedCurrent = formatXML(currentXml)
+                    const missing = edits
+                        .map((edit, index) => {
+                            const rawHit = currentXml.includes(edit.search)
+                            if (rawHit) return null
+                            const formattedSearch = formatXML(edit.search)
+                            const formattedHit =
+                                formattedSearch &&
+                                formattedCurrent.includes(formattedSearch)
+                            if (formattedHit) return null
+
+                            const id = extractIdFromSearch(edit.search)
+                            const idHint =
+                                id && currentXml
+                                    ? findMxCellLineById(currentXml, id)
+                                    : null
+
+                            return {
+                                index,
+                                id,
+                                idHint,
+                                searchPreview: edit.search.trim().slice(0, 200),
+                            }
+                        })
+                        .filter(Boolean) as Array<{
+                        index: number
+                        id: string | null
+                        idHint: string | null
+                        searchPreview: string
+                    }>
+
+                    if (missing.length > 0) {
+                        const details = missing
+                            .map((m) => {
+                                const header = `Change ${m.index + 1} not found`
+                                const idPart = m.id ? ` (id="${m.id}")` : ""
+                                const hintPart = m.idHint
+                                    ? `Suggested mxCell line from current XML:\n${m.idHint}`
+                                    : "Suggestion: copy the exact mxCell lines (attribute order matters) from the CURRENT XML."
+                                return `${header}${idPart}\nSearch preview:\n${m.searchPreview}\n\n${hintPart}`
+                            })
+                            .join("\n\n---\n\n")
+
+                        addToolOutput({
+                            tool: "edit_diagram",
+                            toolCallId: toolCall.toolCallId,
+                            state: "output-error",
+                            errorText: `Search pattern(s) not found in CURRENT diagram XML.
+
+${details}
+
+Please retry edit_diagram with exact lines copied from the CURRENT XML (preserve attribute order and whitespace).`,
+                        })
+                        return
+                    }
+
                     const editedXml = replaceXMLParts(currentXml, edits)
 
                     // loadDiagram validates and returns error if invalid
@@ -414,16 +510,55 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             }
         },
         sendAutomaticallyWhen: ({ messages }) => {
-            const shouldRetry = hasToolErrors(
-                messages as unknown as ChatMessage[],
-            )
+            const chatMessages = messages as unknown as ChatMessage[]
+            const shouldRetry = hasToolErrors(chatMessages)
+            const lastErrorToolName = getLastToolErrorName(chatMessages)
 
             if (!shouldRetry) {
                 // No error, reset retry count
                 autoRetryCountRef.current = 0
+                editFailureCountRef.current = 0
+                forceDisplayNextRef.current = false
                 if (DEBUG) {
                     console.log("[sendAutomaticallyWhen] No errors, stopping")
                 }
+                return false
+            }
+
+            if (lastErrorToolName === "edit_diagram") {
+                editFailureCountRef.current++
+            } else {
+                editFailureCountRef.current = 0
+            }
+
+            // If edit_diagram keeps failing, stop auto-retry and force display_diagram next time
+            if (
+                lastErrorToolName === "edit_diagram" &&
+                editFailureCountRef.current >= 2
+            ) {
+                if (!forceDisplayNextRef.current) {
+                    forceDisplayNextRef.current = true
+                    setMessages((currentMessages) => [
+                        ...currentMessages,
+                        {
+                            id: `system-fallback-${Date.now()}`,
+                            role: "system" as const,
+                            content:
+                                "[Auto-recovery] The previous edit_diagram attempts failed. For the next attempt, you MUST use display_diagram to regenerate a corrected full XML instead of edit_diagram.",
+                            parts: [
+                                {
+                                    type: "text" as const,
+                                    text: "[Auto-recovery] The previous edit_diagram attempts failed. For the next attempt, you MUST use display_diagram to regenerate a corrected full XML instead of edit_diagram.",
+                                },
+                            ],
+                        } as any,
+                    ])
+                }
+
+                toast.error(
+                    "多次精确编辑失败，已停止自动重试。请再次发送指令，系统将引导模型改用重绘(display_diagram)。",
+                )
+                autoRetryCountRef.current = 0
                 return false
             }
 
@@ -437,6 +572,27 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 toast.error(
                     `Auto-retry limit reached (${MAX_AUTO_RETRY_COUNT}). Please try again manually.`,
                 )
+                if (
+                    lastErrorToolName === "edit_diagram" &&
+                    !forceDisplayNextRef.current
+                ) {
+                    forceDisplayNextRef.current = true
+                    setMessages((currentMessages) => [
+                        ...currentMessages,
+                        {
+                            id: `system-fallback-${Date.now()}`,
+                            role: "system" as const,
+                            content:
+                                "[Auto-recovery] edit_diagram retries exhausted. Please use display_diagram to regenerate full XML.",
+                            parts: [
+                                {
+                                    type: "text" as const,
+                                    text: "[Auto-recovery] edit_diagram retries exhausted. Please use display_diagram to regenerate full XML.",
+                                },
+                            ],
+                        } as any,
+                    ])
+                }
                 autoRetryCountRef.current = 0
                 return false
             }
@@ -819,6 +975,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     ) => {
         // Reset auto-retry count on user-initiated message
         autoRetryCountRef.current = 0
+        editFailureCountRef.current = 0
+        forceDisplayNextRef.current = false
 
         const config = getAIConfig()
 

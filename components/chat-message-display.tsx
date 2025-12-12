@@ -216,7 +216,7 @@ export function ChatMessageDisplay({
 
             setCopiedMessageId(messageId)
             setTimeout(() => setCopiedMessageId(null), 2000)
-        } catch (err) {
+        } catch (_err) {
             // Fallback for non-secure contexts (HTTP) or permission denied
             const textarea = document.createElement("textarea")
             textarea.value = text
@@ -418,6 +418,8 @@ export function ChatMessageDisplay({
                     return "Generate Diagram"
                 case "edit_diagram":
                     return "Edit Diagram"
+                case "analyze_diagram":
+                    return "Analyze Diagram"
                 default:
                     return name
             }
@@ -483,11 +485,19 @@ export function ChatMessageDisplay({
                         ) : null}
                     </div>
                 )}
-                {output && state === "output-error" && (
-                    <div className="px-4 py-3 border-t border-border/40 text-sm text-red-600">
-                        {output}
-                    </div>
-                )}
+                {output &&
+                    (state === "output-error" ||
+                        toolName === "analyze_diagram") && (
+                        <div
+                            className={`px-4 py-3 border-t border-border/40 text-sm whitespace-pre-wrap ${
+                                state === "output-error"
+                                    ? "text-red-600"
+                                    : "text-foreground/80"
+                            }`}
+                        >
+                            {output}
+                        </div>
+                    )}
             </div>
         )
     }

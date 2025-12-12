@@ -19,11 +19,9 @@ import { SaveDialog } from "@/components/save-dialog"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useDiagram } from "@/contexts/diagram-context"
+import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, MAX_FILES } from "@/lib/limits"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import { FilePreviewList } from "./file-preview-list"
-
-const MAX_IMAGE_SIZE = 2 * 1024 * 1024 // 2MB
-const MAX_FILES = 5
 
 function isValidFileType(file: File): boolean {
     return file.type.startsWith("image/") || isPdfFile(file) || isTextFile(file)
@@ -74,10 +72,9 @@ function validateFiles(
         }
         // Only check size for images (PDFs/text files are extracted client-side, so file size doesn't matter)
         const isExtractedFile = isPdfFile(file) || isTextFile(file)
-        if (!isExtractedFile && file.size > MAX_IMAGE_SIZE) {
-            const maxSizeMB = MAX_IMAGE_SIZE / 1024 / 1024
+        if (!isExtractedFile && file.size > MAX_FILE_SIZE_BYTES) {
             errors.push(
-                `"${file.name}" is ${formatFileSize(file.size)} (exceeds ${maxSizeMB}MB)`,
+                `"${file.name}" is ${formatFileSize(file.size)} (exceeds ${MAX_FILE_SIZE_MB}MB)`,
             )
         } else {
             validFiles.push(file)
