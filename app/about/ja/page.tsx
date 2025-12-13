@@ -88,8 +88,16 @@ export default function AboutJA() {
                         <li>マルチセッションの会話管理とローカル永続化。</li>
                         <li>GitHub ログインと会話のクラウド同期。</li>
                         <li>
-                            AI による図変更の Undo/Redo（XML
-                            スナップショット）。
+                            会話に紐づく図の線形タイムライン（Undo/Redo
+                            と復元）。
+                        </li>
+                        <li>
+                            構造化 <code className="px-1">edit_diagram</code>{" "}
+                            ops による編集の安定化。
+                        </li>
+                        <li>
+                            チャット体験の改善：ストリーミング中の停止ボタンに
+                            loading、ツール詳細は既定で折りたたみ。
                         </li>
                         <li>
                             セマンティックなテーマ token による一貫した UI。

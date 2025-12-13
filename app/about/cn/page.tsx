@@ -85,7 +85,18 @@ export default function AboutCN() {
                     <ul className="mt-3 space-y-2 text-sm text-muted-foreground leading-relaxed">
                         <li>多会话对话管理与本地持久化。</li>
                         <li>GitHub 登录与会话云端同步。</li>
-                        <li>AI 修改图表后支持撤销/重做（基于 XML 镜像）。</li>
+                        <li>
+                            对话驱动的图表线性版本历史，支持撤销/重做与指定版本恢复。
+                        </li>
+                        <li>
+                            使用结构化{" "}
+                            <code className="px-1">edit_diagram</code> ops
+                            提升图表编辑稳定性。
+                        </li>
+                        <li>
+                            对话交互优化：流式处理中停止按钮带
+                            loading；工具详情默认折叠可展开。
+                        </li>
                         <li>统一语义化主题 token，减少硬编码样式与颜色。</li>
                     </ul>
                 </section>

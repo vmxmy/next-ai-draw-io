@@ -94,8 +94,16 @@ export default function About() {
                             GitHub sign-in and cloud sync for conversations.
                         </li>
                         <li>
-                            Undo/redo for AI-applied diagram changes (based on
-                            XML snapshots).
+                            Conversation-driven diagram timeline with undo/redo
+                            and version restore.
+                        </li>
+                        <li>
+                            More reliable diagram edits via structured
+                            <code className="px-1">edit_diagram</code> ops.
+                        </li>
+                        <li>
+                            Better chat UX: stop button shows loading while
+                            streaming; tool details are collapsible by default.
                         </li>
                         <li>
                             Semantic theme tokens to reduce hard-coded colors
