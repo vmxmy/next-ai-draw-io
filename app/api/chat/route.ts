@@ -219,9 +219,33 @@ function sanitizeGoogleToolCallingHistory(messages: any[]): any[] {
             Array.isArray(prev.content) &&
             Array.isArray(msg.content)
         ) {
+            // 合并时需保留 OpenRouter/Gemini 的 reasoning_details（包含 thought_signature），否则后续请求会 400。
+            const prevDetails =
+                prev?.providerOptions?.openrouter?.reasoning_details
+            const nextDetails =
+                msg?.providerOptions?.openrouter?.reasoning_details
+            const mergedDetails =
+                Array.isArray(prevDetails) || Array.isArray(nextDetails)
+                    ? [
+                          ...(Array.isArray(prevDetails) ? prevDetails : []),
+                          ...(Array.isArray(nextDetails) ? nextDetails : []),
+                      ]
+                    : undefined
+
             merged[merged.length - 1] = {
                 ...prev,
                 content: [...prev.content, ...msg.content],
+                ...(mergedDetails?.length
+                    ? {
+                          providerOptions: {
+                              ...(prev.providerOptions ?? {}),
+                              openrouter: {
+                                  ...(prev.providerOptions?.openrouter ?? {}),
+                                  reasoning_details: mergedDetails,
+                              },
+                          },
+                      }
+                    : {}),
             }
             continue
         }
@@ -278,26 +302,70 @@ function preserveOpenRouterReasoningDetails(messages: any[]): any[] {
     // 否则会在包含 tool/function 调用历史时返回 400（例如缺少 thought_signature）。
     //
     // OpenRouter adapter 会从 message.providerOptions.openrouter.reasoning_details 读取并回传；
-    // 但流式响应里该字段通常落在 providerMetadata.openrouter.reasoning_details。
-    // 因此这里做一次“providerMetadata -> providerOptions”的兼容映射，确保历史回放不丢字段。
+    // 但流式响应里该字段可能落在 message.providerMetadata 或 content[i].providerMetadata。
     return messages.map((msg) => {
         if (!msg || msg.role !== "assistant") return msg
-        const reasoningDetails =
+
+        // 1) 收集 message + parts 上的 reasoning_details（Gemini 的 thought_signature 可能落在 tool-call part）
+        const msgReasoning =
             msg?.providerMetadata?.openrouter?.reasoning_details
-        if (!Array.isArray(reasoningDetails) || reasoningDetails.length === 0) {
-            return msg
+        const partReasonings = Array.isArray(msg.content)
+            ? msg.content
+                  .map(
+                      (part: any) =>
+                          part?.providerMetadata?.openrouter?.reasoning_details,
+                  )
+                  .filter((r: any) => Array.isArray(r) && r.length > 0)
+                  .flat()
+            : []
+
+        const collected = (
+            Array.isArray(msgReasoning) ? msgReasoning : []
+        ).concat(partReasonings)
+
+        const existing =
+            msg?.providerOptions?.openrouter?.reasoning_details ?? null
+
+        const shouldSet =
+            (!Array.isArray(existing) || existing.length === 0) &&
+            collected.length > 0
+
+        let updatedMsg = shouldSet
+            ? {
+                  ...msg,
+                  providerOptions: {
+                      ...(msg.providerOptions ?? {}),
+                      openrouter: {
+                          ...(msg.providerOptions?.openrouter ?? {}),
+                          reasoning_details: collected,
+                      },
+                  },
+              }
+            : msg
+
+        // 2. 处理 Content Part 级别的 reasoning_details (针对 tool-call)
+        if (Array.isArray(updatedMsg.content)) {
+            const updatedContent = updatedMsg.content.map((part: any) => {
+                const partReasoning =
+                    part?.providerMetadata?.openrouter?.reasoning_details
+                if (Array.isArray(partReasoning) && partReasoning.length > 0) {
+                    return {
+                        ...part,
+                        providerOptions: {
+                            ...(part.providerOptions ?? {}),
+                            openrouter: {
+                                ...(part.providerOptions?.openrouter ?? {}),
+                                reasoning_details: partReasoning,
+                            },
+                        },
+                    }
+                }
+                return part
+            })
+            updatedMsg = { ...updatedMsg, content: updatedContent }
         }
 
-        return {
-            ...msg,
-            providerOptions: {
-                ...(msg.providerOptions ?? {}),
-                openrouter: {
-                    ...(msg.providerOptions?.openrouter ?? {}),
-                    reasoning_details: reasoningDetails,
-                },
-            },
-        }
+        return updatedMsg
     })
 }
 
