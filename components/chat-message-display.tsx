@@ -440,9 +440,14 @@ export function ChatMessageDisplay({
     const renderToolPart = (part: ToolPartLike) => {
         const callId = part.toolCallId
         const { state, input, output, errorText, result } = part
-        const isExpanded = expandedTools[callId] ?? true
         const toolName = part.type?.replace("tool-", "")
+        const defaultExpanded = toolName !== "edit_diagram"
+        const isExpanded = expandedTools[callId] ?? defaultExpanded
 
+        const hasInputDetails =
+            !!input &&
+            typeof input === "object" &&
+            Object.keys(input).length > 0
         const displayOutput =
             typeof output === "string"
                 ? output
@@ -451,6 +456,10 @@ export function ChatMessageDisplay({
                   : typeof result === "string"
                     ? result
                     : ""
+        const hasOutputDetails =
+            !!displayOutput &&
+            (state === "output-error" || toolName === "analyze_diagram")
+        const hasDetails = hasInputDetails || hasOutputDetails
 
         const toggleExpanded = () => {
             setExpandedTools((prev) => ({
@@ -500,7 +509,7 @@ export function ChatMessageDisplay({
                                 {t("status.error")}
                             </span>
                         )}
-                        {input && Object.keys(input).length > 0 && (
+                        {hasDetails && (
                             <button
                                 type="button"
                                 onClick={toggleExpanded}
@@ -515,36 +524,42 @@ export function ChatMessageDisplay({
                         )}
                     </div>
                 </div>
-                {input && isExpanded && (
-                    <div className="px-4 py-3 border-t border-border/40 bg-muted/20">
-                        {typeof input === "object" && input.xml ? (
-                            <CodeBlock code={input.xml} language="xml" />
-                        ) : typeof input === "object" &&
-                          input.edits &&
-                          Array.isArray(input.edits) ? (
-                            <EditDiffDisplay edits={input.edits} />
-                        ) : typeof input === "object" &&
-                          Object.keys(input).length > 0 ? (
-                            <CodeBlock
-                                code={JSON.stringify(input, null, 2)}
-                                language="json"
-                            />
-                        ) : null}
-                    </div>
+                {hasDetails && isExpanded && (
+                    <>
+                        {hasInputDetails && (
+                            <div className="px-4 py-3 border-t border-border/40 bg-muted/20">
+                                {typeof input === "object" && input.xml ? (
+                                    <CodeBlock
+                                        code={input.xml}
+                                        language="xml"
+                                    />
+                                ) : typeof input === "object" &&
+                                  "edits" in input &&
+                                  Array.isArray((input as any).edits) ? (
+                                    <EditDiffDisplay
+                                        edits={(input as any).edits}
+                                    />
+                                ) : typeof input === "object" ? (
+                                    <CodeBlock
+                                        code={JSON.stringify(input, null, 2)}
+                                        language="json"
+                                    />
+                                ) : null}
+                            </div>
+                        )}
+                        {hasOutputDetails && (
+                            <div
+                                className={`px-4 py-3 border-t border-border/40 text-sm whitespace-pre-wrap ${
+                                    state === "output-error"
+                                        ? "text-red-600"
+                                        : "text-foreground/80"
+                                }`}
+                            >
+                                {displayOutput}
+                            </div>
+                        )}
+                    </>
                 )}
-                {displayOutput &&
-                    (state === "output-error" ||
-                        toolName === "analyze_diagram") && (
-                        <div
-                            className={`px-4 py-3 border-t border-border/40 text-sm whitespace-pre-wrap ${
-                                state === "output-error"
-                                    ? "text-red-600"
-                                    : "text-foreground/80"
-                            }`}
-                        >
-                            {displayOutput}
-                        </div>
-                    )}
             </div>
         )
     }
