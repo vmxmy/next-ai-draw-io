@@ -4,7 +4,21 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc"
 const conversationPayloadSchema = z.object({
     messages: z.array(z.unknown()),
     xml: z.string(),
-    snapshots: z.array(z.tuple([z.number(), z.string()])),
+    snapshots: z.array(z.tuple([z.number(), z.string()])).optional(),
+    diagramVersions: z
+        .array(
+            z.object({
+                id: z.string().min(1),
+                createdAt: z.number().int(),
+                xml: z.string(),
+                note: z.string().optional(),
+            }),
+        )
+        .optional(),
+    diagramVersionCursor: z.number().int().optional(),
+    diagramVersionMarks: z
+        .record(z.string(), z.coerce.number().int())
+        .optional(),
     sessionId: z.string(),
 })
 

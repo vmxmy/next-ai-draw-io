@@ -15,6 +15,7 @@ import {
 import type {
     ConversationMeta,
     ConversationPayload,
+    DiagramVersion,
 } from "@/features/chat/sessions/storage"
 import {
     conversationStorageKey,
@@ -44,7 +45,6 @@ export function useLocalConversations({
     autoRetryCountRef,
     editFailureCountRef,
     forceDisplayNextRef,
-    xmlSnapshotsRef,
     setMessages,
     messagesRef,
     resetFiles,
@@ -63,7 +63,6 @@ export function useLocalConversations({
     autoRetryCountRef: React.MutableRefObject<number>
     editFailureCountRef: React.MutableRefObject<number>
     forceDisplayNextRef: React.MutableRefObject<boolean>
-    xmlSnapshotsRef: React.MutableRefObject<Map<number, string>>
     setMessages: (messages: any) => void
     messagesRef: React.MutableRefObject<any>
     resetFiles: () => void
@@ -83,6 +82,14 @@ export function useLocalConversations({
     const persistDebounceTimerRef = useRef<ReturnType<
         typeof setTimeout
     > | null>(null)
+
+    // 统一的“对话驱动”图表线性历史：entries + cursor + messageIndex 书签
+    const diagramVersionsRef = useRef<DiagramVersion[]>([])
+    const diagramVersionCursorRef = useRef<number>(-1)
+    const diagramVersionMarksRef = useRef<Record<number, number>>({})
+
+    const [diagramVersions, setDiagramVersions] = useState<DiagramVersion[]>([])
+    const [diagramVersionCursor, setDiagramVersionCursor] = useState<number>(-1)
 
     const deriveConversationTitle = useCallback((msgs: ChatMessage[]) => {
         const firstUser = msgs.find((m) => m.role === "user") as any
@@ -118,17 +125,78 @@ export function useLocalConversations({
                           messages: [],
                           xml: "",
                           snapshots: [],
+                          diagramVersions: [],
+                          diagramVersionCursor: -1,
+                          diagramVersionMarks: {},
                           sessionId: createSessionId(),
                       }
 
                 setMessages((payload.messages || []) as any)
-                xmlSnapshotsRef.current = new Map(payload.snapshots || [])
                 setSessionId(payload.sessionId || createSessionId())
 
                 processedToolCallsRef.current = new Set()
                 autoRetryCountRef.current = 0
                 editFailureCountRef.current = 0
                 forceDisplayNextRef.current = false
+
+                // 恢复统一线性历史（如果没有则从旧 snapshots 迁移）
+                let versions = Array.isArray(payload.diagramVersions)
+                    ? (payload.diagramVersions as DiagramVersion[])
+                    : []
+                let cursor =
+                    typeof payload.diagramVersionCursor === "number"
+                        ? payload.diagramVersionCursor
+                        : -1
+                let marks: Record<number, number> =
+                    payload.diagramVersionMarks &&
+                    typeof payload.diagramVersionMarks === "object"
+                        ? (payload.diagramVersionMarks as Record<
+                              number,
+                              number
+                          >)
+                        : {}
+
+                if (versions.length === 0 && Array.isArray(payload.snapshots)) {
+                    const migrated: DiagramVersion[] = payload.snapshots
+                        .filter((s) => Array.isArray(s) && s.length === 2)
+                        .map(([messageIndex, snapshotXml], idx) => {
+                            const mi = Number(messageIndex)
+                            if (!Number.isFinite(mi)) return null
+                            return {
+                                id: `migrated-${mi}-${idx}`,
+                                createdAt:
+                                    Date.now() -
+                                    ((payload.snapshots?.length ?? 0) - idx) *
+                                        1000,
+                                xml: String(snapshotXml ?? ""),
+                                note: "migrated",
+                            } satisfies DiagramVersion
+                        })
+                        .filter(Boolean) as DiagramVersion[]
+
+                    versions = migrated
+                    cursor = versions.length > 0 ? versions.length - 1 : -1
+                    marks = {}
+                    for (const [
+                        messageIndex,
+                        snapshotXml,
+                    ] of payload.snapshots) {
+                        const mi = Number(messageIndex)
+                        if (!Number.isFinite(mi)) continue
+                        const xml = String(snapshotXml ?? "")
+                        const found = versions.findIndex((v) => v.xml === xml)
+                        if (found >= 0) marks[mi] = found
+                    }
+                }
+
+                diagramVersionsRef.current = versions
+                diagramVersionCursorRef.current = Math.min(
+                    Math.max(cursor, -1),
+                    versions.length - 1,
+                )
+                diagramVersionMarksRef.current = marks
+                setDiagramVersions(versions)
+                setDiagramVersionCursor(diagramVersionCursorRef.current)
 
                 if (payload.xml) {
                     if (isDrawioReady) {
@@ -144,9 +212,13 @@ export function useLocalConversations({
             } catch (error) {
                 console.error("Failed to load conversation:", error)
                 setMessages([])
-                xmlSnapshotsRef.current = new Map()
                 setSessionId(createSessionId())
                 clearDiagram()
+                diagramVersionsRef.current = []
+                diagramVersionCursorRef.current = -1
+                diagramVersionMarksRef.current = {}
+                setDiagramVersions([])
+                setDiagramVersionCursor(-1)
             }
         },
         [
@@ -159,7 +231,6 @@ export function useLocalConversations({
             onDisplayChart,
             processedToolCallsRef,
             setMessages,
-            xmlSnapshotsRef,
         ],
     )
 
@@ -173,6 +244,9 @@ export function useLocalConversations({
                         messages: [],
                         xml: "",
                         snapshots: [],
+                        diagramVersions: [],
+                        diagramVersionCursor: -1,
+                        diagramVersionMarks: {},
                         sessionId,
                     } satisfies ConversationPayload)
 
@@ -181,6 +255,18 @@ export function useLocalConversations({
                         overrides.messages ?? existing.messages ?? ([] as any),
                     xml: overrides.xml ?? existing.xml ?? "",
                     snapshots: overrides.snapshots ?? existing.snapshots ?? [],
+                    diagramVersions:
+                        overrides.diagramVersions ??
+                        existing.diagramVersions ??
+                        [],
+                    diagramVersionCursor:
+                        overrides.diagramVersionCursor ??
+                        existing.diagramVersionCursor ??
+                        -1,
+                    diagramVersionMarks:
+                        overrides.diagramVersionMarks ??
+                        existing.diagramVersionMarks ??
+                        {},
                     sessionId:
                         overrides.sessionId ?? existing.sessionId ?? sessionId,
                 }
@@ -235,8 +321,10 @@ export function useLocalConversations({
         persistCurrentConversation({
             messages: messagesRef.current as any,
             xml: chartXMLRef.current || "",
-            snapshots: Array.from(xmlSnapshotsRef.current.entries()),
             sessionId,
+            diagramVersions: diagramVersionsRef.current,
+            diagramVersionCursor: diagramVersionCursorRef.current,
+            diagramVersionMarks: diagramVersionMarksRef.current,
         })
     }, [
         chartXMLRef,
@@ -244,13 +332,195 @@ export function useLocalConversations({
         messagesRef,
         persistCurrentConversation,
         sessionId,
-        xmlSnapshotsRef,
     ])
 
-    const saveXmlSnapshots = useCallback(() => {
-        const snapshotsArray = Array.from(xmlSnapshotsRef.current.entries())
-        persistCurrentConversation({ snapshots: snapshotsArray })
-    }, [persistCurrentConversation, xmlSnapshotsRef])
+    const persistDiagramVersions = useCallback(() => {
+        persistCurrentConversation({
+            diagramVersions: diagramVersionsRef.current,
+            diagramVersionCursor: diagramVersionCursorRef.current,
+            diagramVersionMarks: diagramVersionMarksRef.current,
+        })
+    }, [persistCurrentConversation])
+
+    const normalizeCursor = (cursor: number, len: number) =>
+        Math.min(Math.max(cursor, -1), len - 1)
+
+    const ensureDiagramVersionForMessage = useCallback(
+        (messageIndex: number, xml: string, note?: string) => {
+            const nextXml = String(xml ?? "")
+            const versions = diagramVersionsRef.current
+            const cursor = diagramVersionCursorRef.current
+
+            const currentXml =
+                cursor >= 0 && cursor < versions.length
+                    ? versions[cursor]?.xml
+                    : ""
+
+            let nextIndex = cursor
+            if (nextXml && nextXml !== currentXml) {
+                const truncated =
+                    cursor >= 0 && cursor < versions.length - 1
+                        ? versions.slice(0, cursor + 1)
+                        : versions.slice()
+
+                const entry: DiagramVersion = {
+                    id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    createdAt: Date.now(),
+                    xml: nextXml,
+                    note,
+                }
+                truncated.push(entry)
+                diagramVersionsRef.current = truncated
+                nextIndex = truncated.length - 1
+                diagramVersionCursorRef.current = nextIndex
+                setDiagramVersions(truncated)
+                setDiagramVersionCursor(nextIndex)
+            }
+
+            diagramVersionMarksRef.current = {
+                ...diagramVersionMarksRef.current,
+                [messageIndex]: nextIndex,
+            }
+            persistDiagramVersions()
+            return nextXml
+        },
+        [persistDiagramVersions],
+    )
+
+    const appendDiagramVersion = useCallback(
+        (xml: string, note?: string) => {
+            const nextXml = String(xml ?? "")
+            if (!nextXml) return
+
+            const versions = diagramVersionsRef.current
+            const cursor = diagramVersionCursorRef.current
+            const currentXml =
+                cursor >= 0 && cursor < versions.length
+                    ? versions[cursor]?.xml
+                    : ""
+            if (nextXml === currentXml) return
+
+            const truncated =
+                cursor >= 0 && cursor < versions.length - 1
+                    ? versions.slice(0, cursor + 1)
+                    : versions.slice()
+
+            const entry: DiagramVersion = {
+                id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                createdAt: Date.now(),
+                xml: nextXml,
+                note,
+            }
+            truncated.push(entry)
+
+            diagramVersionsRef.current = truncated
+            diagramVersionCursorRef.current = truncated.length - 1
+            setDiagramVersions(truncated)
+            setDiagramVersionCursor(diagramVersionCursorRef.current)
+            persistDiagramVersions()
+        },
+        [persistDiagramVersions],
+    )
+
+    const getDiagramXmlForMessage = useCallback((messageIndex: number) => {
+        const idx = diagramVersionMarksRef.current[messageIndex]
+        const versions = diagramVersionsRef.current
+        if (typeof idx !== "number") return ""
+        return idx >= 0 && idx < versions.length ? versions[idx]?.xml || "" : ""
+    }, [])
+
+    const getDiagramVersionIndexForMessage = useCallback(
+        (messageIndex: number) => {
+            const idx = diagramVersionMarksRef.current[messageIndex]
+            return typeof idx === "number" ? idx : -1
+        },
+        [],
+    )
+
+    const getPreviousDiagramXmlBeforeMessage = useCallback(
+        (beforeIndex: number) => {
+            const marks = diagramVersionMarksRef.current
+            const keys = Object.keys(marks)
+                .map((k) => Number(k))
+                .filter((k) => Number.isFinite(k) && k < beforeIndex)
+                .sort((a, b) => b - a)
+            if (keys.length === 0) return ""
+            const idx = marks[keys[0]]
+            const versions = diagramVersionsRef.current
+            return idx >= 0 && idx < versions.length
+                ? versions[idx]?.xml || ""
+                : ""
+        },
+        [],
+    )
+
+    const restoreDiagramVersionIndex = useCallback(
+        (index: number) => {
+            const versions = diagramVersionsRef.current
+            const nextIndex = normalizeCursor(index, versions.length)
+            const entry = versions[nextIndex]
+            if (!entry) return
+            onDisplayChart(entry.xml, true)
+            chartXMLRef.current = entry.xml
+            diagramVersionCursorRef.current = nextIndex
+            setDiagramVersionCursor(nextIndex)
+            persistDiagramVersions()
+        },
+        [chartXMLRef, onDisplayChart, persistDiagramVersions],
+    )
+
+    const truncateDiagramVersionsAfterMessage = useCallback(
+        (messageIndex: number) => {
+            const markIdx = diagramVersionMarksRef.current[messageIndex]
+            if (typeof markIdx !== "number") return
+            const versions = diagramVersionsRef.current
+            const nextVersions =
+                markIdx >= 0 && markIdx < versions.length
+                    ? versions.slice(0, markIdx + 1)
+                    : versions.slice()
+
+            const nextMarks: Record<number, number> = {}
+            for (const [k, v] of Object.entries(
+                diagramVersionMarksRef.current,
+            )) {
+                const mi = Number(k)
+                if (!Number.isFinite(mi)) continue
+                if (
+                    mi <= messageIndex &&
+                    typeof v === "number" &&
+                    v <= markIdx
+                ) {
+                    nextMarks[mi] = v
+                }
+            }
+
+            diagramVersionsRef.current = nextVersions
+            diagramVersionMarksRef.current = nextMarks
+            diagramVersionCursorRef.current = normalizeCursor(
+                Math.min(diagramVersionCursorRef.current, markIdx),
+                nextVersions.length,
+            )
+            setDiagramVersions(nextVersions)
+            setDiagramVersionCursor(diagramVersionCursorRef.current)
+            persistDiagramVersions()
+        },
+        [persistDiagramVersions],
+    )
+
+    const canUndo = diagramVersionCursor > 0
+    const canRedo =
+        diagramVersionCursor >= 0 &&
+        diagramVersionCursor < diagramVersions.length - 1
+
+    const undoDiagram = useCallback(() => {
+        if (!canUndo) return
+        restoreDiagramVersionIndex(diagramVersionCursor - 1)
+    }, [canUndo, diagramVersionCursor, restoreDiagramVersionIndex])
+
+    const redoDiagram = useCallback(() => {
+        if (!canRedo) return
+        restoreDiagramVersionIndex(diagramVersionCursor + 1)
+    }, [canRedo, diagramVersionCursor, restoreDiagramVersionIndex])
 
     const handleNewChat = useCallback(
         (options?: { keepDiagram?: boolean }) => {
@@ -262,6 +532,9 @@ export function useLocalConversations({
                 messages: [],
                 xml: keepDiagram ? currentXml : "",
                 snapshots: [],
+                diagramVersions: [],
+                diagramVersionCursor: -1,
+                diagramVersionMarks: {},
                 sessionId: createSessionId(),
             }
 
@@ -286,7 +559,11 @@ export function useLocalConversations({
                     clearDiagram()
                 }
                 resetFiles()
-                xmlSnapshotsRef.current.clear()
+                diagramVersionsRef.current = []
+                diagramVersionCursorRef.current = -1
+                diagramVersionMarksRef.current = {}
+                setDiagramVersions([])
+                setDiagramVersionCursor(-1)
                 setSessionId(payload.sessionId)
                 setConversations(nextMetas)
                 setCurrentConversationId(id)
@@ -312,7 +589,6 @@ export function useLocalConversations({
             setMessages,
             stopCurrentRequest,
             t,
-            xmlSnapshotsRef,
         ],
     )
 
@@ -361,6 +637,9 @@ export function useLocalConversations({
                             messages: [],
                             xml: "",
                             snapshots: [],
+                            diagramVersions: [],
+                            diagramVersionCursor: -1,
+                            diagramVersionMarks: {},
                             sessionId: createSessionId(),
                         }
                         writeConversationPayloadToStorage(newId, payload)
@@ -463,8 +742,10 @@ export function useLocalConversations({
                 const payload: ConversationPayload = {
                     messages: messagesRef.current as any,
                     xml: chartXMLRef.current || "",
-                    snapshots: Array.from(xmlSnapshotsRef.current.entries()),
                     sessionId,
+                    diagramVersions: diagramVersionsRef.current,
+                    diagramVersionCursor: diagramVersionCursorRef.current,
+                    diagramVersionMarks: diagramVersionMarksRef.current,
                 }
                 writeConversationPayloadToStorage(
                     currentConversationId,
@@ -503,7 +784,6 @@ export function useLocalConversations({
         deriveConversationTitle,
         messagesRef,
         sessionId,
-        xmlSnapshotsRef,
     ])
 
     useEffect(() => {
@@ -528,6 +808,9 @@ export function useLocalConversations({
                     snapshots: legacySnapshots
                         ? JSON.parse(legacySnapshots)
                         : [],
+                    diagramVersions: [],
+                    diagramVersionCursor: -1,
+                    diagramVersionMarks: {},
                     sessionId: legacySession || createSessionId(),
                 }
                 writeConversationPayloadToStorage(id, payload)
@@ -558,6 +841,9 @@ export function useLocalConversations({
                     messages: [],
                     xml: "",
                     snapshots: [],
+                    diagramVersions: [],
+                    diagramVersionCursor: -1,
+                    diagramVersionMarks: {},
                     sessionId: createSessionId(),
                 })
                 setCurrentConversationId(id)
@@ -589,7 +875,19 @@ export function useLocalConversations({
         deriveConversationTitle,
         loadConversation,
         persistCurrentConversation,
-        saveXmlSnapshots,
+        diagramVersions,
+        diagramVersionCursor,
+        canUndo,
+        canRedo,
+        undoDiagram,
+        redoDiagram,
+        restoreDiagramVersionIndex,
+        ensureDiagramVersionForMessage,
+        appendDiagramVersion,
+        getDiagramXmlForMessage,
+        getDiagramVersionIndexForMessage,
+        getPreviousDiagramXmlBeforeMessage,
+        truncateDiagramVersionsAfterMessage,
         handleNewChat,
         handleSelectConversation,
         handleDeleteConversation,

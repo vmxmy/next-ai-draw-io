@@ -29,8 +29,18 @@ export interface ConversationMeta {
 export interface ConversationPayload {
     messages: ChatMessage[]
     xml: string
-    snapshots: [number, string][]
+    snapshots?: [number, string][]
+    diagramVersions?: DiagramVersion[]
+    diagramVersionCursor?: number
+    diagramVersionMarks?: Record<number, number>
     sessionId: string
+}
+
+export interface DiagramVersion {
+    id: string
+    createdAt: number
+    xml: string
+    note?: string
 }
 
 export const createConversationId = () =>
