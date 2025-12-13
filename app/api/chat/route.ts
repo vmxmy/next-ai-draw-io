@@ -29,6 +29,80 @@ import { buildDiagramSummary } from "@/lib/xml-summary"
 
 export const maxDuration = 300
 
+function sanitizeClientOverrides(headers: Headers): {
+    provider: string | null
+    baseUrl: string | null
+    apiKey: string | null
+    modelId: string | null
+} {
+    const allowClientOverrides =
+        process.env.ENABLE_CLIENT_AI_OVERRIDES === "true" ||
+        process.env.NODE_ENV === "development"
+
+    if (!allowClientOverrides) {
+        return { provider: null, baseUrl: null, apiKey: null, modelId: null }
+    }
+
+    const provider = headers.get("x-ai-provider")
+    const baseUrl = headers.get("x-ai-base-url")
+    const apiKey = headers.get("x-ai-api-key")
+    const modelId = headers.get("x-ai-model")
+
+    // KISS：没有 API Key 时不接受任何覆写，避免“强行切 provider 但走服务端默认密钥”的混淆与风险。
+    if (!apiKey) {
+        return { provider: null, baseUrl: null, apiKey: null, modelId: null }
+    }
+
+    const allowlist = (process.env.AI_BASE_URL_ALLOWLIST || "")
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean)
+
+    let sanitizedBaseUrl: string | null = null
+    if (baseUrl && allowlist.length > 0) {
+        try {
+            const url = new URL(baseUrl)
+            const hostname = url.hostname.toLowerCase()
+
+            // 仅允许 https；开发环境下允许 localhost 走 http 便于本地联调
+            const isLocalhost =
+                hostname === "localhost" ||
+                hostname === "127.0.0.1" ||
+                hostname === "::1"
+            const isHttpAllowed =
+                process.env.NODE_ENV === "development" && isLocalhost
+            if (
+                url.protocol !== "https:" &&
+                !(isHttpAllowed && url.protocol === "http:")
+            ) {
+                throw new Error("protocol not allowed")
+            }
+
+            // 基础 SSRF 防护：禁用 localhost/内网后缀；更严格的 DNS/IP 校验需要在网关层实现
+            if (
+                isLocalhost ||
+                hostname.endsWith(".local") ||
+                hostname.endsWith(".internal")
+            ) {
+                throw new Error("hostname not allowed")
+            }
+
+            if (allowlist.includes(hostname)) {
+                sanitizedBaseUrl = url.toString()
+            }
+        } catch {
+            sanitizedBaseUrl = null
+        }
+    }
+
+    return {
+        provider: provider || null,
+        baseUrl: sanitizedBaseUrl,
+        apiKey,
+        modelId: modelId || null,
+    }
+}
+
 // Helper function to validate file parts in messages
 function validateFileParts(messages: any[]): {
     valid: boolean
@@ -276,7 +350,8 @@ async function handleChatRequest(req: Request): Promise<Response> {
         }
     }
 
-    const { messages, xml, previousXml, sessionId } = await req.json()
+    const { messages, xml, previousXml, sessionId, conversationId, requestId } =
+        await req.json()
 
     // Get user IP for Langfuse tracking
     const forwardedFor = req.headers.get("x-forwarded-for")
@@ -286,6 +361,18 @@ async function handleChatRequest(req: Request): Promise<Response> {
     const validSessionId =
         sessionId && typeof sessionId === "string" && sessionId.length <= 200
             ? sessionId
+            : undefined
+
+    const validConversationId =
+        conversationId &&
+        typeof conversationId === "string" &&
+        conversationId.length <= 200
+            ? conversationId
+            : undefined
+
+    const validRequestId =
+        requestId && typeof requestId === "string" && requestId.length <= 200
+            ? requestId
             : undefined
 
     // Extract user input text for Langfuse trace
@@ -324,13 +411,8 @@ async function handleChatRequest(req: Request): Promise<Response> {
     }
     // === CACHE CHECK END ===
 
-    // Read client AI provider overrides from headers
-    const clientOverrides = {
-        provider: req.headers.get("x-ai-provider"),
-        baseUrl: req.headers.get("x-ai-base-url"),
-        apiKey: req.headers.get("x-ai-api-key"),
-        modelId: req.headers.get("x-ai-model"),
-    }
+    // Read and sanitize client AI provider overrides from headers (BYOK)
+    const clientOverrides = sanitizeClientOverrides(req.headers)
 
     // Get AI model with optional client overrides
     const { model, providerOptions, headers, modelId } =
@@ -549,6 +631,8 @@ ${lastMessageText}
         hasClientOverride: !!(
             clientOverrides.provider && clientOverrides.apiKey
         ),
+        conversationId: validConversationId,
+        requestId: validRequestId,
     })
 
     const result = streamText({
@@ -707,6 +791,10 @@ IMPORTANT: Keep edits concise:
                 return {
                     inputTokens: totalInputTokens,
                     outputTokens: usage.outputTokens ?? 0,
+                    ...(validConversationId && {
+                        conversationId: validConversationId,
+                    }),
+                    ...(validRequestId && { requestId: validRequestId }),
                 }
             }
             return undefined

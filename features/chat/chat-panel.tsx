@@ -14,6 +14,7 @@ import { ChatMessageDisplay } from "@/components/chat-message-display"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useI18n } from "@/contexts/i18n-context"
+import { classifyChatError } from "@/features/chat/ai/chat-error"
 import {
     getLastToolErrorName,
     hasToolErrors,
@@ -46,6 +47,31 @@ interface ChatPanelProps {
 
 const DEBUG = process.env.NODE_ENV === "development"
 const MAX_AUTO_RETRY_COUNT = 3
+
+function createRequestId(): string {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+        return crypto.randomUUID()
+    }
+    return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function stripAllFilePartsFromMessages(messages: any[]): {
+    nextMessages: any[]
+    removedCount: number
+} {
+    let removedCount = 0
+    const nextMessages = messages.map((msg) => {
+        const parts = (msg as any)?.parts
+        if (!Array.isArray(parts)) return msg
+
+        const kept = parts.filter((p: any) => p?.type !== "file")
+        removedCount += parts.length - kept.length
+        if (kept.length === parts.length) return msg
+        return { ...msg, parts: kept }
+    })
+
+    return { nextMessages, removedCount }
+}
 
 export default function ChatPanel({
     isVisible,
@@ -107,6 +133,7 @@ export default function ChatPanel({
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
     const [dailyTokenLimit, setDailyTokenLimit] = useState(0)
     const [tpmLimit, setTpmLimit] = useState(0)
+    const [disableImageUpload, setDisableImageUpload] = useState(false)
 
     // Check config on mount
     useEffect(() => {
@@ -149,6 +176,7 @@ export default function ChatPanel({
 
     // Persist processed tool call IDs so collapsing the chat doesn't replay old tool outputs
     const processedToolCallsRef = useRef<Set<string>>(new Set())
+    const activeRequestIdRef = useRef<string | null>(null)
 
     // 登录态（OAuth）
     const { data: authSession, status: authStatus } = useSession()
@@ -386,24 +414,52 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             }
         },
         onError: (error) => {
+            const classified = classifyChatError(error, t)
+            if (classified.kind === "aborted") return
+            activeRequestIdRef.current = null
+
+            const rawMessage =
+                error instanceof Error ? error.message : String(error ?? "")
             // Silence access code error in console since it's handled by UI
-            if (!error.message.includes("Invalid or missing access code")) {
+            if (!rawMessage.includes("Invalid or missing access code")) {
                 console.error("Chat error:", error)
             }
 
-            // Translate technical errors into user-friendly messages
-            // The server now handles detailed error messages, so we can display them directly.
-            // But we still handle connection/network errors that happen before reaching the server.
-            let friendlyMessage = error.message
+            const friendlyMessage = classified.message
 
-            // Simple check for network errors if message is generic
-            if (friendlyMessage === "Failed to fetch") {
-                friendlyMessage = t("toast.networkError")
-            }
+            // 图片输入不支持：自动清理会话中已有的图片 parts，避免后续对话持续失败（用户无法继续）。
+            if (classified.kind === "imageNotSupported") {
+                setDisableImageUpload(true)
 
-            // Translate image not supported error
-            if (friendlyMessage.includes("image content block")) {
-                friendlyMessage = t("toast.imageNotSupported")
+                // 同步移除当前待发送的图片文件（保留 PDF/文本文件）
+                const nonImageFiles = files.filter(
+                    (f) => !f.type.startsWith("image/"),
+                )
+                if (nonImageFiles.length !== files.length) {
+                    void handleFileChange(nonImageFiles)
+                }
+
+                setMessages((currentMessages) => {
+                    const { nextMessages, removedCount } =
+                        stripAllFilePartsFromMessages(currentMessages as any[])
+                    if (removedCount === 0) return currentMessages
+
+                    return [
+                        ...nextMessages,
+                        {
+                            id: `system-remove-images-${Date.now()}`,
+                            role: "system" as const,
+                            content: friendlyMessage,
+                            parts: [
+                                {
+                                    type: "text" as const,
+                                    text: `${friendlyMessage}（已自动从对话中移除 ${removedCount} 张图片，你可以继续发送文字；如需图片分析，请在设置中更换支持图片输入的模型）`,
+                                },
+                            ],
+                        },
+                    ]
+                })
+                return
             }
 
             // Add system message for error so it can be cleared
@@ -417,17 +473,28 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 return [...currentMessages, errorMessage]
             })
 
-            if (error.message.includes("Invalid or missing access code")) {
+            if (rawMessage.includes("Invalid or missing access code")) {
                 // Show settings button and open dialog to help user fix it
                 setAccessCodeRequired(true)
                 setShowSettingsDialog(true)
             }
         },
         onFinish: ({ message }) => {
-            // Track actual token usage from server metadata
             const metadata = message?.metadata as
                 | Record<string, unknown>
                 | undefined
+
+            // 忽略已过期请求（例如切换会话后旧流的 finish 迟到）
+            const requestId = metadata?.requestId
+            if (
+                typeof requestId === "string" &&
+                activeRequestIdRef.current &&
+                requestId !== activeRequestIdRef.current
+            ) {
+                return
+            }
+
+            // Track actual token usage from server metadata
             if (metadata) {
                 // Use Number.isFinite to guard against NaN (typeof NaN === 'number' is true)
                 const inputTokens = Number.isFinite(metadata.inputTokens)
@@ -450,6 +517,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     immediate: true,
                 })
             }
+
+            activeRequestIdRef.current = null
         },
         sendAutomaticallyWhen: ({ messages }) => {
             const chatMessages = messages as unknown as ChatMessage[]
@@ -574,6 +643,15 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     // Update stopRef so onToolCall can access it
     stopRef.current = stop
 
+    const stopCurrentRequest = useCallback(() => {
+        activeRequestIdRef.current = null
+        try {
+            stopRef.current?.()
+        } catch {
+            // ignore
+        }
+    }, [])
+
     // Ref to track latest messages for unload persistence
     const messagesRef = useRef(messages)
     useEffect(() => {
@@ -618,6 +696,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         messagesRef,
         resetFiles,
         queuePushConversation,
+        stopCurrentRequest,
     })
 
     const {
@@ -820,11 +899,19 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             forceDisplayNextRef.current = false
 
             const config = getAIConfig()
+            const requestId = createRequestId()
+            activeRequestIdRef.current = requestId
 
             sendMessage(
                 { parts },
                 {
-                    body: { xml, previousXml, sessionId },
+                    body: {
+                        xml,
+                        previousXml,
+                        sessionId,
+                        conversationId: currentConversationIdRef.current,
+                        requestId,
+                    },
                     headers: {
                         "x-access-code": config.accessCode,
                         ...(config.aiProvider && {
@@ -1049,10 +1136,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 position="bottom-center"
                 richColors
                 expand
-                style={{ position: "absolute" }}
+                style={{ position: "absolute", pointerEvents: "none" }}
                 toastOptions={{
                     style: {
                         maxWidth: "480px",
+                        pointerEvents: "auto",
                     },
                 }}
             />
@@ -1128,6 +1216,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     onToggleHistory={setShowHistory}
                     sessionId={sessionId}
                     error={error}
+                    disableImageUpload={disableImageUpload}
                 />
             </footer>
 

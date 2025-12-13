@@ -28,6 +28,15 @@ type I18nKey =
     | "toast.diagramInvalid"
     | "toast.diagramValidationFailed"
     | "toast.diagramProcessFailed"
+    | "toast.authFailed"
+    | "toast.rateLimited"
+    | "toast.quotaExceeded"
+    | "toast.modelNotFound"
+    | "toast.contextTooLong"
+    | "toast.requestTooLarge"
+    | "toast.providerPolicy"
+    | "toast.upstreamError"
+    | "toast.unknownError"
     | "dialog.history.title"
     | "dialog.history.empty"
     | "dialog.history.restorePrompt"
@@ -192,6 +201,21 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "Diagram validation failed. Please try regenerating.",
         "toast.diagramProcessFailed":
             "Failed to process diagram. Please try regenerating.",
+        "toast.authFailed": "Authentication failed. Please check your API key.",
+        "toast.rateLimited": "Too many requests. Please try again later.",
+        "toast.quotaExceeded":
+            "Insufficient quota or balance. Please check billing/credits.",
+        "toast.modelNotFound":
+            "Model not found or not accessible. Please check the model ID.",
+        "toast.contextTooLong":
+            "Context is too long. Please shorten your input or clear history.",
+        "toast.requestTooLarge":
+            "Request is too large. Please reduce input/files and retry.",
+        "toast.providerPolicy":
+            "Provider policy blocked this request. Please adjust privacy/policy settings (OpenRouter: https://openrouter.ai/settings/privacy) or switch models.",
+        "toast.upstreamError":
+            "Upstream provider error. Please retry or switch model/provider.",
+        "toast.unknownError": "Unexpected error occurred. Please try again.",
         "dialog.history.title": "Diagram History",
         "dialog.history.empty": "No history available yet.",
         "dialog.history.restorePrompt": "Restore to Version {version}?",
@@ -364,6 +388,17 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "toast.diagramInvalid": "AI 生成的 XML 无效，请尝试重新生成。",
         "toast.diagramValidationFailed": "图表校验失败，请尝试重新生成。",
         "toast.diagramProcessFailed": "图表处理失败，请尝试重新生成。",
+        "toast.authFailed": "鉴权失败，请检查并更新 API Key。",
+        "toast.rateLimited": "请求过于频繁，请稍后重试。",
+        "toast.quotaExceeded": "额度不足或余额不足，请检查计费/余额设置。",
+        "toast.modelNotFound": "模型不存在或无权访问，请检查模型 ID/权限。",
+        "toast.contextTooLong":
+            "输入或上下文过长，请缩短内容或清理部分历史记录。",
+        "toast.requestTooLarge": "请求过大，请减少输入内容/文件后重试。",
+        "toast.providerPolicy":
+            "提供商策略限制导致请求被拒绝，请检查隐私/合规设置（OpenRouter：https://openrouter.ai/settings/privacy）或切换模型。",
+        "toast.upstreamError": "模型上游服务异常，请重试或切换模型/Provider。",
+        "toast.unknownError": "发生未知错误，请重试。",
         "dialog.history.title": "图表历史",
         "dialog.history.empty": "暂无历史版本。",
         "dialog.history.restorePrompt": "恢复到版本 {version}？",

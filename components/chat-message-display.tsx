@@ -298,9 +298,13 @@ export function ChatMessageDisplay({
                 const parseError = testDoc.querySelector("parsererror")
 
                 if (parseError) {
-                    console.error(
-                        "[ChatMessageDisplay] Malformed XML detected - skipping update",
-                    )
+                    // 流式 tool input 阶段 XML 可能是不完整的中间态，属于预期情况，避免刷屏报错。
+                    // 仅在最终输出（showToast=true）时才提示为异常。
+                    if (showToast) {
+                        console.error(
+                            "[ChatMessageDisplay] Malformed XML detected - skipping update",
+                        )
+                    }
                     // Only show toast if this is the final XML (not during streaming)
                     if (showToast) {
                         toast.error(t("toast.diagramInvalid"))
@@ -387,15 +391,6 @@ export function ChatMessageDisplay({
                 if (part.type === "tool-display_diagram" && input?.xml) {
                     const xml = input.xml as string
                     if (
-                        state === "input-streaming" ||
-                        state === "input-available"
-                    ) {
-                        diagramUpdates.push({
-                            toolCallId,
-                            xml,
-                            showToast: false,
-                        })
-                    } else if (
                         state === "output-available" &&
                         !processedToolCalls.current.has(toolCallId)
                     ) {

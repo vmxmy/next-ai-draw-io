@@ -24,8 +24,12 @@ import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, MAX_FILES } from "@/lib/limits"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import { FilePreviewList } from "./file-preview-list"
 
-function isValidFileType(file: File): boolean {
-    return file.type.startsWith("image/") || isPdfFile(file) || isTextFile(file)
+function isValidFileType(file: File, allowImages: boolean): boolean {
+    return (
+        (allowImages && file.type.startsWith("image/")) ||
+        isPdfFile(file) ||
+        isTextFile(file)
+    )
 }
 
 function formatFileSize(bytes: number): string {
@@ -51,6 +55,7 @@ interface ValidationResult {
 function validateFiles(
     newFiles: File[],
     existingCount: number,
+    allowImages: boolean,
     t: (key: any, vars?: Record<string, string | number>) => string,
 ): ValidationResult {
     const errors: string[] = []
@@ -68,7 +73,7 @@ function validateFiles(
             errors.push(t("files.onlyMoreAllowed", { count: availableSlots }))
             break
         }
-        if (!isValidFileType(file)) {
+        if (!isValidFileType(file, allowImages)) {
             errors.push(t("files.unsupportedType", { name: file.name }))
             continue
         }
@@ -144,6 +149,7 @@ interface ChatInputProps {
     onToggleHistory?: (show: boolean) => void
     sessionId?: string
     error?: Error | null
+    disableImageUpload?: boolean
 }
 
 export function ChatInput({
@@ -159,6 +165,7 @@ export function ChatInput({
     onToggleHistory = () => {},
     sessionId,
     error = null,
+    disableImageUpload = false,
 }: ChatInputProps) {
     const { t } = useI18n()
     const { diagramHistory, saveDiagramToFile } = useDiagram()
@@ -209,6 +216,10 @@ export function ChatInput({
         )
 
         if (imageItems.length > 0) {
+            if (disableImageUpload) {
+                toast.error(t("toast.imageNotSupported"))
+                return
+            }
             const imageFiles = (
                 await Promise.all(
                     imageItems.map(async (item, index) => {
@@ -226,6 +237,7 @@ export function ChatInput({
             const { validFiles, errors } = validateFiles(
                 imageFiles,
                 files.length,
+                true,
                 t,
             )
             showValidationErrors(errors, t)
@@ -237,7 +249,13 @@ export function ChatInput({
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newFiles = Array.from(e.target.files || [])
-        const { validFiles, errors } = validateFiles(newFiles, files.length, t)
+        const allowImages = !disableImageUpload
+        const { validFiles, errors } = validateFiles(
+            newFiles,
+            files.length,
+            allowImages,
+            t,
+        )
         showValidationErrors(errors, t)
         if (validFiles.length > 0) {
             onFileChange([...files, ...validFiles])
@@ -279,13 +297,15 @@ export function ChatInput({
         if (isDisabled) return
 
         const droppedFiles = e.dataTransfer.files
+        const allowImages = !disableImageUpload
         const supportedFiles = Array.from(droppedFiles).filter((file) =>
-            isValidFileType(file),
+            isValidFileType(file, allowImages),
         )
 
         const { validFiles, errors } = validateFiles(
             supportedFiles,
             files.length,
+            allowImages,
             t,
         )
         showValidationErrors(errors, t)
@@ -417,7 +437,11 @@ export function ChatInput({
                             ref={fileInputRef}
                             className="hidden"
                             onChange={handleFileChange}
-                            accept="image/*,.pdf,application/pdf,text/*,.md,.markdown,.json,.csv,.xml,.yaml,.yml,.toml"
+                            accept={
+                                disableImageUpload
+                                    ? ".pdf,application/pdf,text/*,.md,.markdown,.json,.csv,.xml,.yaml,.yml,.toml"
+                                    : "image/*,.pdf,application/pdf,text/*,.md,.markdown,.json,.csv,.xml,.yaml,.yml,.toml"
+                            }
                             multiple
                             disabled={isDisabled}
                         />
