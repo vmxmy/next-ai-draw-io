@@ -164,6 +164,54 @@ const getMessageTextContent = (message: UIMessage): string => {
         .join("\n")
 }
 
+function extractDrawioXmlFromText(text: string): string | null {
+    const raw = (text || "").trim()
+    if (!raw) return null
+
+    // 优先从 Markdown code fence 中提取（Gemini 常把 XML 放在 ```xml ... ``` 里）
+    const fenceMatches = Array.from(
+        raw.matchAll(/```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n```/g),
+    )
+    const candidates = fenceMatches.length
+        ? fenceMatches.map((m) => (m[1] || "").trim())
+        : [raw]
+
+    const pickXmlSlice = (candidate: string): string | null => {
+        const c = candidate.trim()
+        if (!c) return null
+
+        const mxStart = c.indexOf("<mxfile")
+        const mxEnd = c.lastIndexOf("</mxfile>")
+        if (mxStart !== -1 && mxEnd !== -1 && mxEnd > mxStart) {
+            return c.slice(mxStart, mxEnd + "</mxfile>".length).trim()
+        }
+
+        const rootStart = c.indexOf("<root")
+        const rootEnd = c.lastIndexOf("</root>")
+        if (rootStart !== -1 && rootEnd !== -1 && rootEnd > rootStart) {
+            return c.slice(rootStart, rootEnd + "</root>".length).trim()
+        }
+
+        return null
+    }
+
+    for (const candidate of candidates) {
+        const xml = pickXmlSlice(candidate)
+        if (!xml) continue
+
+        // 保守判断：必须包含 mxCell，且内容占比足够高，避免误把“引用/示例 XML”当成图表结果自动应用
+        if (!xml.includes("<mxCell")) continue
+        if (xml.length < 80) continue
+
+        const ratio = xml.length / Math.max(1, raw.length)
+        if (ratio < 0.6) continue
+
+        return xml
+    }
+
+    return null
+}
+
 // Get only the user's original text, excluding appended file content
 const getUserOriginalText = (message: UIMessage): string => {
     const fullText = getMessageTextContent(message)
@@ -198,6 +246,7 @@ export function ChatMessageDisplay({
     const chartXMLRef = useRef(chartXML)
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const previousXML = useRef<string>("")
+    const processedAssistantXmlMessages = useRef<Set<string>>(new Set())
     const processedToolCalls = processedToolCallsRef
     const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>(
         {},
@@ -388,6 +437,28 @@ export function ChatMessageDisplay({
 
         for (const message of messages) {
             if (!message.parts) continue
+
+            // 兜底：有些模型（常见是 Gemini）会把 XML 直接输出为普通文本，而不走 tool-call。
+            // 这里在 assistant 消息里保守识别 draw.io XML，并自动应用到画布，避免“看起来没触发工具”。
+            if (message.role === "assistant") {
+                const messageId = (message as any)?.id
+                if (
+                    typeof messageId === "string" &&
+                    !processedAssistantXmlMessages.current.has(messageId)
+                ) {
+                    const text = getMessageTextContent(message)
+                    const xml = extractDrawioXmlFromText(text)
+                    if (xml) {
+                        processedAssistantXmlMessages.current.add(messageId)
+                        diagramUpdates.push({
+                            toolCallId: `assistant-xml-${messageId}`,
+                            xml,
+                            showToast: true,
+                        })
+                    }
+                }
+            }
+
             for (const part of message.parts) {
                 if (!part.type?.startsWith("tool-")) continue
                 const toolPart = part as ToolPartLike

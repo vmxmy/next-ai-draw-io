@@ -56,6 +56,32 @@ export function applyDiagramOps(
     try {
         const doc = parseXml(xml)
 
+        const hasHtmlTag = (value: string): boolean => {
+            // 非严格 HTML 检测：用于判断“用户意图是 HTML 文本”
+            // draw.io 常见：<b> <br> <div> <span ...>
+            return /<\/?[a-zA-Z][\w:-]*(\s+[^>]+)?>/.test(value)
+        }
+
+        const decodeCommonEntitiesOnce = (value: string): string => {
+            // 防止模型输出 &lt;b&gt; 这类“已转义 HTML”，再被 escapeXmlAttrValue 二次转义成 &amp;lt;...
+            // 这里做一次保守反转义，仅处理最常见的 4 个实体。
+            return value
+                .replaceAll("&lt;", "<")
+                .replaceAll("&gt;", ">")
+                .replaceAll("&quot;", '"')
+                .replaceAll("&amp;", "&")
+        }
+
+        const ensureHtmlEnabledStyle = (cell: Element): void => {
+            const style = cell.getAttribute("style") || ""
+            if (/(\b|;)html=1\b/.test(style)) return
+            const next =
+                style.endsWith(";") || style.length === 0
+                    ? `${style}html=1;`
+                    : `${style};html=1;`
+            cell.setAttribute("style", next)
+        }
+
         for (const op of ops) {
             if (!op || typeof op !== "object") continue
 
@@ -87,9 +113,34 @@ export function applyDiagramOps(
             if (op.type === "setCellValue") {
                 const cell = findMxCellOrThrow(doc, op.id)
                 const shouldEscape = op.escape !== false
+                const rawValue = String(op.value ?? "")
+
+                const style = cell.getAttribute("style") || ""
+                const htmlEnabled = /(\b|;)html=1\b/.test(style)
+                const htmlIntent =
+                    htmlEnabled ||
+                    hasHtmlTag(rawValue) ||
+                    rawValue.includes("&lt;")
+
+                if (htmlIntent) {
+                    // 确保可渲染 HTML（否则标签会作为字符串显示）
+                    ensureHtmlEnabledStyle(cell)
+                }
+
+                // 统一换行：HTML 模式用 <br>
+                const normalizedValue = htmlIntent
+                    ? rawValue.replaceAll("\r\n", "\n").replaceAll("\n", "<br>")
+                    : rawValue
+
+                // 如果用户/模型给的是“已转义 HTML”，先反转义一次再按 XML attribute 规则转义，
+                // 避免出现 &amp;lt;b&amp;gt; 导致最终显示为字面量。
+                const valueForEscape = htmlIntent
+                    ? decodeCommonEntitiesOnce(normalizedValue)
+                    : normalizedValue
+
                 const nextValue = shouldEscape
-                    ? escapeXmlAttrValue(op.value)
-                    : op.value
+                    ? escapeXmlAttrValue(valueForEscape)
+                    : valueForEscape
                 cell.setAttribute("value", nextValue)
                 continue
             }

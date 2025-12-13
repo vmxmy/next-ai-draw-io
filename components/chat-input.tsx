@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useI18n } from "@/contexts/i18n-context"
+import { buildDefaultDiagramFilename } from "@/lib/export-filename"
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, MAX_FILES } from "@/lib/limits"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import { FilePreviewList } from "./file-preview-list"
@@ -160,6 +161,7 @@ interface ChatInputProps {
     showHistory?: boolean
     onToggleHistory?: (show: boolean) => void
     sessionId?: string
+    conversationTitle?: string
     error?: Error | null
     disableImageUpload?: boolean
 }
@@ -185,6 +187,7 @@ export function ChatInput({
     showHistory = false,
     onToggleHistory = () => {},
     sessionId,
+    conversationTitle,
     error = null,
     disableImageUpload = false,
 }: ChatInputProps) {
@@ -462,9 +465,9 @@ export function ChatInput({
                             onSave={(filename, format) =>
                                 saveDiagramToFile(filename, format, sessionId)
                             }
-                            defaultFilename={`diagram-${new Date()
-                                .toISOString()
-                                .slice(0, 10)}`}
+                            defaultFilename={buildDefaultDiagramFilename({
+                                title: conversationTitle,
+                            })}
                         />
 
                         <ButtonWithTooltip

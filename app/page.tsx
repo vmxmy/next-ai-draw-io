@@ -14,6 +14,11 @@ import {
 } from "@/components/ui/resizable"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useI18n } from "@/contexts/i18n-context"
+import {
+    readConversationMetasFromStorage,
+    readCurrentConversationIdFromStorage,
+} from "@/features/chat/sessions/local-storage"
+import { buildDefaultDiagramFilename } from "@/lib/export-filename"
 
 const drawioBaseUrl =
     process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || "https://embed.diagrams.net"
@@ -35,6 +40,7 @@ export default function Home() {
     const [isLoaded, setIsLoaded] = useState(false)
     const [closeProtection, setCloseProtection] = useState(false)
     const [showDrawioSaveDialog, setShowDrawioSaveDialog] = useState(false)
+    const [exportTitle, setExportTitle] = useState<string>("")
 
     const chatPanelRef = useRef<ImperativePanelHandle>(null)
 
@@ -69,6 +75,18 @@ export default function Home() {
 
         setIsLoaded(true)
     }, [])
+
+    useEffect(() => {
+        if (!showDrawioSaveDialog) return
+        const currentId = readCurrentConversationIdFromStorage()
+        if (!currentId) {
+            setExportTitle("")
+            return
+        }
+        const metas = readConversationMetasFromStorage()
+        const meta = metas.find((m) => m.id === currentId)
+        setExportTitle(meta?.title || "")
+    }, [showDrawioSaveDialog])
 
     const toggleDarkMode = () => {
         const newValue = !darkMode
@@ -237,9 +255,9 @@ export default function Home() {
                 onSave={(filename, format) =>
                     saveDiagramToFile(filename, format)
                 }
-                defaultFilename={`diagram-${new Date()
-                    .toISOString()
-                    .slice(0, 10)}`}
+                defaultFilename={buildDefaultDiagramFilename({
+                    title: exportTitle,
+                })}
             />
         </div>
     )

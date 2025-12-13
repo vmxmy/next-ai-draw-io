@@ -187,6 +187,10 @@ const EXTENDED_ADDITIONS = `
 - 常见用法：
   - setEdgePoints：只修改 edge 的 sourcePoint/targetPoint 坐标
   - setCellValue：修改 mxCell 的 value（默认会转义 & < > "）
+  - ✅ 允许使用 draw.io 可渲染的 HTML 文本（依赖 style 中的 "html=1"）
+    - 必须输出“原始 HTML”（例如 "<b>标题</b><br>第二行"），不要预先写 "&lt;" / "&gt;"
+    - 换行优先用 "<br>"；如果使用 "\\n"，系统会自动转换为 "<br>"
+    - 若目标 cell 目前未启用 HTML（style 缺少 "html=1"），请用 updateCell 给该 cell 的 style 追加 "html=1;"
 
 **Fallback (v1 edits) CRITICAL RULES:**
 - Copy-paste the EXACT search pattern from the "Current diagram XML" in system context

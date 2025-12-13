@@ -1278,6 +1278,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     showHistory={showHistory}
                     onToggleHistory={setShowHistory}
                     sessionId={sessionId}
+                    conversationTitle={getConversationDisplayTitle(
+                        currentConversationId,
+                    )}
                     error={error}
                     disableImageUpload={disableImageUpload}
                 />
