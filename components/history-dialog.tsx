@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,20 +10,24 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import { useDiagram } from "@/contexts/diagram-context"
 import { useI18n } from "@/contexts/i18n-context"
 
 interface HistoryDialogProps {
     showHistory: boolean
     onToggleHistory: (show: boolean) => void
+    versions: Array<{ id: string; createdAt: number; note?: string }>
+    cursor: number
+    onRestore: (index: number) => void
 }
 
 export function HistoryDialog({
     showHistory,
     onToggleHistory,
+    versions,
+    cursor,
+    onRestore,
 }: HistoryDialogProps) {
     const { t } = useI18n()
-    const { restoreHistoryIndex, diagramHistory } = useDiagram()
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
     const handleClose = () => {
@@ -33,10 +36,10 @@ export function HistoryDialog({
     }
 
     const handleConfirmRestore = () => {
-        if (selectedIndex !== null) {
-            restoreHistoryIndex(selectedIndex)
-            handleClose()
-        }
+        const index = selectedIndex ?? cursor
+        if (index < 0) return
+        onRestore(index)
+        handleClose()
     }
 
     return (
@@ -51,62 +54,80 @@ export function HistoryDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {diagramHistory.length === 0 ? (
+                {versions.length === 0 ? (
                     <div className="text-center p-4 text-gray-500">
                         {t("dialog.history.empty")}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
-                        {diagramHistory.map((item, index) => (
-                            <div
-                                key={index}
-                                className={`border rounded-md p-2 cursor-pointer hover:border-primary transition-colors ${
-                                    selectedIndex === index
-                                        ? "border-primary ring-2 ring-primary"
-                                        : ""
-                                }`}
-                                onClick={() => setSelectedIndex(index)}
-                            >
-                                <div className="aspect-video bg-white rounded overflow-hidden flex items-center justify-center">
-                                    <Image
-                                        src={item.svg}
-                                        alt={`Diagram version ${index + 1}`}
-                                        width={200}
-                                        height={100}
-                                        className="object-contain w-full h-full p-1"
-                                    />
-                                </div>
-                                <div className="text-xs text-center mt-1 text-gray-500">
-                                    Version {index + 1}
-                                </div>
-                            </div>
-                        ))}
+                    <div className="py-4 space-y-2">
+                        {versions.map((item, index) => {
+                            const isSelected =
+                                (selectedIndex ?? cursor) === index
+                            return (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    className={`w-full text-left border rounded-md px-3 py-2 hover:border-primary transition-colors ${
+                                        isSelected
+                                            ? "border-primary ring-2 ring-primary"
+                                            : ""
+                                    }`}
+                                    onClick={() => setSelectedIndex(index)}
+                                >
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="text-sm font-medium">
+                                            Version {index + 1}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {new Date(
+                                                item.createdAt,
+                                            ).toLocaleString()}
+                                        </div>
+                                    </div>
+                                    {item.note ? (
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                            {item.note}
+                                        </div>
+                                    ) : null}
+                                </button>
+                            )
+                        })}
                     </div>
                 )}
 
                 <DialogFooter>
+                    <div className="flex-1 text-sm text-muted-foreground">
+                        {selectedIndex !== null
+                            ? t("dialog.history.restorePrompt", {
+                                  version: selectedIndex + 1,
+                              })
+                            : cursor >= 0
+                              ? t("dialog.history.restorePrompt", {
+                                    version: cursor + 1,
+                                })
+                              : ""}
+                    </div>
                     {selectedIndex !== null ? (
-                        <>
-                            <div className="flex-1 text-sm text-muted-foreground">
-                                {t("dialog.history.restorePrompt", {
-                                    version: selectedIndex + 1,
-                                })}
-                            </div>
-                            <Button
-                                variant="outline"
-                                onClick={() => setSelectedIndex(null)}
-                            >
-                                {t("dialog.history.cancel")}
-                            </Button>
-                            <Button onClick={handleConfirmRestore}>
-                                {t("dialog.history.confirm")}
-                            </Button>
-                        </>
+                        <Button
+                            variant="outline"
+                            onClick={() => setSelectedIndex(null)}
+                        >
+                            {t("dialog.history.cancel")}
+                        </Button>
                     ) : (
                         <Button variant="outline" onClick={handleClose}>
                             {t("dialog.history.close")}
                         </Button>
                     )}
+                    <Button
+                        onClick={handleConfirmRestore}
+                        disabled={
+                            versions.length === 0 ||
+                            (selectedIndex === null && cursor < 0)
+                        }
+                    >
+                        {t("dialog.history.confirm")}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

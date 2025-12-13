@@ -21,10 +21,6 @@ import {
     hasToolErrors,
 } from "@/features/chat/ai/tool-errors"
 import type { ChatMessage } from "@/features/chat/ai/types"
-import {
-    extractIdFromSearch,
-    findMxCellLineById,
-} from "@/features/chat/ai/xml-search"
 import { useLocalConversations } from "@/features/chat/sessions/use-local-conversations"
 import { useConversationSync } from "@/features/chat/sync/use-conversation-sync"
 import { ChatHeader } from "@/features/chat/ui/chat-header"
@@ -201,7 +197,6 @@ export default function ChatPanel({
     })
 
     // Store XML snapshots for each user message (keyed by message index)
-    const xmlSnapshotsRef = useRef<Map<number, string>>(new Map())
 
     // Ref to track latest chartXML for use in callbacks (avoids stale closure)
     const chartXMLRef = useRef(chartXML)
@@ -303,6 +298,7 @@ ${xml}
                             "[display_diagram] Success! Adding tool output with state: output-available",
                         )
                     }
+                    appendDiagramVersion(fullXml, "display_diagram")
                     addToolOutput({
                         tool: "display_diagram",
                         toolCallId: toolCall.toolCallId,
@@ -372,6 +368,7 @@ ${xml}
                             return
                         }
 
+                        appendDiagramVersion(applied.xml, "edit_diagram")
                         onExport()
                         addToolOutput({
                             tool: "edit_diagram",
@@ -729,10 +726,22 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         hasRestored,
         getConversationDisplayTitle,
         loadConversation,
-        saveXmlSnapshots,
         handleNewChat,
         handleSelectConversation,
         handleDeleteConversation,
+        diagramVersions,
+        diagramVersionCursor,
+        canUndo,
+        canRedo,
+        undoDiagram,
+        redoDiagram,
+        restoreDiagramVersionIndex,
+        ensureDiagramVersionForMessage,
+        appendDiagramVersion,
+        getDiagramXmlForMessage,
+        getDiagramVersionIndexForMessage,
+        getPreviousDiagramXmlBeforeMessage,
+        truncateDiagramVersionsAfterMessage,
     } = useLocalConversations({
         locale,
         t,
@@ -746,7 +755,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         autoRetryCountRef,
         editFailureCountRef,
         forceDisplayNextRef,
-        xmlSnapshotsRef,
         setMessages,
         messagesRef,
         resetFiles,
@@ -855,19 +863,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 // Add the combined text as the first part
                 parts.unshift({ type: "text", text: userText })
 
-                // Get previous XML from the last snapshot (before this message)
-                const snapshotKeys = Array.from(
-                    xmlSnapshotsRef.current.keys(),
-                ).sort((a, b) => b - a)
-                const previousXml =
-                    snapshotKeys.length > 0
-                        ? xmlSnapshotsRef.current.get(snapshotKeys[0]) || ""
-                        : ""
-
-                // Save XML snapshot for this message (will be at index = current messages.length)
                 const messageIndex = messages.length
-                xmlSnapshotsRef.current.set(messageIndex, chartXml)
-                saveXmlSnapshots()
+                const previousXml =
+                    getPreviousDiagramXmlBeforeMessage(messageIndex)
+                ensureDiagramVersionForMessage(
+                    messageIndex,
+                    chartXml,
+                    "before-send",
+                )
 
                 // Check all quota limits
                 if (!checkAllQuotaLimits()) return
@@ -890,37 +893,6 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     }
 
     // Helper functions for message actions (regenerate/edit)
-    // Extract previous XML snapshot before a given message index
-    const getPreviousXml = useCallback((beforeIndex: number): string => {
-        const snapshotKeys = Array.from(xmlSnapshotsRef.current.keys())
-            .filter((k) => k < beforeIndex)
-            .sort((a, b) => b - a)
-        return snapshotKeys.length > 0
-            ? xmlSnapshotsRef.current.get(snapshotKeys[0]) || ""
-            : ""
-    }, [])
-
-    // Restore diagram from snapshot and update ref
-    const restoreDiagramFromSnapshot = useCallback(
-        (savedXml: string) => {
-            onDisplayChart(savedXml, true) // Skip validation for trusted snapshots
-            chartXMLRef.current = savedXml
-        },
-        [onDisplayChart],
-    )
-
-    // Clean up snapshots after a given message index
-    const cleanupSnapshotsAfter = useCallback(
-        (messageIndex: number) => {
-            for (const key of xmlSnapshotsRef.current.keys()) {
-                if (key > messageIndex) {
-                    xmlSnapshotsRef.current.delete(key)
-                }
-            }
-            saveXmlSnapshots()
-        },
-        [saveXmlSnapshots],
-    )
 
     // Check all quota limits (daily requests, tokens, TPM)
     const checkAllQuotaLimits = useCallback((): boolean => {
@@ -1055,8 +1027,10 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             if (!textPart) return
 
             // Get the saved XML snapshot for this user message
-            const savedXml = xmlSnapshotsRef.current.get(userMessageIndex)
-            if (!savedXml) {
+            const savedXml = getDiagramXmlForMessage(userMessageIndex)
+            const savedVersionIndex =
+                getDiagramVersionIndexForMessage(userMessageIndex)
+            if (!savedXml || savedVersionIndex < 0) {
                 console.error(
                     "No saved XML snapshot for message index:",
                     userMessageIndex,
@@ -1065,11 +1039,12 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             }
 
             // Get previous XML and restore diagram state
-            const previousXml = getPreviousXml(userMessageIndex)
-            restoreDiagramFromSnapshot(savedXml)
+            const previousXml =
+                getPreviousDiagramXmlBeforeMessage(userMessageIndex)
+            restoreDiagramVersionIndex(savedVersionIndex)
 
-            // Clean up snapshots for messages after the user message (they will be removed)
-            cleanupSnapshotsAfter(userMessageIndex)
+            // 清理该消息之后的版本/书签（用户将重写后续对话）
+            truncateDiagramVersionsAfterMessage(userMessageIndex)
 
             // Remove the user message AND assistant message onwards (sendMessage will re-add the user message)
             // Use flushSync to ensure state update is processed synchronously before sending
@@ -1088,14 +1063,16 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         },
         [
             checkAllQuotaLimits,
-            cleanupSnapshotsAfter,
-            getPreviousXml,
+            getDiagramVersionIndexForMessage,
+            getDiagramXmlForMessage,
+            getPreviousDiagramXmlBeforeMessage,
             messagesRef,
-            restoreDiagramFromSnapshot,
+            restoreDiagramVersionIndex,
             sendChatMessage,
             sessionId,
             setMessages,
             status,
+            truncateDiagramVersionsAfterMessage,
         ],
     )
 
@@ -1119,8 +1096,10 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             if (!message || message.role !== "user") return
 
             // Get the saved XML snapshot for this user message
-            const savedXml = xmlSnapshotsRef.current.get(messageIndex)
-            if (!savedXml) {
+            const savedXml = getDiagramXmlForMessage(messageIndex)
+            const savedVersionIndex =
+                getDiagramVersionIndexForMessage(messageIndex)
+            if (!savedXml || savedVersionIndex < 0) {
                 console.error(
                     "No saved XML snapshot for message index:",
                     messageIndex,
@@ -1129,11 +1108,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             }
 
             // Get previous XML and restore diagram state
-            const previousXml = getPreviousXml(messageIndex)
-            restoreDiagramFromSnapshot(savedXml)
+            const previousXml = getPreviousDiagramXmlBeforeMessage(messageIndex)
+            restoreDiagramVersionIndex(savedVersionIndex)
 
-            // Clean up snapshots for messages after the user message (they will be removed)
-            cleanupSnapshotsAfter(messageIndex)
+            // 清理该消息之后的版本/书签（用户将重写后续对话）
+            truncateDiagramVersionsAfterMessage(messageIndex)
 
             // Create new parts with updated text
             const newParts = message.parts?.map((part: any) => {
@@ -1159,14 +1138,16 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         },
         [
             checkAllQuotaLimits,
-            cleanupSnapshotsAfter,
-            getPreviousXml,
+            getDiagramVersionIndexForMessage,
+            getDiagramXmlForMessage,
+            getPreviousDiagramXmlBeforeMessage,
             messages,
-            restoreDiagramFromSnapshot,
+            restoreDiagramVersionIndex,
             sendChatMessage,
             sessionId,
             setMessages,
             status,
+            truncateDiagramVersionsAfterMessage,
         ],
     )
 
@@ -1283,6 +1264,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         }
                     }}
                     onStop={stopCurrentRequest}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
+                    onUndo={undoDiagram}
+                    onRedo={redoDiagram}
+                    historyCount={diagramVersions.length}
+                    historyVersions={diagramVersions}
+                    historyCursor={diagramVersionCursor}
+                    onRestoreHistory={restoreDiagramVersionIndex}
                     files={files}
                     onFileChange={handleFileChange}
                     pdfData={pdfData}

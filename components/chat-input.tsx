@@ -143,6 +143,14 @@ interface ChatInputProps {
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
     onClearChat: (options: { clearDiagram: boolean }) => void
     onStop?: () => void
+    canUndo?: boolean
+    canRedo?: boolean
+    onUndo?: () => void
+    onRedo?: () => void
+    historyCount?: number
+    historyVersions?: Array<{ id: string; createdAt: number; note?: string }>
+    historyCursor?: number
+    onRestoreHistory?: (index: number) => void
     files?: File[]
     onFileChange?: (files: File[]) => void
     pdfData?: Map<
@@ -163,6 +171,14 @@ export function ChatInput({
     onChange,
     onClearChat,
     onStop,
+    canUndo = false,
+    canRedo = false,
+    onUndo,
+    onRedo,
+    historyCount = 0,
+    historyVersions = [],
+    historyCursor = -1,
+    onRestoreHistory,
     files = [],
     onFileChange = () => {},
     pdfData = new Map(),
@@ -173,14 +189,7 @@ export function ChatInput({
     disableImageUpload = false,
 }: ChatInputProps) {
     const { t } = useI18n()
-    const {
-        diagramHistory,
-        saveDiagramToFile,
-        canUndo,
-        canRedo,
-        undoDiagram,
-        redoDiagram,
-    } = useDiagram()
+    const { saveDiagramToFile } = useDiagram()
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [isDragging, setIsDragging] = useState(false)
@@ -391,6 +400,9 @@ export function ChatInput({
                         <HistoryDialog
                             showHistory={showHistory}
                             onToggleHistory={onToggleHistory}
+                            versions={historyVersions}
+                            cursor={historyCursor}
+                            onRestore={(index) => onRestoreHistory?.(index)}
                         />
                     </div>
 
@@ -400,8 +412,8 @@ export function ChatInput({
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={undoDiagram}
-                            disabled={isDisabled || !canUndo}
+                            onClick={onUndo}
+                            disabled={isDisabled || !canUndo || !onUndo}
                             tooltipContent={t("chat.tooltip.undo")}
                             className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                         >
@@ -412,8 +424,8 @@ export function ChatInput({
                             type="button"
                             variant="ghost"
                             size="sm"
-                            onClick={redoDiagram}
-                            disabled={isDisabled || !canRedo}
+                            onClick={onRedo}
+                            disabled={isDisabled || !canRedo || !onRedo}
                             tooltipContent={t("chat.tooltip.redo")}
                             className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                         >
@@ -425,7 +437,7 @@ export function ChatInput({
                             variant="ghost"
                             size="sm"
                             onClick={() => onToggleHistory(true)}
-                            disabled={isDisabled || diagramHistory.length === 0}
+                            disabled={isDisabled || historyCount === 0}
                             tooltipContent={t("chat.tooltip.history")}
                             className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                         >
