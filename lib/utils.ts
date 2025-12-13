@@ -117,6 +117,31 @@ export function wrapWithMxFile(xml: string): string {
         return `<mxfile><diagram name="Page-1" id="page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>`
     }
 
+    // Some models return HTML-escaped XML (e.g. `&lt;root&gt;...`), which draw.io may
+    // misinterpret as base64-encoded diagram content and throw `atob` decoding errors.
+    // Detect and unescape it before further wrapping.
+    if (xml.includes("&lt;") && !xml.includes("<mxfile")) {
+        // Important: DO NOT decode `&amp;` into `&` here, otherwise valid XML entities
+        // (e.g. `&amp;` inside attribute values) become invalid XML.
+        // Also handle the common double-escaped form `&amp;lt;...`.
+        const unescaped = xml
+            .replaceAll("&amp;lt;", "&lt;")
+            .replaceAll("&amp;gt;", "&gt;")
+            .replaceAll("&amp;quot;", "&quot;")
+            .replaceAll("&amp;apos;", "&apos;")
+            .replaceAll("&lt;", "<")
+            .replaceAll("&gt;", ">")
+            .replaceAll("&quot;", '"')
+            .replaceAll("&#34;", '"')
+            .replaceAll("&apos;", "'")
+            .replaceAll("&#39;", "'")
+
+        // Only apply if it now looks like actual draw.io XML fragments
+        if (unescaped.includes("<mxCell") || unescaped.includes("<root")) {
+            xml = unescaped
+        }
+    }
+
     // Already has full structure
     if (xml.includes("<mxfile")) {
         return xml
@@ -577,6 +602,7 @@ export function replaceXMLParts(
  * @returns null if valid, error message string if invalid
  */
 export type MxCellValidationErrorCode =
+    | "HTML_ESCAPED_XML"
     | "PARSE_ERROR"
     | "NESTED_CELL"
     | "DUPLICATE_ID"
@@ -599,6 +625,19 @@ export interface MxCellValidationError {
 export function validateMxCellStructureDetailed(
     xml: string,
 ): MxCellValidationError | null {
+    // Some LLMs return HTML-escaped XML inside the diagram, e.g. `&lt;mxCell ...&gt;`.
+    // draw.io may later treat such content as encoded diagram data and throw `atob` errors.
+    if (
+        xml.includes("&lt;") &&
+        (xml.includes("&lt;mxCell") || xml.includes("&lt;root"))
+    ) {
+        return {
+            code: "HTML_ESCAPED_XML",
+            message: "检测到 HTML 转义的 XML（例如 &lt;mxCell&gt;）。",
+            hint: "请将 &lt; / &gt; / &amp; 等实体反转义为真实 XML 标签后再加载/编辑。",
+        }
+    }
+
     const parser = new DOMParser()
     const doc = parser.parseFromString(xml, "text/xml")
 
