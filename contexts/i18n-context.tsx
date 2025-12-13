@@ -78,8 +78,12 @@ type I18nKey =
     | "settings.aiProvider.baseUrlLabel"
     | "settings.aiProvider.baseUrlPlaceholder"
     | "settings.aiProvider.clear"
+    | "settings.tabs.model"
+    | "settings.tabs.interface"
     | "settings.theme.label"
     | "settings.theme.note"
+    | "settings.themeColor.label"
+    | "settings.themeColor.note"
     | "settings.drawioStyle.label"
     | "settings.drawioStyle.note"
     | "settings.drawioStyle.minimal"
@@ -269,9 +273,14 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.baseUrlPlaceholder":
             "e.g., https://api.example.com/v1",
         "settings.aiProvider.clear": "Clear Settings",
+        "settings.tabs.model": "Model",
+        "settings.tabs.interface": "Interface",
         "settings.theme.label": "Theme",
         "settings.theme.note":
             "Dark/Light mode for interface and DrawIO canvas.",
+        "settings.themeColor.label": "Theme Color",
+        "settings.themeColor.note":
+            "Choose from official shadcn/ui themes. Customize UI colors.",
         "settings.drawioStyle.label": "DrawIO Style",
         "settings.drawioStyle.note": "Canvas style: {style}",
         "settings.drawioStyle.minimal": "Minimal",
@@ -462,8 +471,13 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.baseUrlPlaceholder":
             "例如：https://api.example.com/v1",
         "settings.aiProvider.clear": "清除设置",
+        "settings.tabs.model": "模型配置",
+        "settings.tabs.interface": "界面配置",
         "settings.theme.label": "主题",
         "settings.theme.note": "切换界面与 DrawIO 画布的明暗模式。",
+        "settings.themeColor.label": "主题配色",
+        "settings.themeColor.note":
+            "从 shadcn/ui 官方主题中选择，自定义界面配色。",
         "settings.drawioStyle.label": "DrawIO 样式",
         "settings.drawioStyle.note": "画布风格：{style}",
         "settings.drawioStyle.minimal": "简洁",
