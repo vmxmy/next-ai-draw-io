@@ -40,7 +40,8 @@ parameters: {
 tool name: edit_diagram
 description: Edit specific parts of the EXISTING diagram. Use this when making small targeted changes like adding/removing elements, changing labels, or adjusting properties. This is more efficient than regenerating the entire diagram.
 parameters: {
-  edits: Array<{search: string, replace: string}>
+  ops?: Array<{type: string, ...}>
+  edits?: Array<{search: string, replace: string}>
 }
 ---End of tools---
 
@@ -148,8 +149,13 @@ const EXTENDED_ADDITIONS = `
 2. Every mxCell needs a unique id attribute
 3. Every mxCell (except id="0") needs a valid parent attribute referencing an existing cell
 4. Edge source/target attributes must reference existing cell IDs
-5. Escape special characters in values: &lt; for <, &gt; for >, &amp; for &, &quot; for "
+5. Escape special characters ONLY inside XML attribute values (especially value="..."): &lt; for <, &gt; for >, &amp; for &, &quot; for "
 6. Always start with the two root cells: <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+**CRITICAL (common failure): DO NOT HTML-escape XML tags**
+- ✅ Correct: Use real tags like <mxGraphModel> / <root> / <mxCell> in display_diagram.
+- ❌ Wrong: Sending &lt;mxCell ...&gt; (HTML-escaped tags). This will be rejected or will break later when unescaped.
+- If you need to show literal "<" in the displayed text, escape it inside value="..." (often requires double-escaping, e.g. &amp;lt; and &amp;gt; for code samples).
 
 **Example with swimlanes and edges** (note: all mxCells are siblings under <root>):
 \`\`\`xml
@@ -176,7 +182,13 @@ const EXTENDED_ADDITIONS = `
 
 ### edit_diagram Details
 
-**CRITICAL RULES:**
+**PREFERRED (v2 ops):**
+- 优先使用 ops 做“结构化编辑”，以 mxCell 的 id 为锚点修改节点/连线，不依赖属性顺序与空白
+- 常见用法：
+  - setEdgePoints：只修改 edge 的 sourcePoint/targetPoint 坐标
+  - setCellValue：修改 mxCell 的 value（默认会转义 & < > "）
+
+**Fallback (v1 edits) CRITICAL RULES:**
 - Copy-paste the EXACT search pattern from the "Current diagram XML" in system context
 - Do NOT reorder attributes or reformat - the attribute order in draw.io XML varies and you MUST match it exactly
 - Only include the lines that are changing, plus 1-2 surrounding lines for context if needed
@@ -187,11 +199,9 @@ const EXTENDED_ADDITIONS = `
 **Input Format:**
 \`\`\`json
 {
-  "edits": [
-    {
-      "search": "EXACT lines copied from current XML (preserve attribute order!)",
-      "replace": "Replacement lines"
-    }
+  "ops": [
+    { "type": "setEdgePoints", "id": "37", "targetPoint": { "x": 720, "y": 55 } },
+    { "type": "setCellValue", "id": "2", "value": "新标题", "escape": true }
   ]
 }
 \`\`\`

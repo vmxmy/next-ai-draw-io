@@ -693,8 +693,17 @@ VALIDATION RULES (XML will be rejected if violated):
 2. Every mxCell needs a unique id
 3. Every mxCell (except id="0") needs a valid parent attribute
 4. Edge source/target must reference existing cell IDs
-5. Escape special chars in values: &lt; &gt; &amp; &quot;
+5. Escape special chars ONLY inside attribute values (especially value="..."): &lt; &gt; &amp; &quot;
 6. Always start with: <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+CRITICAL (common failure): DO NOT HTML-escape XML tags
+- ✅ Correct: <mxGraphModel> / <root> / <mxCell>
+- ❌ Wrong: &lt;mxCell ...&gt; (HTML-escaped tags). This will be rejected or will break later when unescaped.
+
+CRITICAL (common failure): Return ONLY raw XML
+- ❌ Don't wrap with Markdown code fences
+- ❌ Don't add trailing characters like ", or extra text after the last >
+- ✅ Output must start with <root> and end with </root> (or full <mxfile>), nothing else.
 
 Example with swimlanes and edges (note: all mxCells are siblings):
 <root>
@@ -728,7 +737,18 @@ Notes:
                 }),
             },
             edit_diagram: {
-                description: `Edit specific parts of the current diagram by replacing exact line matches. Use this tool to make targeted fixes without regenerating the entire XML.
+                description: `Edit specific parts of the current diagram.
+
+PREFERRED (v2): Use structured "ops" with mxCell id anchors. This is much more robust than string matching and avoids failures from attribute order / whitespace / self-closing tag differences.
+
+Fallback (v1): Use "edits" (search/replace exact line matches). Only use when ops can't express the change.
+
+--- v2 ops guidance ---
+- Always target by mxCell id.
+- For simple line moves, change only the coordinates (e.g. setEdgePoints).
+- For text changes, use setCellValue and ensure special chars are escaped (<, >, &, ").
+
+--- v1 edits guidance ---
 CRITICAL: Copy-paste the EXACT search pattern from the "Current diagram XML" in system context. Do NOT reorder attributes or reformat - the attribute order in draw.io XML varies and you MUST match it exactly.
 IMPORTANT: Keep edits concise:
 - COPY the exact mxCell line from the current XML (attribute order matters!)
@@ -738,24 +758,59 @@ IMPORTANT: Keep edits concise:
 - First match only - be specific enough to target the right element
 
 ⚠️ JSON ESCAPING: Every " inside string values MUST be escaped as \\". Example: x=\\"100\\" y=\\"200\\" - BOTH quotes need backslashes!`,
-                inputSchema: z.object({
-                    edits: z
-                        .array(
-                            z.object({
-                                search: z
-                                    .string()
-                                    .describe(
-                                        "EXACT lines copied from current XML (preserve attribute order!)",
-                                    ),
-                                replace: z
-                                    .string()
-                                    .describe("Replacement lines"),
-                            }),
-                        )
-                        .describe(
-                            "Array of search/replace pairs to apply sequentially",
-                        ),
-                }),
+                // 注意：这里刻意“放宽”到 ops/edits 可选，避免模型偶发输出 `{}` 时被服务端 schema 拦截。
+                // 具体缺少 ops/edits 的报错与重试提示由前端 onToolCall 统一返回（output-error），
+                // 这样模型可以在同一轮对话里自我修复并重试。
+                inputSchema: z
+                    .object({
+                        ops: z
+                            .array(
+                                z.discriminatedUnion("type", [
+                                    z.object({
+                                        type: z.literal("setEdgePoints"),
+                                        id: z.string().min(1),
+                                        sourcePoint: z
+                                            .object({
+                                                x: z.number(),
+                                                y: z.number(),
+                                            })
+                                            .optional(),
+                                        targetPoint: z
+                                            .object({
+                                                x: z.number(),
+                                                y: z.number(),
+                                            })
+                                            .optional(),
+                                    }),
+                                    z.object({
+                                        type: z.literal("setCellValue"),
+                                        id: z.string().min(1),
+                                        value: z.string(),
+                                        escape: z.boolean().optional(),
+                                    }),
+                                ]),
+                            )
+                            .optional()
+                            .describe("Structured edit operations (preferred)"),
+                        edits: z
+                            .array(
+                                z.object({
+                                    search: z
+                                        .string()
+                                        .describe(
+                                            "EXACT lines copied from current XML (preserve attribute order!)",
+                                        ),
+                                    replace: z
+                                        .string()
+                                        .describe("Replacement lines"),
+                                }),
+                            )
+                            .optional()
+                            .describe(
+                                "Array of search/replace pairs to apply sequentially",
+                            ),
+                    })
+                    .passthrough(),
             },
             analyze_diagram: {
                 description:

@@ -316,7 +316,8 @@ ${xml}
                 }
             } else if (toolCall.toolName === "edit_diagram") {
                 const { edits } = toolCall.input as {
-                    edits: Array<{ search: string; replace: string }>
+                    edits?: Array<{ search: string; replace: string }>
+                    ops?: any[]
                 }
 
                 let currentXml = ""
@@ -347,6 +348,57 @@ ${xml}
                     const { replaceXMLParts, formatXML } = await import(
                         "@/lib/utils"
                     )
+                    const { applyDiagramOps } = await import(
+                        "@/lib/diagram-ops"
+                    )
+
+                    // v2: Prefer structured ops when provided (more robust than string search/replace)
+                    const ops = Array.isArray((toolCall.input as any)?.ops)
+                        ? ((toolCall.input as any).ops as any[])
+                        : null
+                    if (ops && ops.length > 0) {
+                        const applied = applyDiagramOps(currentXml, ops as any)
+                        if ("error" in applied) {
+                            addToolOutput({
+                                tool: "edit_diagram",
+                                toolCallId: toolCall.toolCallId,
+                                state: "output-error",
+                                errorText: `结构化编辑失败：${applied.error}`,
+                            })
+                            return
+                        }
+
+                        const validationError = onDisplayChart(applied.xml)
+                        if (validationError) {
+                            addToolOutput({
+                                tool: "edit_diagram",
+                                toolCallId: toolCall.toolCallId,
+                                state: "output-error",
+                                errorText: `结构化编辑产生了无效 XML: ${validationError}`,
+                            })
+                            return
+                        }
+
+                        onExport()
+                        addToolOutput({
+                            tool: "edit_diagram",
+                            toolCallId: toolCall.toolCallId,
+                            output: `Successfully applied ${ops.length} structured op(s) to the diagram.`,
+                        })
+                        console.log("[edit_diagram] Success (ops)")
+                        return
+                    }
+
+                    if (!edits || edits.length === 0) {
+                        addToolOutput({
+                            tool: "edit_diagram",
+                            toolCallId: toolCall.toolCallId,
+                            state: "output-error",
+                            errorText:
+                                "edit_diagram 缺少 edits/ops。请提供 ops（推荐）或 edits。",
+                        })
+                        return
+                    }
 
                     // Pattern precheck: ensure each search block exists in current XML
                     const formattedCurrent = formatXML(currentXml)
@@ -1320,7 +1372,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     status={status}
                     onSubmit={onFormSubmit}
                     onChange={handleInputChange}
-                    onClearChat={handleNewChat}
+                    onClearChat={() => handleNewChat()}
                     files={files}
                     onFileChange={handleFileChange}
                     pdfData={pdfData}

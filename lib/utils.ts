@@ -62,6 +62,9 @@ export function formatXML(xml: string, indent: string = "  "): string {
  * @returns A legal XML string with properly closed tags and removed incomplete mxCell elements.
  */
 export function convertToLegalXml(xmlString: string): string {
+    // Replace &nbsp; with &#160; (non-breaking space) as &nbsp; is not valid in standard XML
+    xmlString = xmlString.replace(/&nbsp;/g, "&#160;")
+
     // This regex will match either self-closing <mxCell .../> or a block element
     // <mxCell ...> ... </mxCell>. Unfinished ones are left out because they don't match.
     const regex = /<mxCell\b[^>]*(?:\/>|>([\s\S]*?)<\/mxCell>)/g
@@ -117,24 +120,109 @@ export function wrapWithMxFile(xml: string): string {
         return `<mxfile><diagram name="Page-1" id="page-1"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>`
     }
 
+    function stripInvalidXmlChars(input: string): string {
+        // XML 1.0 disallows most control characters (common invisible LLM artifacts)
+        let out = ""
+        for (const ch of input) {
+            const code = ch.codePointAt(0) ?? 0
+            const isAllowed =
+                code === 0x9 ||
+                code === 0xa ||
+                code === 0xd ||
+                (code >= 0x20 && code <= 0xd7ff) ||
+                (code >= 0xe000 && code <= 0xfffd) ||
+                (code >= 0x10000 && code <= 0x10ffff)
+            if (isAllowed) out += ch
+        }
+        return out
+    }
+
+    function escapeBareAmpersands(input: string): string {
+        // Escape any `&` that isn't the start of a valid entity.
+        return input.replace(
+            /&(?!#\d+;|#x[0-9A-Fa-f]+;|[A-Za-z][A-Za-z0-9]+;)/g,
+            "&amp;",
+        )
+    }
+
+    // 工程兜底：模型有时会把 XML 包在代码块/引号/JSON 片段里，或在末尾带上 `",` 之类的尾巴。
+    // 这些都不是 XML 的一部分，会直接导致 DOMParser 报 parsererror。
+    let candidate = xml.trim()
+    {
+        // 1) 去掉 ```xml ... ``` 围栏
+        const fenced = candidate.match(/^```(?:xml)?\s*([\s\S]*?)\s*```$/i)
+        if (fenced?.[1]) candidate = fenced[1].trim()
+
+        // 2) 去掉一层首尾引号/反引号（常见于 JSON 字符串或日志拼接）
+        if (
+            (candidate.startsWith('"') && candidate.endsWith('"')) ||
+            (candidate.startsWith("'") && candidate.endsWith("'")) ||
+            (candidate.startsWith("`") && candidate.endsWith("`"))
+        ) {
+            candidate = candidate.slice(1, -1).trim()
+        }
+
+        // 3) 常见错误：`</root>",` / `</mxfile>",` —— 去掉尾部 `",` 或 `,`
+        candidate = candidate.replace(/"\s*,\s*$/, "").replace(/,\s*$/, "")
+
+        // 4) 如果前后还有解释性文本，尽量截取出最像 XML 的片段
+        const firstTagIndex = (() => {
+            const lt = candidate.indexOf("<")
+            const escapedLt = candidate.indexOf("&lt;")
+            if (lt === -1) return escapedLt
+            if (escapedLt === -1) return lt
+            return Math.min(lt, escapedLt)
+        })()
+        const lastTagIndex = (() => {
+            const gt = candidate.lastIndexOf(">")
+            const escapedGt = candidate.lastIndexOf("&gt;")
+            if (gt === -1) return escapedGt
+            if (escapedGt === -1) return gt
+            return Math.max(gt, escapedGt)
+        })()
+        if (firstTagIndex > 0 && lastTagIndex > firstTagIndex) {
+            candidate = candidate.slice(firstTagIndex, lastTagIndex + 1).trim()
+        }
+    }
+    xml = escapeBareAmpersands(stripInvalidXmlChars(candidate))
+
+    // 进一步兜底：仅对 mxCell 的 value 属性做“属性值安全化”
+    // - 将 value 中的裸 <、> 转义（XML 里属性值不能直接包含 <）
+    // - 将 value 中的裸 & 转为 &amp;（避免偶发的未转义 &）
+    // 注意：这里不会把 &quot; 解成真实引号，避免破坏属性边界。
+    xml = xml.replace(/value="([^"]*)"/g, (_m, rawValue: string) => {
+        const nextValue = escapeBareAmpersands(rawValue)
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+        return `value="${nextValue}"`
+    })
+
     // Some models return HTML-escaped XML (e.g. `&lt;root&gt;...`), which draw.io may
     // misinterpret as base64-encoded diagram content and throw `atob` decoding errors.
     // Detect and unescape it before further wrapping.
-    if (xml.includes("&lt;") && !xml.includes("<mxfile")) {
-        // Important: DO NOT decode `&amp;` into `&` here, otherwise valid XML entities
-        // (e.g. `&amp;` inside attribute values) become invalid XML.
-        // Also handle the common double-escaped form `&amp;lt;...`.
+    // Fix: Only unescape if it DOES NOT start with `<` (which means it's likely already valid XML)
+    // and DOES start with `&lt;` (or contains escaped root tags), to avoid breaking `value="&lt;br&gt;"`.
+    if (
+        xml.includes("&lt;") &&
+        !xml.includes("<mxfile") &&
+        !xml.trim().startsWith("<") &&
+        (xml.trim().startsWith("&lt;") ||
+            xml.includes("&lt;mxGraphModel") ||
+            xml.includes("&lt;root"))
+    ) {
+        // 重要：这里只“解外层”的标签转义（&lt; / &gt;），不要把 &quot; / &#34; 等解成真实引号，
+        // 否则会把属性值里的 `&quot;提交信息&quot;` 变成 `"... "提交信息" ..."`，导致 XML 语法直接崩。
+        // 同时处理常见的二次转义形式 `&amp;lt;...`。
         const unescaped = xml
             .replaceAll("&amp;lt;", "&lt;")
             .replaceAll("&amp;gt;", "&gt;")
+            // 反转义“实体前缀”的二次转义（注意：这里只把 `&amp;xxx;` 还原为 `&xxx;`，不解码成真实字符）
             .replaceAll("&amp;quot;", "&quot;")
             .replaceAll("&amp;apos;", "&apos;")
+            .replaceAll("&amp;amp;", "&amp;")
+            .replaceAll("&amp;#", "&#")
             .replaceAll("&lt;", "<")
             .replaceAll("&gt;", ">")
-            .replaceAll("&quot;", '"')
-            .replaceAll("&#34;", '"')
-            .replaceAll("&apos;", "'")
-            .replaceAll("&#39;", "'")
 
         // Only apply if it now looks like actual draw.io XML fragments
         if (unescaped.includes("<mxCell") || unescaped.includes("<root")) {
@@ -463,12 +551,16 @@ export function replaceXMLParts(
         // Fifth try: Match by mxCell id attribute
         // Extract id from search pattern and find the element with that id
         if (!matchFound) {
-            const idMatch = search.match(/id="([^"]+)"/)
+            const idMatch = search.match(/id\s*=\s*["']([^"']+)["']/)
             if (idMatch) {
                 const searchId = idMatch[1]
                 // Find lines that contain this id
                 for (let i = startLineNum; i < resultLines.length; i++) {
-                    if (resultLines[i].includes(`id="${searchId}"`)) {
+                    if (
+                        resultLines[i].match(
+                            new RegExp(`id\\s*=\\s*["']${searchId}["']`),
+                        )
+                    ) {
                         // Found the element with matching id
                         // Now find the extent of this element (it might span multiple lines)
                         let endLine = i + 1
@@ -505,16 +597,48 @@ export function replaceXMLParts(
         // Sixth try: Match by value attribute (label text)
         // Extract value from search pattern and find elements with that value
         if (!matchFound) {
-            const valueMatch = search.match(/value="([^"]*)"/)
+            const valueMatch = search.match(/value\s*=\s*["']([^"']*)["']/)
             if (valueMatch) {
-                const searchValue = valueMatch[0] // Use full match like value="text"
+                const searchValue = valueMatch[1] // Use captured group
+                // Helper to unescape basic entities for loose comparison
+                const unescapeEntities = (str: string) =>
+                    str
+                        .replace(/&lt;/g, "<")
+                        .replace(/&gt;/g, ">")
+                        .replace(/&amp;/g, "&")
+                        .replace(/&quot;/g, '"')
+                        .replace(/&apos;/g, "'")
+
+                const unescapedSearchValue = unescapeEntities(searchValue)
+
                 for (let i = startLineNum; i < resultLines.length; i++) {
-                    if (resultLines[i].includes(searchValue)) {
+                    const line = resultLines[i]
+                    // Extract value from current line
+                    const lineValueMatch = line.match(
+                        /value\s*=\s*["']([^"']*)["']/,
+                    )
+
+                    let matches = false
+                    if (lineValueMatch) {
+                        const lineValue = lineValueMatch[1]
+                        // Compare exact or unescaped
+                        if (
+                            lineValue === searchValue ||
+                            unescapeEntities(lineValue) === unescapedSearchValue
+                        ) {
+                            matches = true
+                        }
+                    } else if (line.includes(searchValue)) {
+                        // Fallback to simple inclusion if regex fails (e.g. complexity)
+                        matches = true
+                    }
+
+                    if (matches) {
                         // Found element with matching value
                         let endLine = i + 1
-                        const line = resultLines[i].trim()
+                        const trimmedLine = line.trim()
 
-                        if (!line.endsWith("/>")) {
+                        if (!trimmedLine.endsWith("/>")) {
                             let depth = 1
                             while (endLine < resultLines.length && depth > 0) {
                                 const currentLine = resultLines[endLine].trim()
@@ -643,10 +767,44 @@ export function validateMxCellStructureDetailed(
 
     const parseError = doc.querySelector("parsererror")
     if (parseError) {
+        const detail = (parseError.textContent || "")
+            .trim()
+            .replace(/\s+/g, " ")
+        const hasBareAmp =
+            /&(?!#\d+;|#x[0-9A-Fa-f]+;|[A-Za-z][A-Za-z0-9]+;)/.test(xml)
+        const hasLtInAttr = /\b[a-zA-Z_:][\w:.-]*="[^"]*<[^"]*"/.test(xml)
+        const hasCtrlChar = (() => {
+            for (const ch of xml) {
+                const code = ch.codePointAt(0) ?? 0
+                if (
+                    code < 0x20 &&
+                    code !== 0x9 &&
+                    code !== 0xa &&
+                    code !== 0xd
+                ) {
+                    return true
+                }
+            }
+            return false
+        })()
         return {
             code: "PARSE_ERROR",
             message: 'XML 语法错误（常见原因：属性值中未转义的 <、>、&、"）。',
-            hint: '请转义特殊字符：< 用 &lt;，> 用 &gt;，& 用 &amp;，" 用 &quot;，然后重新生成/编辑。',
+            hint: [
+                '请转义特殊字符：< 用 &lt;，> 用 &gt;，& 用 &amp;，" 用 &quot;，然后重新生成/编辑。',
+                hasBareAmp
+                    ? "检测到未转义的 &（请改为 &amp; 或使用合法实体）。"
+                    : null,
+                hasLtInAttr
+                    ? "检测到属性值中出现裸 <（XML 属性值不能直接包含 <）。"
+                    : null,
+                hasCtrlChar
+                    ? "检测到不可见控制字符（建议移除/重新生成该段文本）。"
+                    : null,
+                detail ? `解析器信息: ${detail.slice(0, 160)}` : null,
+            ]
+                .filter(Boolean)
+                .join(" "),
         }
     }
 
