@@ -50,6 +50,8 @@ interface ToolPartLike {
     state?: string
     input?: { xml?: string; edits?: EditPair[] } & Record<string, unknown>
     output?: string
+    errorText?: string
+    result?: string
 }
 
 function EditDiffDisplay({ edits }: { edits: EditPair[] }) {
@@ -430,9 +432,18 @@ export function ChatMessageDisplay({
 
     const renderToolPart = (part: ToolPartLike) => {
         const callId = part.toolCallId
-        const { state, input, output } = part
+        const { state, input, output, errorText, result } = part
         const isExpanded = expandedTools[callId] ?? true
         const toolName = part.type?.replace("tool-", "")
+
+        const displayOutput =
+            typeof output === "string"
+                ? output
+                : typeof errorText === "string"
+                  ? errorText
+                  : typeof result === "string"
+                    ? result
+                    : ""
 
         const toggleExpanded = () => {
             setExpandedTools((prev) => ({
@@ -514,7 +525,7 @@ export function ChatMessageDisplay({
                         ) : null}
                     </div>
                 )}
-                {output &&
+                {displayOutput &&
                     (state === "output-error" ||
                         toolName === "analyze_diagram") && (
                         <div
@@ -524,7 +535,7 @@ export function ChatMessageDisplay({
                                     : "text-foreground/80"
                             }`}
                         >
-                            {output}
+                            {displayOutput}
                         </div>
                     )}
             </div>

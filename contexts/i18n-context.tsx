@@ -37,6 +37,10 @@ type I18nKey =
     | "toast.providerPolicy"
     | "toast.upstreamError"
     | "toast.unknownError"
+    | "toast.copyDiagnostics"
+    | "toast.openSettings"
+    | "toast.lastFailureLabel"
+    | "toast.autoRetryLimitReachedHint"
     | "dialog.history.title"
     | "dialog.history.empty"
     | "dialog.history.restorePrompt"
@@ -216,6 +220,11 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "toast.upstreamError":
             "Upstream provider error. Please retry or switch model/provider.",
         "toast.unknownError": "Unexpected error occurred. Please try again.",
+        "toast.copyDiagnostics": "Copy diagnostics",
+        "toast.openSettings": "Open settings",
+        "toast.lastFailureLabel": "Last failure:",
+        "toast.autoRetryLimitReachedHint":
+            "Auto-retry is stopped. You can regenerate, copy diagnostics, or adjust settings/model.",
         "dialog.history.title": "Diagram History",
         "dialog.history.empty": "No history available yet.",
         "dialog.history.restorePrompt": "Restore to Version {version}?",
@@ -399,6 +408,11 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "提供商策略限制导致请求被拒绝，请检查隐私/合规设置（OpenRouter：https://openrouter.ai/settings/privacy）或切换模型。",
         "toast.upstreamError": "模型上游服务异常，请重试或切换模型/Provider。",
         "toast.unknownError": "发生未知错误，请重试。",
+        "toast.copyDiagnostics": "复制诊断信息",
+        "toast.openSettings": "打开设置",
+        "toast.lastFailureLabel": "最后失败：",
+        "toast.autoRetryLimitReachedHint":
+            "已停止自动重试。你可以点击“重新生成”再次尝试，或复制诊断信息进行排查，必要时调整模型/设置。",
         "dialog.history.title": "图表历史",
         "dialog.history.empty": "暂无历史版本。",
         "dialog.history.restorePrompt": "恢复到版本 {version}？",

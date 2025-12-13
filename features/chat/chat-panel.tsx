@@ -8,6 +8,7 @@ import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Toaster, toast } from "sonner"
+import { AutoRetryLimitToast } from "@/components/auto-retry-limit-toast"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessageDisplay } from "@/components/chat-message-display"
@@ -53,6 +54,50 @@ function createRequestId(): string {
         return crypto.randomUUID()
     }
     return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function getLastToolErrorSummary(messages: ChatMessage[]): {
+    toolName: string | null
+    summary: string | null
+    fullText: string | null
+} {
+    const lastMessage = messages[messages.length - 1] as any
+    if (!lastMessage || lastMessage.role !== "assistant") {
+        return { toolName: null, summary: null, fullText: null }
+    }
+
+    const toolParts = (lastMessage.parts || []).filter((p: any) =>
+        String(p?.type || "").startsWith("tool-"),
+    )
+    if (toolParts.length === 0) {
+        return { toolName: null, summary: null, fullText: null }
+    }
+
+    let errorPart: any = null
+    for (let i = toolParts.length - 1; i >= 0; i--) {
+        if (toolParts[i]?.state === "output-error") {
+            errorPart = toolParts[i]
+            break
+        }
+    }
+    if (!errorPart) {
+        return { toolName: null, summary: null, fullText: null }
+    }
+
+    const toolName = errorPart.toolName ? String(errorPart.toolName) : null
+    const fullText =
+        typeof errorPart.output === "string"
+            ? errorPart.output
+            : typeof errorPart.errorText === "string"
+              ? errorPart.errorText
+              : typeof errorPart.result === "string"
+                ? errorPart.result
+                : null
+
+    const firstLine = fullText ? String(fullText).split("\n")[0]?.trim() : ""
+    const summary = firstLine ? firstLine.slice(0, 160) : null
+
+    return { toolName, summary, fullText }
 }
 
 function stripAllFilePartsFromMessages(messages: any[]): {
@@ -177,6 +222,7 @@ export default function ChatPanel({
     // Persist processed tool call IDs so collapsing the chat doesn't replay old tool outputs
     const processedToolCallsRef = useRef<Set<string>>(new Set())
     const activeRequestIdRef = useRef<string | null>(null)
+    const retryLastFailedRef = useRef<(() => void) | null>(null)
 
     // 登录态（OAuth）
     const { data: authSession, status: authStatus } = useSession()
@@ -578,7 +624,61 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         `[sendAutomaticallyWhen] Max retry count (${MAX_AUTO_RETRY_COUNT}) reached, stopping`,
                     )
                 }
-                toast.error(t("toast.autoRetryLimitReached"))
+                const { toolName, summary, fullText } =
+                    getLastToolErrorSummary(chatMessages)
+                const detailLines: string[] = []
+                if (toolName) {
+                    detailLines.push(
+                        t("toast.lastFailureLabel") + ` ${toolName}`,
+                    )
+                }
+                if (summary) {
+                    detailLines.push(summary)
+                }
+
+                toast.custom(
+                    (toastId) => (
+                        <AutoRetryLimitToast
+                            title={t("toast.autoRetryLimitReached")}
+                            detail={
+                                detailLines.length > 0
+                                    ? `${detailLines.join("\n")}\n\n${t("toast.autoRetryLimitReachedHint")}`
+                                    : t("toast.autoRetryLimitReachedHint")
+                            }
+                            regenerateLabel={t("chat.tooltip.regenerate")}
+                            copyLabel={t("toast.copyDiagnostics")}
+                            settingsLabel={t("toast.openSettings")}
+                            closeLabel={t("common.close")}
+                            onRegenerate={() => {
+                                toast.dismiss(toastId)
+                                retryLastFailedRef.current?.()
+                            }}
+                            onCopy={() => {
+                                const diagnostic = [
+                                    `[auto-retry] reached limit: ${MAX_AUTO_RETRY_COUNT}`,
+                                    toolName ? `tool=${toolName}` : null,
+                                    fullText ? `error=${fullText}` : null,
+                                ]
+                                    .filter(Boolean)
+                                    .join("\n")
+                                void navigator.clipboard
+                                    .writeText(diagnostic)
+                                    .then(() => {
+                                        toast.success(t("chat.tooltip.copied"))
+                                    })
+                                    .catch(() => {
+                                        toast.error(t("toast.copyFailed"))
+                                    })
+                            }}
+                            onOpenSettings={() => {
+                                toast.dismiss(toastId)
+                                setShowSettingsDialog(true)
+                            }}
+                            onDismiss={() => toast.dismiss(toastId)}
+                        />
+                    ),
+                    { id: "autoRetryLimitReached", duration: 10000 },
+                )
                 if (
                     lastErrorToolName === "edit_diagram" &&
                     !forceDisplayNextRef.current
@@ -979,18 +1079,20 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 status === "streaming" || status === "submitted"
             if (isProcessing) return
 
+            const currentMessages = (messagesRef.current || []) as any[]
+
             // Find the user message before this assistant message
             let userMessageIndex = messageIndex - 1
             while (
                 userMessageIndex >= 0 &&
-                messages[userMessageIndex].role !== "user"
+                currentMessages[userMessageIndex].role !== "user"
             ) {
                 userMessageIndex--
             }
 
             if (userMessageIndex < 0) return
 
-            const userMessage = messages[userMessageIndex]
+            const userMessage = currentMessages[userMessageIndex]
             const userParts = userMessage.parts
 
             // Get the text from the user message
@@ -1016,7 +1118,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
             // Remove the user message AND assistant message onwards (sendMessage will re-add the user message)
             // Use flushSync to ensure state update is processed synchronously before sending
-            const newMessages = messages.slice(0, userMessageIndex)
+            const newMessages = currentMessages.slice(0, userMessageIndex)
             flushSync(() => {
                 setMessages(newMessages)
             })
@@ -1033,7 +1135,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             checkAllQuotaLimits,
             cleanupSnapshotsAfter,
             getPreviousXml,
-            messages,
+            messagesRef,
             restoreDiagramFromSnapshot,
             sendChatMessage,
             sessionId,
@@ -1041,6 +1143,16 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             status,
         ],
     )
+
+    useEffect(() => {
+        retryLastFailedRef.current = () => {
+            const currentMessages = (messagesRef.current || []) as any[]
+            let idx = currentMessages.length - 1
+            while (idx >= 0 && currentMessages[idx]?.role !== "assistant") idx--
+            if (idx < 0) return
+            void handleRegenerate(idx)
+        }
+    }, [handleRegenerate, messagesRef])
 
     const handleEditMessage = useCallback(
         async (messageIndex: number, newText: string) => {
