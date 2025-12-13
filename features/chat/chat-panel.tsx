@@ -726,6 +726,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         hasRestored,
         getConversationDisplayTitle,
         loadConversation,
+        persistCurrentConversation,
         handleNewChat,
         handleSelectConversation,
         handleDeleteConversation,
@@ -787,6 +788,18 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     useEffect(() => {
         currentConversationIdRef.current = currentConversationId
     }, [currentConversationId])
+
+    // Sync chartXML changes to current conversation (fixes manual draw.io edits not syncing)
+    useEffect(() => {
+        if (!currentConversationId || !chartXML) return
+
+        // Debounce to avoid frequent writes during rapid diagram changes
+        const timer = setTimeout(() => {
+            persistCurrentConversation({ xml: chartXML })
+        }, 500)
+
+        return () => clearTimeout(timer)
+    }, [chartXML, currentConversationId, persistCurrentConversation])
 
     useEffect(() => {
         if (messagesEndRef.current) {
