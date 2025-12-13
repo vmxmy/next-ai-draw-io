@@ -252,61 +252,69 @@ export function useLocalConversations({
         persistCurrentConversation({ snapshots: snapshotsArray })
     }, [persistCurrentConversation, xmlSnapshotsRef])
 
-    const handleNewChat = useCallback(() => {
-        const id = createConversationId()
-        const now = Date.now()
-        const payload: ConversationPayload = {
-            messages: [],
-            xml: "",
-            snapshots: [],
-            sessionId: createSessionId(),
-        }
+    const handleNewChat = useCallback(
+        (options?: { keepDiagram?: boolean }) => {
+            const keepDiagram = options?.keepDiagram === true
+            const id = createConversationId()
+            const now = Date.now()
+            const currentXml = chartXMLRef.current || ""
+            const payload: ConversationPayload = {
+                messages: [],
+                xml: keepDiagram ? currentXml : "",
+                snapshots: [],
+                sessionId: createSessionId(),
+            }
 
-        try {
-            stopCurrentRequest?.()
-            flushPersistCurrentConversation()
+            try {
+                stopCurrentRequest?.()
+                flushPersistCurrentConversation()
 
-            writeConversationPayloadToStorage(id, payload)
-            const nextMetas = [
-                {
-                    id,
-                    createdAt: now,
-                    updatedAt: now,
-                } satisfies ConversationMeta,
-                ...conversations,
-            ]
-            writeConversationMetasToStorage(nextMetas)
-            writeCurrentConversationIdToStorage(id)
+                writeConversationPayloadToStorage(id, payload)
+                const nextMetas = [
+                    {
+                        id,
+                        createdAt: now,
+                        updatedAt: now,
+                    } satisfies ConversationMeta,
+                    ...conversations,
+                ]
+                writeConversationMetasToStorage(nextMetas)
+                writeCurrentConversationIdToStorage(id)
 
-            setMessages([])
-            clearDiagram()
-            resetFiles()
-            xmlSnapshotsRef.current.clear()
-            setSessionId(payload.sessionId)
-            setConversations(nextMetas)
-            setCurrentConversationId(id)
+                setMessages([])
+                if (!keepDiagram) {
+                    clearDiagram()
+                }
+                resetFiles()
+                xmlSnapshotsRef.current.clear()
+                setSessionId(payload.sessionId)
+                setConversations(nextMetas)
+                setCurrentConversationId(id)
 
-            queuePushConversation(id, { immediate: true })
-            toast.success(t("toast.startedFreshChat"), {
-                id: "startedFreshChat",
-                duration: 2000,
-            })
-        } catch (error) {
-            console.error("Failed to create new conversation:", error)
-            toast.warning(t("toast.storageUpdateFailed"))
-        }
-    }, [
-        clearDiagram,
-        conversations,
-        persistCurrentConversation,
-        flushPersistCurrentConversation,
-        queuePushConversation,
-        resetFiles,
-        setMessages,
-        stopCurrentRequest,
-        t,
-        xmlSnapshotsRef,
-    ])
+                queuePushConversation(id, { immediate: true })
+                toast.success(t("toast.startedFreshChat"), {
+                    id: "startedFreshChat",
+                    duration: 2000,
+                })
+            } catch (error) {
+                console.error("Failed to create new conversation:", error)
+                toast.warning(t("toast.storageUpdateFailed"))
+            }
+        },
+        [
+            clearDiagram,
+            conversations,
+            chartXMLRef,
+            persistCurrentConversation,
+            flushPersistCurrentConversation,
+            queuePushConversation,
+            resetFiles,
+            setMessages,
+            stopCurrentRequest,
+            t,
+            xmlSnapshotsRef,
+        ],
+    )
 
     const handleSelectConversation = useCallback(
         (id: string) => {

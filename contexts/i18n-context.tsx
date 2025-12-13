@@ -98,6 +98,8 @@ type I18nKey =
     | "chat.tooltip.upload"
     | "chat.send"
     | "chat.sending"
+    | "chat.thinking"
+    | "chat.stop"
     | "examples.title"
     | "examples.subtitle"
     | "examples.quick"
@@ -124,6 +126,7 @@ type I18nKey =
     | "save.filenamePlaceholder"
     | "reset.title"
     | "reset.description"
+    | "reset.clearDiagram"
     | "reset.cancel"
     | "reset.clear"
     | "quota.dismiss"
@@ -286,6 +289,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.upload": "Upload file (image, PDF, text)",
         "chat.send": "Send",
         "chat.sending": "Sending...",
+        "chat.thinking": "Thinking...",
+        "chat.stop": "Stop",
         "examples.title": "Create diagrams with AI",
         "examples.subtitle":
             "Describe what you want to create or upload an image to replicate",
@@ -315,11 +320,12 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "canvas.export": "Export",
         "canvas.exportTooltip": "Export diagram",
         "save.filenamePlaceholder": "Enter filename",
-        "reset.title": "Clear Everything?",
+        "reset.title": "Clear chat?",
         "reset.description":
-            "This will clear the current conversation and reset the diagram. This action cannot be undone.",
+            "This will start a new chat session. You can choose whether to also clear the diagram.",
+        "reset.clearDiagram": "Also clear diagram",
         "reset.cancel": "Cancel",
-        "reset.clear": "Clear Everything",
+        "reset.clear": "Clear",
         "quota.dismiss": "Dismiss",
         "quota.title.request": "Daily Quota Reached",
         "quota.title.token": "Daily Token Limit Reached",
@@ -472,6 +478,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.upload": "上传文件（图片 / PDF / 文本）",
         "chat.send": "发送",
         "chat.sending": "发送中…",
+        "chat.thinking": "思考中…",
+        "chat.stop": "停止",
         "examples.title": "用 AI 创建图表",
         "examples.subtitle": "描述你想创建的内容，或上传图片进行复刻",
         "examples.quick": "快速示例",
@@ -498,10 +506,12 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "canvas.export": "导出",
         "canvas.exportTooltip": "导出图表",
         "save.filenamePlaceholder": "请输入文件名",
-        "reset.title": "确定清空所有内容？",
-        "reset.description": "这会清空当前对话并重置图表，且无法撤销。",
+        "reset.title": "清空对话？",
+        "reset.description":
+            "将开始一个新的对话会话。你可以选择是否同时清空图表画布。",
+        "reset.clearDiagram": "同时清空图表",
         "reset.cancel": "取消",
-        "reset.clear": "清空所有内容",
+        "reset.clear": "清空",
         "quota.dismiss": "关闭",
         "quota.title.request": "已达到每日配额上限",
         "quota.title.token": "已达到每日 Token 上限",

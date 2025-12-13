@@ -6,6 +6,7 @@ import {
     Image as ImageIcon,
     Loader2,
     Send,
+    Square,
     Trash2,
 } from "lucide-react"
 import type React from "react"
@@ -138,7 +139,8 @@ interface ChatInputProps {
     status: "submitted" | "streaming" | "ready" | "error"
     onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
-    onClearChat: () => void
+    onClearChat: (options: { clearDiagram: boolean }) => void
+    onStop?: () => void
     files?: File[]
     onFileChange?: (files: File[]) => void
     pdfData?: Map<
@@ -158,6 +160,7 @@ export function ChatInput({
     onSubmit,
     onChange,
     onClearChat,
+    onStop,
     files = [],
     onFileChange = () => {},
     pdfData = new Map(),
@@ -178,6 +181,7 @@ export function ChatInput({
     // Allow retry when there's an error (even if status is still "streaming" or "submitted")
     const isDisabled =
         (status === "streaming" || status === "submitted") && !error
+    const showStop = isDisabled && typeof onStop === "function"
 
     const adjustTextareaHeight = useCallback(() => {
         const textarea = textareaRef.current
@@ -314,11 +318,6 @@ export function ChatInput({
         }
     }
 
-    const handleClear = () => {
-        onClearChat()
-        setShowClearDialog(false)
-    }
-
     return (
         <form
             onSubmit={onSubmit}
@@ -374,7 +373,10 @@ export function ChatInput({
                         <ResetWarningModal
                             open={showClearDialog}
                             onOpenChange={setShowClearDialog}
-                            onClear={handleClear}
+                            onClear={(options) => {
+                                onClearChat(options)
+                                setShowClearDialog(false)
+                            }}
                         />
 
                         <HistoryDialog
@@ -449,15 +451,29 @@ export function ChatInput({
                         <div className="w-px h-5 bg-border mx-1" />
 
                         <Button
-                            type="submit"
-                            disabled={isDisabled || !input.trim()}
+                            type={showStop ? "button" : "submit"}
+                            variant={showStop ? "destructive" : "default"}
+                            onClick={showStop ? onStop : undefined}
+                            disabled={
+                                !showStop && (isDisabled || !input.trim())
+                            }
                             size="sm"
                             className="h-8 px-4 rounded-xl font-medium shadow-sm"
                             aria-label={
-                                isDisabled ? t("chat.sending") : t("chat.send")
+                                showStop
+                                    ? t("chat.stop")
+                                    : isDisabled
+                                      ? t("chat.sending")
+                                      : t("chat.send")
                             }
                         >
-                            {isDisabled ? (
+                            {showStop ? (
+                                <>
+                                    <Square className="h-4 w-4 mr-1.5" />
+                                    {t("chat.stop")}
+                                    <Loader2 className="h-4 w-4 ml-1.5 animate-spin" />
+                                </>
+                            ) : isDisabled ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                                 <>

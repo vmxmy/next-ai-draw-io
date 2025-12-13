@@ -10,6 +10,7 @@ import {
     Cpu,
     FileCode,
     FileText,
+    Loader2,
     Minus,
     Pencil,
     Plus,
@@ -216,6 +217,12 @@ export function ChatMessageDisplay({
         Record<string, boolean>
     >({})
 
+    const showLoadingBubble =
+        status === "submitted" ||
+        (status === "streaming" &&
+            messages.length > 0 &&
+            messages[messages.length - 1]?.role === "user")
+
     useEffect(() => {
         chartXMLRef.current = chartXML
     }, [chartXML])
@@ -363,7 +370,7 @@ export function ChatMessageDisplay({
         if (messagesEndRef.current) {
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
         }
-    }, [messages])
+    }, [messages, showLoadingBubble])
 
     useEffect(() => {
         if (editingMessageId && editTextareaRef.current) {
@@ -1177,6 +1184,18 @@ export function ChatMessageDisplay({
                             </div>
                         )
                     })}
+                    {showLoadingBubble && (
+                        <div className="flex w-full justify-start animate-message-in">
+                            <div className="max-w-[85%] min-w-0">
+                                <div className="px-4 py-3 text-sm leading-relaxed bg-muted/60 text-foreground rounded-2xl rounded-bl-md flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                    <span className="text-muted-foreground">
+                                        {t("chat.thinking")}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
             <div ref={messagesEndRef} />

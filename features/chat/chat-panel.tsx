@@ -1372,7 +1372,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     status={status}
                     onSubmit={onFormSubmit}
                     onChange={handleInputChange}
-                    onClearChat={() => handleNewChat()}
+                    onClearChat={({ clearDiagram }) => {
+                        if (clearDiagram) {
+                            handleNewChat()
+                        } else {
+                            handleNewChat({ keepDiagram: true })
+                        }
+                    }}
+                    onStop={stopCurrentRequest}
                     files={files}
                     onFileChange={handleFileChange}
                     pdfData={pdfData}
