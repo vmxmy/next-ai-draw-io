@@ -344,13 +344,18 @@ export function useConversationSync({
         }
 
         if (!hasRestored) return
-        if (conversations.length === 0) return
 
         let cancelled = false
 
         const bootstrap = async () => {
             if (syncBootstrappedUserIdRef.current === userId) return
             syncBootstrappedUserIdRef.current = userId
+
+            // 先拉取远端，再推送本地：
+            // - pull 使用的是「事件游标」增量同步；
+            // - 如果先 push，会把游标推进到“最新事件”，导致新设备从 0 开始的首次同步反而拉不到历史远端会话。
+            // KISS：首次启动时多做一次 pull，换取“必能看到云端历史”的确定性。
+            await pullOnceRef.current?.()
 
             const metas = readConversationMetasFromStorage()
             const toPush = metas
