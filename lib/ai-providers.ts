@@ -631,29 +631,18 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
             const baseURL =
                 overrides?.baseUrl || process.env.OPENROUTER_BASE_URL
 
-            // OpenRouter + Gemini：若启用 Gemini 的 thinking（推理块），后续多轮（含工具调用）必须原样回传
-            // reasoning_details（包含 thought_signature），否则会被上游以 400 拒绝。
-            // 为降低集成复杂度，这里默认对 Gemini 模型禁用 thinking，可通过环境变量显式开启：
-            // - OPENROUTER_GEMINI_THINKING=enabled
-            const isGeminiModel = modelId.toLowerCase().includes("gemini")
-            const geminiThinking = (
-                process.env.OPENROUTER_GEMINI_THINKING || "disabled"
-            ).toLowerCase()
-            const disableGeminiThinking =
-                isGeminiModel && geminiThinking !== "enabled"
+            // OpenRouter + Gemini：
+            // 1) 若上游返回 reasoning_details（包含 thought_signature），后续多轮（含工具调用）需要原样回传，
+            //    否则可能被上游以 400 拒绝。
+            // 2) 部分 OpenRouter/Gemini endpoint 会强制要求 reasoning，无法通过请求参数禁用；
+            //    因此这里不再尝试“禁用 reasoning”，避免触发 400。
+            //
+            // 注意：不要在 OpenRouter OpenAI 兼容请求体里注入不被支持的 `google` 字段（包括 provider.google.*），
+            // 否则会触发 “Unrecognized key: google”。
 
             const openrouter = createOpenRouter({
                 apiKey,
                 ...(baseURL && { baseURL }),
-                ...(disableGeminiThinking && {
-                    extraBody: {
-                        provider: {
-                            google: {
-                                thinking: { type: "disabled" },
-                            },
-                        },
-                    },
-                }),
             })
             model = openrouter(modelId)
             break

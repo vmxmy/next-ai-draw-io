@@ -369,6 +369,81 @@ function preserveOpenRouterReasoningDetails(messages: any[]): any[] {
     })
 }
 
+function stripOpenRouterGeminiToolCallsMissingThoughtSignature(
+    messages: any[],
+): any[] {
+    // OpenRouter 转发 Gemini 时，如果历史里包含 tool/function 调用，
+    // 上游（Google）可能要求每个 functionCall 都带 thought_signature。
+    // 中途切换模型时，历史 tool-call 常来自 Claude/OpenAI 等，不可能带该签名；
+    // 这会导致 400（missing thought_signature）。
+    //
+    // 保守策略：仅剥离“缺少签名”的 tool-call part，随后由 sanitizeGoogleToolCallingHistory
+    // 清理孤儿 tool 响应，避免整个请求被拒绝。
+
+    const hasThoughtSignature = (details: any): boolean => {
+        if (!Array.isArray(details) || details.length === 0) return false
+        for (const entry of details) {
+            if (!entry) continue
+            if (typeof entry === "string") {
+                if (
+                    entry.includes("thought_signature") ||
+                    entry.includes("thoughtSignature")
+                ) {
+                    return true
+                }
+                continue
+            }
+            if (typeof entry === "object") {
+                if (
+                    "thought_signature" in (entry as any) ||
+                    "thoughtSignature" in (entry as any)
+                ) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    const getDetails = (msg: any, part: any): any => {
+        return (
+            part?.providerOptions?.openrouter?.reasoning_details ??
+            part?.providerMetadata?.openrouter?.reasoning_details ??
+            msg?.providerOptions?.openrouter?.reasoning_details ??
+            msg?.providerMetadata?.openrouter?.reasoning_details ??
+            null
+        )
+    }
+
+    let strippedCount = 0
+    const next = messages.map((msg) => {
+        if (!msg || msg.role !== "assistant" || !Array.isArray(msg.content)) {
+            return msg
+        }
+        const filtered = msg.content.filter((part: any) => {
+            const isToolCall =
+                part?.type === "tool-call" || part?.type === "function-call"
+            if (!isToolCall) return true
+
+            const details = getDetails(msg, part)
+            const ok = hasThoughtSignature(details)
+            if (!ok) strippedCount++
+            return ok
+        })
+        return filtered.length === msg.content.length
+            ? msg
+            : { ...msg, content: filtered }
+    })
+
+    if (strippedCount > 0) {
+        console.warn(
+            `[OpenRouter/Gemini] Stripped ${strippedCount} historical tool-call parts missing thought_signature to avoid 400`,
+        )
+    }
+
+    return next
+}
+
 // Helper function to create cached stream response
 function createCachedStreamResponse(xml: string): Response {
     const toolCallId = `cached-${Date.now()}`
@@ -676,11 +751,19 @@ ${lastMessageText}
     const providerForSanitize =
         clientOverrides.provider || process.env.AI_PROVIDER || null
     const isGeminiModel = modelId.toLowerCase().includes("gemini")
-
-    const preservedMessages =
+    const isOpenRouterGemini =
         providerForSanitize === "openrouter" && isGeminiModel
-            ? preserveOpenRouterReasoningDetails(windowedMessages)
-            : windowedMessages
+
+    const preservedMessages = (() => {
+        if (isOpenRouterGemini) {
+            const withDetails =
+                preserveOpenRouterReasoningDetails(windowedMessages)
+            return stripOpenRouterGeminiToolCallsMissingThoughtSignature(
+                withDetails,
+            )
+        }
+        return windowedMessages
+    })()
 
     const finalMessages =
         providerForSanitize === "google" || isGeminiModel
@@ -813,6 +896,10 @@ Use structured "ops" with mxCell id anchors. This is robust and avoids failures 
 - Always target by mxCell id.
 - For simple line moves, change only the coordinates (e.g. setEdgePoints).
 - For text changes, use setCellValue (or updateCell) and ensure special chars are escaped (<, >, &, ").
+- HTML labels are supported by draw.io when the target cell style includes "html=1".
+  - Provide RAW HTML in the "value" field (e.g. "<b>Title</b><br>Line 2"); do NOT pre-escape as "&lt;b&gt;".
+  - Prefer "<br>" for line breaks (if you use "\\n", it will be converted to "<br>").
+  - If the target cell does not render HTML, use updateCell to append "html=1;" to its style.
 - For adding elements, ensure you provide a unique id and valid parent id (usually "1").
 
 ⚠️ JSON ESCAPING: Every " inside string values MUST be escaped as \\". Example: x=\\"100\\" y=\\"200\\" - BOTH quotes need backslashes!`,
@@ -901,7 +988,10 @@ Use structured "ops" with mxCell id anchors. This is robust and avoids failures 
     })
 
     return result.toUIMessageStreamResponse({
-        sendReasoning: true,
+        // 部分 Gemini 模型会输出大量 reasoning；同时 OpenRouter/Gemini 的 reasoning 还涉及
+        // thought_signature 透传（用于 tool-call）。即便上游强制 reasoning，这里也可以选择
+        // 不把 reasoning 发给前端，从 UI 体验上“默认不显示 thinking”。
+        sendReasoning: !isOpenRouterGemini,
         messageMetadata: ({ part }) => {
             if (part.type === "finish") {
                 const usage = (part as any).totalUsage
