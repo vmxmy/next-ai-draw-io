@@ -1,6 +1,7 @@
 "use client"
 
-import { ChevronDown, Moon, Search, Sun } from "lucide-react"
+import { ChevronDown, Cloud, Moon, Search, Sun } from "lucide-react"
+import { useSession } from "next-auth/react"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { useI18n } from "@/contexts/i18n-context"
+import { api } from "@/lib/trpc/client"
 
 interface ModelOption {
     id: string
@@ -62,6 +64,7 @@ export function SettingsDialog({
     onToggleDarkMode,
 }: SettingsDialogProps) {
     const { t, locale, setLocale } = useI18n()
+    const { data: session } = useSession()
     const [accessCode, setAccessCode] = useState("")
     const [closeProtection, setCloseProtection] = useState(true)
     const [isVerifying, setIsVerifying] = useState(false)
@@ -76,6 +79,14 @@ export function SettingsDialog({
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
     const [isLoadingModels, setIsLoadingModels] = useState(false)
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+    const [cloudApiKeyPreview, setCloudApiKeyPreview] = useState<
+        string | undefined
+    >()
+
+    // TRPC mutations and utils
+    const utils = api.useUtils()
+    const upsertConfigMutation = api.providerConfig.upsert.useMutation()
+    const deleteConfigMutation = api.providerConfig.delete.useMutation()
 
     useEffect(() => {
         // Only fetch if not cached in localStorage
@@ -112,13 +123,23 @@ export function SettingsDialog({
             // Default to true if not set
             setCloseProtection(storedCloseProtection !== "false")
 
-            // Load AI provider settings
-            setProvider(localStorage.getItem(STORAGE_AI_PROVIDER_KEY) || "")
-            setBaseUrl(localStorage.getItem(STORAGE_AI_BASE_URL_KEY) || "")
-            setApiKey(localStorage.getItem(STORAGE_AI_API_KEY_KEY) || "")
-            setModelId(localStorage.getItem(STORAGE_AI_MODEL_KEY) || "")
+            // Load AI provider settings from localStorage (local priority)
+            const localProvider =
+                localStorage.getItem(STORAGE_AI_PROVIDER_KEY) || ""
+            const localBaseUrl =
+                localStorage.getItem(STORAGE_AI_BASE_URL_KEY) || ""
+            const localApiKey =
+                localStorage.getItem(STORAGE_AI_API_KEY_KEY) || ""
+            const localModelId =
+                localStorage.getItem(STORAGE_AI_MODEL_KEY) || ""
+
+            setProvider(localProvider)
+            setBaseUrl(localBaseUrl)
+            setApiKey(localApiKey)
+            setModelId(localModelId)
 
             setError("")
+            setCloudApiKeyPreview(undefined)
         }
     }, [open])
 
@@ -267,7 +288,7 @@ export function SettingsDialog({
                                 </Label>
                                 <Select
                                     value={provider || "default"}
-                                    onValueChange={(value) => {
+                                    onValueChange={async (value) => {
                                         const actualValue =
                                             value === "default" ? "" : value
                                         setProvider(actualValue)
@@ -275,6 +296,60 @@ export function SettingsDialog({
                                             STORAGE_AI_PROVIDER_KEY,
                                             actualValue,
                                         )
+
+                                        // Load cloud config if available
+                                        setCloudApiKeyPreview(undefined)
+                                        if (session?.user && actualValue) {
+                                            try {
+                                                const cloudConfig =
+                                                    await utils.providerConfig.get.fetch(
+                                                        {
+                                                            provider:
+                                                                actualValue as any,
+                                                        },
+                                                    )
+                                                if (cloudConfig) {
+                                                    // Auto-fill from cloud if local is empty
+                                                    if (
+                                                        !baseUrl &&
+                                                        cloudConfig.baseUrl
+                                                    ) {
+                                                        setBaseUrl(
+                                                            cloudConfig.baseUrl,
+                                                        )
+                                                        localStorage.setItem(
+                                                            STORAGE_AI_BASE_URL_KEY,
+                                                            cloudConfig.baseUrl,
+                                                        )
+                                                    }
+                                                    if (
+                                                        !modelId &&
+                                                        cloudConfig.modelId
+                                                    ) {
+                                                        setModelId(
+                                                            cloudConfig.modelId,
+                                                        )
+                                                        localStorage.setItem(
+                                                            STORAGE_AI_MODEL_KEY,
+                                                            cloudConfig.modelId,
+                                                        )
+                                                    }
+                                                    if (
+                                                        cloudConfig.hasApiKey &&
+                                                        cloudConfig.apiKeyPreview
+                                                    ) {
+                                                        setCloudApiKeyPreview(
+                                                            cloudConfig.apiKeyPreview,
+                                                        )
+                                                    }
+                                                }
+                                            } catch (error) {
+                                                console.error(
+                                                    "Failed to load cloud config:",
+                                                    error,
+                                                )
+                                            }
+                                        }
                                     }}
                                 >
                                     <SelectTrigger id="ai-provider">
@@ -489,17 +564,53 @@ export function SettingsDialog({
                                             type="password"
                                             value={apiKey}
                                             onChange={(e) => {
-                                                setApiKey(e.target.value)
+                                                const value = e.target.value
+                                                setApiKey(value)
                                                 localStorage.setItem(
                                                     STORAGE_AI_API_KEY_KEY,
-                                                    e.target.value,
+                                                    value,
                                                 )
+
+                                                // Sync to cloud if logged in
+                                                if (session?.user && provider) {
+                                                    upsertConfigMutation.mutate(
+                                                        {
+                                                            provider:
+                                                                provider as any,
+                                                            apiKey:
+                                                                value ||
+                                                                undefined,
+                                                            baseUrl:
+                                                                baseUrl ||
+                                                                undefined,
+                                                            modelId:
+                                                                modelId ||
+                                                                undefined,
+                                                        },
+                                                        {
+                                                            onSuccess: () => {
+                                                                setCloudApiKeyPreview(
+                                                                    undefined,
+                                                                )
+                                                            },
+                                                        },
+                                                    )
+                                                }
                                             }}
                                             placeholder={t(
                                                 "settings.aiProvider.apiKeyPlaceholder",
                                             )}
                                             autoComplete="off"
                                         />
+                                        {session?.user &&
+                                            cloudApiKeyPreview &&
+                                            !apiKey && (
+                                                <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
+                                                    <Cloud className="h-3 w-3" />
+                                                    Cloud saved:{" "}
+                                                    {cloudApiKeyPreview}
+                                                </p>
+                                            )}
                                         <p className="text-[0.8rem] text-muted-foreground">
                                             {t(
                                                 "settings.aiProvider.overrides",
@@ -562,6 +673,7 @@ export function SettingsDialog({
                                         size="sm"
                                         className="w-full"
                                         onClick={() => {
+                                            // Clear local storage
                                             localStorage.removeItem(
                                                 STORAGE_AI_PROVIDER_KEY,
                                             )
@@ -578,9 +690,38 @@ export function SettingsDialog({
                                             setBaseUrl("")
                                             setApiKey("")
                                             setModelId("")
+                                            setCloudApiKeyPreview(undefined)
+
+                                            // Delete from cloud if logged in
+                                            if (session?.user && provider) {
+                                                deleteConfigMutation.mutate(
+                                                    {
+                                                        provider:
+                                                            provider as any,
+                                                    },
+                                                    {
+                                                        onSuccess: () => {
+                                                            console.log(
+                                                                "[settings] Cloud config cleared for provider:",
+                                                                provider,
+                                                            )
+                                                        },
+                                                        onError: (error) => {
+                                                            console.error(
+                                                                "[settings] Failed to clear cloud config:",
+                                                                error,
+                                                            )
+                                                        },
+                                                    },
+                                                )
+                                            }
                                         }}
                                     >
                                         {t("settings.aiProvider.clear")}
+                                        {session?.user &&
+                                            deleteConfigMutation.isPending && (
+                                                <Cloud className="ml-2 h-3 w-3 animate-pulse" />
+                                            )}
                                     </Button>
                                 </>
                             )}

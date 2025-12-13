@@ -18,6 +18,7 @@ import {
     readConversationMetasFromStorage,
     readCurrentConversationIdFromStorage,
 } from "@/features/chat/sessions/local-storage"
+import { useProviderMigration } from "@/hooks/use-provider-migration"
 import { buildDefaultDiagramFilename } from "@/lib/export-filename"
 
 const drawioBaseUrl =
@@ -43,6 +44,9 @@ export default function Home() {
     const [exportTitle, setExportTitle] = useState<string>("")
 
     const chatPanelRef = useRef<ImperativePanelHandle>(null)
+
+    // Auto-migrate local provider config to cloud on first login
+    useProviderMigration()
 
     // Load preferences from localStorage after mount
     useEffect(() => {
@@ -186,8 +190,14 @@ export default function Home() {
                                 <DrawIoEmbed
                                     key={`${drawioUi}-${darkMode}`}
                                     ref={drawioRef}
+                                    autosave={true}
                                     onExport={handleDiagramExport}
                                     onLoad={onDrawioLoad}
+                                    onAutoSave={(data) => {
+                                        if (data?.xml) {
+                                            syncDiagramXml(data.xml)
+                                        }
+                                    }}
                                     onSave={(data) => {
                                         if (data?.xml) {
                                             syncDiagramXml(data.xml)

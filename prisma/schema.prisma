@@ -18,7 +18,8 @@ model User {
   accounts      Account[]
   sessions      Session[]
 
-  conversations Conversation[]
+  conversations   Conversation[]
+  providerConfigs ProviderConfig[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -96,4 +97,44 @@ model SyncEvent {
 
   @@index([userId, id])
   @@index([userId, conversationId, id])
+}
+
+// 匿名用户（按 IP）限额计数器：用于服务端强制限流，避免仅依赖 localStorage 被绕过。
+model AnonymousRateLimit {
+  ipHash     String
+  bucketType String // day-requests | day-tokens | minute-tokens
+  bucketKey  String // 例如：2025-12-13 或 29279312(分钟桶)
+  count      BigInt @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([ipHash, bucketType, bucketKey])
+  @@index([bucketType, bucketKey])
+  @@index([ipHash, updatedAt])
+}
+
+// AI Provider 配置（用户自定义连接信息，支持 BYOK 云端同步）
+model ProviderConfig {
+  userId String
+  // 支持: bedrock, openai, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow
+  provider String
+
+  // AES-256-GCM 加密存储的 API Key
+  encryptedApiKey String?
+  // 加密向量（Initialization Vector）
+  encryptionIv    String?
+  // 认证标签（Authentication Tag，用于 AES-GCM 完整性验证）
+  authTag         String?
+
+  // 可选配置
+  baseUrl String?
+  modelId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId])
 }
