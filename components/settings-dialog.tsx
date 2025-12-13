@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronDown, Cloud, Moon, Search, Sun } from "lucide-react"
+import { ChevronDown, Cloud, HardDrive, Moon, Search, Sun } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -82,6 +82,8 @@ export function SettingsDialog({
     const [cloudApiKeyPreview, setCloudApiKeyPreview] = useState<
         string | undefined
     >()
+    const [cloudBaseUrl, setCloudBaseUrl] = useState<string | undefined>()
+    const [cloudModelId, setCloudModelId] = useState<string | undefined>()
 
     // TRPC mutations and utils
     const utils = api.useUtils()
@@ -140,6 +142,8 @@ export function SettingsDialog({
 
             setError("")
             setCloudApiKeyPreview(undefined)
+            setCloudBaseUrl(undefined)
+            setCloudModelId(undefined)
         }
     }, [open])
 
@@ -299,6 +303,8 @@ export function SettingsDialog({
 
                                         // Load cloud config if available
                                         setCloudApiKeyPreview(undefined)
+                                        setCloudBaseUrl(undefined)
+                                        setCloudModelId(undefined)
                                         if (session?.user && actualValue) {
                                             try {
                                                 const cloudConfig =
@@ -309,6 +315,26 @@ export function SettingsDialog({
                                                         },
                                                     )
                                                 if (cloudConfig) {
+                                                    // Save cloud config for source indicators
+                                                    if (cloudConfig.baseUrl) {
+                                                        setCloudBaseUrl(
+                                                            cloudConfig.baseUrl,
+                                                        )
+                                                    }
+                                                    if (cloudConfig.modelId) {
+                                                        setCloudModelId(
+                                                            cloudConfig.modelId,
+                                                        )
+                                                    }
+                                                    if (
+                                                        cloudConfig.hasApiKey &&
+                                                        cloudConfig.apiKeyPreview
+                                                    ) {
+                                                        setCloudApiKeyPreview(
+                                                            cloudConfig.apiKeyPreview,
+                                                        )
+                                                    }
+
                                                     // Auto-fill from cloud if local is empty
                                                     if (
                                                         !baseUrl &&
@@ -332,14 +358,6 @@ export function SettingsDialog({
                                                         localStorage.setItem(
                                                             STORAGE_AI_MODEL_KEY,
                                                             cloudConfig.modelId,
-                                                        )
-                                                    }
-                                                    if (
-                                                        cloudConfig.hasApiKey &&
-                                                        cloudConfig.apiKeyPreview
-                                                    ) {
-                                                        setCloudApiKeyPreview(
-                                                            cloudConfig.apiKeyPreview,
                                                         )
                                                     }
                                                 }
@@ -534,6 +552,22 @@ export function SettingsDialog({
                                                     </div>
                                                 )}
                                         </div>
+                                        {session?.user && (
+                                            <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
+                                                {modelId ? (
+                                                    <>
+                                                        <HardDrive className="h-3 w-3" />
+                                                        Using local config
+                                                    </>
+                                                ) : cloudModelId ? (
+                                                    <>
+                                                        <Cloud className="h-3 w-3" />
+                                                        Using cloud default:{" "}
+                                                        {cloudModelId}
+                                                    </>
+                                                ) : null}
+                                            </p>
+                                        )}
                                         <p className="text-[0.8rem] text-muted-foreground">
                                             {isLoadingModels
                                                 ? t(
@@ -602,15 +636,22 @@ export function SettingsDialog({
                                             )}
                                             autoComplete="off"
                                         />
-                                        {session?.user &&
-                                            cloudApiKeyPreview &&
-                                            !apiKey && (
-                                                <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
-                                                    <Cloud className="h-3 w-3" />
-                                                    Cloud saved:{" "}
-                                                    {cloudApiKeyPreview}
-                                                </p>
-                                            )}
+                                        {session?.user && (
+                                            <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
+                                                {apiKey ? (
+                                                    <>
+                                                        <HardDrive className="h-3 w-3" />
+                                                        Using local API key
+                                                    </>
+                                                ) : cloudApiKeyPreview ? (
+                                                    <>
+                                                        <Cloud className="h-3 w-3" />
+                                                        Using cloud saved key:{" "}
+                                                        {cloudApiKeyPreview}
+                                                    </>
+                                                ) : null}
+                                            </p>
+                                        )}
                                         <p className="text-[0.8rem] text-muted-foreground">
                                             {t(
                                                 "settings.aiProvider.overrides",
@@ -667,6 +708,22 @@ export function SettingsDialog({
                                                         )
                                             }
                                         />
+                                        {session?.user && (
+                                            <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
+                                                {baseUrl ? (
+                                                    <>
+                                                        <HardDrive className="h-3 w-3" />
+                                                        Using local config
+                                                    </>
+                                                ) : cloudBaseUrl ? (
+                                                    <>
+                                                        <Cloud className="h-3 w-3" />
+                                                        Using cloud default:{" "}
+                                                        {cloudBaseUrl}
+                                                    </>
+                                                ) : null}
+                                            </p>
+                                        )}
                                     </div>
                                     <Button
                                         variant="outline"
@@ -691,6 +748,8 @@ export function SettingsDialog({
                                             setApiKey("")
                                             setModelId("")
                                             setCloudApiKeyPreview(undefined)
+                                            setCloudBaseUrl(undefined)
+                                            setCloudModelId(undefined)
 
                                             // Delete from cloud if logged in
                                             if (session?.user && provider) {
