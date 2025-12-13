@@ -49,6 +49,7 @@ export function useLocalConversations({
     messagesRef,
     resetFiles,
     queuePushConversation,
+    stopCurrentRequest,
 }: {
     locale: string
     t: (key: any) => string
@@ -67,6 +68,7 @@ export function useLocalConversations({
     messagesRef: React.MutableRefObject<any>
     resetFiles: () => void
     queuePushConversation: QueuePushConversation
+    stopCurrentRequest?: () => void
 }) {
     const [conversations, setConversations] = useState<ConversationMeta[]>([])
     const [currentConversationId, setCurrentConversationId] = useState(() => {
@@ -78,6 +80,9 @@ export function useLocalConversations({
     const [canSaveDiagram, setCanSaveDiagram] = useState(false)
 
     const pendingDiagramXmlRef = useRef<string | null>(null)
+    const persistDebounceTimerRef = useRef<ReturnType<
+        typeof setTimeout
+    > | null>(null)
 
     const deriveConversationTitle = useCallback((msgs: ChatMessage[]) => {
         const firstUser = msgs.find((m) => m.role === "user") as any
@@ -221,6 +226,27 @@ export function useLocalConversations({
         ],
     )
 
+    const flushPersistCurrentConversation = useCallback(() => {
+        if (!currentConversationId) return
+        if (persistDebounceTimerRef.current) {
+            clearTimeout(persistDebounceTimerRef.current)
+            persistDebounceTimerRef.current = null
+        }
+        persistCurrentConversation({
+            messages: messagesRef.current as any,
+            xml: chartXMLRef.current || "",
+            snapshots: Array.from(xmlSnapshotsRef.current.entries()),
+            sessionId,
+        })
+    }, [
+        chartXMLRef,
+        currentConversationId,
+        messagesRef,
+        persistCurrentConversation,
+        sessionId,
+        xmlSnapshotsRef,
+    ])
+
     const saveXmlSnapshots = useCallback(() => {
         const snapshotsArray = Array.from(xmlSnapshotsRef.current.entries())
         persistCurrentConversation({ snapshots: snapshotsArray })
@@ -237,7 +263,8 @@ export function useLocalConversations({
         }
 
         try {
-            persistCurrentConversation({})
+            stopCurrentRequest?.()
+            flushPersistCurrentConversation()
 
             writeConversationPayloadToStorage(id, payload)
             const nextMetas = [
@@ -260,7 +287,10 @@ export function useLocalConversations({
             setCurrentConversationId(id)
 
             queuePushConversation(id, { immediate: true })
-            toast.success(t("toast.startedFreshChat"))
+            toast.success(t("toast.startedFreshChat"), {
+                id: "startedFreshChat",
+                duration: 2000,
+            })
         } catch (error) {
             console.error("Failed to create new conversation:", error)
             toast.warning(t("toast.storageUpdateFailed"))
@@ -269,9 +299,11 @@ export function useLocalConversations({
         clearDiagram,
         conversations,
         persistCurrentConversation,
+        flushPersistCurrentConversation,
         queuePushConversation,
         resetFiles,
         setMessages,
+        stopCurrentRequest,
         t,
         xmlSnapshotsRef,
     ])
@@ -280,6 +312,8 @@ export function useLocalConversations({
         (id: string) => {
             if (!id || id === currentConversationId) return
             try {
+                stopCurrentRequest?.()
+                flushPersistCurrentConversation()
                 writeCurrentConversationIdToStorage(id)
                 setCurrentConversationId(id)
             } catch (error) {
@@ -287,12 +321,19 @@ export function useLocalConversations({
                 toast.warning(t("toast.storageUpdateFailed"))
             }
         },
-        [currentConversationId, t],
+        [
+            currentConversationId,
+            flushPersistCurrentConversation,
+            stopCurrentRequest,
+            t,
+        ],
     )
 
     const handleDeleteConversation = useCallback(
         (id: string) => {
             try {
+                stopCurrentRequest?.()
+                flushPersistCurrentConversation()
                 queuePushConversation(id, { immediate: true, deleted: true })
                 removeConversationPayloadFromStorage(id)
 
@@ -333,7 +374,14 @@ export function useLocalConversations({
                 toast.warning(t("toast.storageUpdateFailed"))
             }
         },
-        [conversations, currentConversationId, queuePushConversation, t],
+        [
+            conversations,
+            currentConversationId,
+            flushPersistCurrentConversation,
+            queuePushConversation,
+            stopCurrentRequest,
+            t,
+        ],
     )
 
     useEffect(() => {
@@ -343,8 +391,28 @@ export function useLocalConversations({
 
     useEffect(() => {
         if (!hasRestored) return
-        persistCurrentConversation({ messages: messages as any })
-    }, [hasRestored, messages, persistCurrentConversation])
+        if (!currentConversationId) return
+
+        if (persistDebounceTimerRef.current) {
+            clearTimeout(persistDebounceTimerRef.current)
+        }
+        persistDebounceTimerRef.current = setTimeout(() => {
+            persistDebounceTimerRef.current = null
+            persistCurrentConversation({ messages: messages as any })
+        }, 800)
+
+        return () => {
+            if (persistDebounceTimerRef.current) {
+                clearTimeout(persistDebounceTimerRef.current)
+                persistDebounceTimerRef.current = null
+            }
+        }
+    }, [
+        currentConversationId,
+        hasRestored,
+        messages,
+        persistCurrentConversation,
+    ])
 
     useEffect(() => {
         if (!isDrawioReady) {
