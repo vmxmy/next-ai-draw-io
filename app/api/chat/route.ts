@@ -27,7 +27,7 @@ import { getSystemPrompt } from "@/lib/system-prompts"
 import { analyzeDiagramXml } from "@/lib/xml-analyzer"
 import { buildDiagramSummary } from "@/lib/xml-summary"
 
-export const maxDuration = 300
+export const maxDuration = 120
 
 function sanitizeClientOverrides(headers: Headers): {
     provider: string | null
