@@ -115,7 +115,8 @@ model AnonymousRateLimit {
 
 // AI Provider 配置（用户自定义连接信息，支持 BYOK 云端同步）
 model ProviderConfig {
-  userId String
+  id       String @id @default(cuid())
+  userId   String
   // 支持: bedrock, openai, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow
   provider String
 
@@ -125,6 +126,8 @@ model ProviderConfig {
   encryptionIv    String?
   // 认证标签（Authentication Tag，用于 AES-GCM 完整性验证）
   authTag         String?
+  // 加密密钥版本（支持密钥轮换）
+  keyVersion      Int     @default(1)
 
   // 可选配置
   baseUrl String?
@@ -137,4 +140,5 @@ model ProviderConfig {
 
   @@unique([userId, provider])
   @@index([userId])
+  @@index([keyVersion])
 }

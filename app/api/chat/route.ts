@@ -26,6 +26,11 @@ import { applyMessageWindow } from "@/lib/message-window"
 import { getSystemPrompt } from "@/lib/system-prompts"
 import { analyzeDiagramXml } from "@/lib/xml-analyzer"
 import { buildDiagramSummary } from "@/lib/xml-summary"
+import {
+    AnonymousIpRateLimitError,
+    enforceAnonymousIpRateLimit,
+    recordAnonymousIpTokenUsage,
+} from "@/server/ip-rate-limit"
 
 export const maxDuration = 120
 
@@ -557,6 +562,12 @@ async function handleChatRequest(req: Request): Promise<Response> {
     // Read and sanitize client AI provider overrides from headers (BYOK)
     const clientOverrides = sanitizeClientOverrides(req.headers)
 
+    // 匿名（按 IP）限额：仅当未使用 BYOK（客户端自带 API Key）时生效
+    const rateLimitContext = await enforceAnonymousIpRateLimit({
+        headers: req.headers,
+        bypass: !!(clientOverrides.provider && clientOverrides.apiKey),
+    })
+
     // Get AI model with optional client overrides
     const { model, providerOptions, headers, modelId } =
         getAIModel(clientOverrides)
@@ -833,6 +844,15 @@ ${lastMessageText}
                 promptTokens: usage?.inputTokens,
                 completionTokens: usage?.outputTokens,
             })
+
+            const totalTokens =
+                (usage?.inputTokens || 0) + (usage?.outputTokens || 0)
+            if (rateLimitContext?.ipHash && totalTokens > 0) {
+                void recordAnonymousIpTokenUsage({
+                    ipHash: rateLimitContext.ipHash,
+                    tokens: totalTokens,
+                })
+            }
         },
         tools: {
             // Client-side tool that will be executed on the client
@@ -1024,6 +1044,10 @@ function handleError(error: unknown): Response {
     console.error("Error in chat route:", error)
 
     const isDev = process.env.NODE_ENV === "development"
+
+    if (error instanceof AnonymousIpRateLimitError) {
+        return Response.json({ error: error.message }, { status: 429 })
+    }
 
     // Check for specific AI SDK error types
     if (APICallError.isInstance(error)) {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useSession } from "next-auth/react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
     STORAGE_AI_API_KEY_KEY,
     STORAGE_AI_BASE_URL_KEY,
@@ -19,11 +19,12 @@ const MIGRATION_FLAG_KEY = "next-ai-draw-io-provider-migrated"
 export function useProviderMigration() {
     const { data: session } = useSession()
     const [isMigrated, setIsMigrated] = useState(false)
+    const migrationInProgress = useRef(false)
     const upsertMutation = api.providerConfig.upsert.useMutation()
 
     useEffect(() => {
-        // Only run if user is logged in and migration hasn't been completed
-        if (!session?.user || isMigrated) return
+        // Only run if user is logged in and migration hasn't been completed or started
+        if (!session?.user || isMigrated || migrationInProgress.current) return
 
         const migrationFlag = localStorage.getItem(MIGRATION_FLAG_KEY)
         if (migrationFlag === "true") {
@@ -39,6 +40,11 @@ export function useProviderMigration() {
 
         // Only migrate if there's a provider and API key configured
         if (localProvider && localApiKey) {
+            // Mark migration as in progress to prevent race condition
+            migrationInProgress.current = true
+            // Optimistically set flag to prevent duplicate migrations
+            localStorage.setItem(MIGRATION_FLAG_KEY, "true")
+
             upsertMutation.mutate(
                 {
                     provider: localProvider as any,
@@ -51,12 +57,13 @@ export function useProviderMigration() {
                         console.log(
                             "[migration] Provider config migrated to cloud",
                         )
-                        localStorage.setItem(MIGRATION_FLAG_KEY, "true")
                         setIsMigrated(true)
                     },
                     onError: (error) => {
                         console.error("[migration] Failed to migrate:", error)
-                        // Don't set flag on error - will retry on next login
+                        // Revert flag on error so it can retry on next login
+                        localStorage.removeItem(MIGRATION_FLAG_KEY)
+                        migrationInProgress.current = false
                     },
                 },
             )
