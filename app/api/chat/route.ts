@@ -737,80 +737,84 @@ Notes:
                 }),
             },
             edit_diagram: {
-                description: `Edit specific parts of the current diagram.
+                description: `Edit specific parts of the current diagram using structured operations.
 
-PREFERRED (v2): Use structured "ops" with mxCell id anchors. This is much more robust than string matching and avoids failures from attribute order / whitespace / self-closing tag differences.
+Use structured "ops" with mxCell id anchors. This is robust and avoids failures from attribute order / whitespace / self-closing tag differences.
 
-Fallback (v1): Use "edits" (search/replace exact line matches). Only use when ops can't express the change.
-
---- v2 ops guidance ---
+--- ops guidance ---
 - Always target by mxCell id.
 - For simple line moves, change only the coordinates (e.g. setEdgePoints).
-- For text changes, use setCellValue and ensure special chars are escaped (<, >, &, ").
-
---- v1 edits guidance ---
-CRITICAL: Copy-paste the EXACT search pattern from the "Current diagram XML" in system context. Do NOT reorder attributes or reformat - the attribute order in draw.io XML varies and you MUST match it exactly.
-IMPORTANT: Keep edits concise:
-- COPY the exact mxCell line from the current XML (attribute order matters!)
-- Only include the lines that are changing, plus 1-2 surrounding lines for context if needed
-- Break large changes into multiple smaller edits
-- Each search must contain complete lines (never truncate mid-line)
-- First match only - be specific enough to target the right element
+- For text changes, use setCellValue (or updateCell) and ensure special chars are escaped (<, >, &, ").
+- For adding elements, ensure you provide a unique id and valid parent id (usually "1").
 
 ⚠️ JSON ESCAPING: Every " inside string values MUST be escaped as \\". Example: x=\\"100\\" y=\\"200\\" - BOTH quotes need backslashes!`,
-                // 注意：这里刻意“放宽”到 ops/edits 可选，避免模型偶发输出 `{}` 时被服务端 schema 拦截。
-                // 具体缺少 ops/edits 的报错与重试提示由前端 onToolCall 统一返回（output-error），
-                // 这样模型可以在同一轮对话里自我修复并重试。
-                inputSchema: z
-                    .object({
-                        ops: z
-                            .array(
-                                z.discriminatedUnion("type", [
-                                    z.object({
-                                        type: z.literal("setEdgePoints"),
-                                        id: z.string().min(1),
-                                        sourcePoint: z
-                                            .object({
-                                                x: z.number(),
-                                                y: z.number(),
-                                            })
-                                            .optional(),
-                                        targetPoint: z
-                                            .object({
-                                                x: z.number(),
-                                                y: z.number(),
-                                            })
-                                            .optional(),
-                                    }),
-                                    z.object({
-                                        type: z.literal("setCellValue"),
-                                        id: z.string().min(1),
-                                        value: z.string(),
-                                        escape: z.boolean().optional(),
-                                    }),
-                                ]),
-                            )
-                            .optional()
-                            .describe("Structured edit operations (preferred)"),
-                        edits: z
-                            .array(
+                inputSchema: z.object({
+                    ops: z
+                        .array(
+                            z.discriminatedUnion("type", [
                                 z.object({
-                                    search: z
-                                        .string()
-                                        .describe(
-                                            "EXACT lines copied from current XML (preserve attribute order!)",
-                                        ),
-                                    replace: z
-                                        .string()
-                                        .describe("Replacement lines"),
+                                    type: z.literal("setEdgePoints"),
+                                    id: z.string().min(1),
+                                    sourcePoint: z
+                                        .object({
+                                            x: z.number(),
+                                            y: z.number(),
+                                        })
+                                        .optional(),
+                                    targetPoint: z
+                                        .object({
+                                            x: z.number(),
+                                            y: z.number(),
+                                        })
+                                        .optional(),
                                 }),
-                            )
-                            .optional()
-                            .describe(
-                                "Array of search/replace pairs to apply sequentially",
-                            ),
-                    })
-                    .passthrough(),
+                                z.object({
+                                    type: z.literal("setCellValue"),
+                                    id: z.string().min(1),
+                                    value: z.string(),
+                                    escape: z.boolean().optional(),
+                                }),
+                                z.object({
+                                    type: z.literal("updateCell"),
+                                    id: z.string().min(1),
+                                    value: z.string().optional(),
+                                    style: z.string().optional(),
+                                    geometry: z
+                                        .object({
+                                            x: z.number().optional(),
+                                            y: z.number().optional(),
+                                            width: z.number().optional(),
+                                            height: z.number().optional(),
+                                        })
+                                        .optional(),
+                                }),
+                                z.object({
+                                    type: z.literal("addCell"),
+                                    id: z.string().min(1),
+                                    parent: z.string().min(1),
+                                    value: z.string().optional(),
+                                    style: z.string().optional(),
+                                    vertex: z.boolean().optional(),
+                                    edge: z.boolean().optional(),
+                                    source: z.string().optional(),
+                                    target: z.string().optional(),
+                                    geometry: z
+                                        .object({
+                                            x: z.number().optional(),
+                                            y: z.number().optional(),
+                                            width: z.number().optional(),
+                                            height: z.number().optional(),
+                                        })
+                                        .optional(),
+                                }),
+                                z.object({
+                                    type: z.literal("deleteCell"),
+                                    id: z.string().min(1),
+                                }),
+                            ]),
+                        )
+                        .describe("Array of structured edit operations"),
+                }),
             },
             analyze_diagram: {
                 description:

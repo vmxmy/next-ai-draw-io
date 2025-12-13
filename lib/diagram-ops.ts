@@ -1,3 +1,13 @@
+import {
+    ensureChildElement,
+    escapeXmlAttrValue,
+    findMxCell,
+    findMxCellOrThrow,
+    parseXml,
+    serializeXml,
+    upsertMxPoint,
+} from "./diagram-ops-utils"
+
 export type DiagramEditOp =
     | {
           type: "setEdgePoints"
@@ -11,77 +21,33 @@ export type DiagramEditOp =
           value: string
           escape?: boolean
       }
-
-function escapeXmlAttrValue(value: string): string {
-    return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-}
-
-function parseXml(xml: string): Document {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(xml, "text/xml")
-    const parseError = doc.querySelector("parsererror")
-    if (parseError) {
-        throw new Error("XML_PARSE_ERROR")
-    }
-    return doc
-}
-
-function serializeXml(doc: Document): string {
-    const serializer = new XMLSerializer()
-    return serializer.serializeToString(doc)
-}
-
-function findMxCell(doc: Document, id: string): Element | null {
-    const all = doc.querySelectorAll("mxCell")
-    for (const cell of Array.from(all)) {
-        if (cell.getAttribute("id") === id) return cell
-    }
-    return null
-}
-
-function ensureChildElement(
-    doc: Document,
-    parent: Element,
-    tagName: string,
-    predicate?: (el: Element) => boolean,
-): Element {
-    const existing = Array.from(parent.children).find(
-        (c) => c.tagName === tagName && (!predicate || predicate(c)),
-    )
-    if (existing) return existing
-    const el = doc.createElement(tagName)
-    parent.appendChild(el)
-    return el
-}
-
-function upsertMxPoint(
-    doc: Document,
-    geometry: Element,
-    asValue: "sourcePoint" | "targetPoint",
-    point: { x: number; y: number },
-): void {
-    const existing = Array.from(geometry.children).find(
-        (c) => c.tagName === "mxPoint" && c.getAttribute("as") === asValue,
-    )
-    const el = existing ?? doc.createElement("mxPoint")
-    el.setAttribute("x", String(point.x))
-    el.setAttribute("y", String(point.y))
-    el.setAttribute("as", asValue)
-    if (!existing) {
-        geometry.appendChild(el)
-    }
-}
+    | {
+          type: "updateCell"
+          id: string
+          value?: string
+          style?: string
+          geometry?: { x?: number; y?: number; width?: number; height?: number }
+      }
+    | {
+          type: "addCell"
+          id: string
+          parent: string
+          value?: string
+          style?: string
+          vertex?: boolean
+          edge?: boolean
+          source?: string
+          target?: string
+          geometry?: { x?: number; y?: number; width?: number; height?: number }
+      }
+    | {
+          type: "deleteCell"
+          id: string
+      }
 
 /**
  * Apply structured edit operations to a draw.io XML string.
- *
- * Assumptions (YAGNI/KISS):
- * - Input is a full draw.io fragment that DOMParser can parse (e.g. <mxGraphModel>...).
- * - Only implements the ops needed for high-frequency edits first.
+ * Uses robust DOM manipulation instead of string search-replace.
  */
 export function applyDiagramOps(
     xml: string,
@@ -94,14 +60,9 @@ export function applyDiagramOps(
             if (!op || typeof op !== "object") continue
 
             if (op.type === "setEdgePoints") {
-                const cell = findMxCell(doc, op.id)
-                if (!cell) {
-                    return { error: `找不到 mxCell id="${op.id}"` }
-                }
+                const cell = findMxCellOrThrow(doc, op.id)
                 if (cell.getAttribute("edge") !== "1") {
-                    return {
-                        error: `mxCell id="${op.id}" 不是 edge（缺少 edge="1"）`,
-                    }
+                    throw new Error(`mxCell id="${op.id}" is not an edge`)
                 }
 
                 const geometry = ensureChildElement(
@@ -110,9 +71,6 @@ export function applyDiagramOps(
                     "mxGeometry",
                     (g) => g.getAttribute("as") === "geometry",
                 )
-                if (!geometry.getAttribute("as")) {
-                    geometry.setAttribute("as", "geometry")
-                }
                 if (!geometry.getAttribute("relative")) {
                     geometry.setAttribute("relative", "1")
                 }
@@ -127,10 +85,7 @@ export function applyDiagramOps(
             }
 
             if (op.type === "setCellValue") {
-                const cell = findMxCell(doc, op.id)
-                if (!cell) {
-                    return { error: `找不到 mxCell id="${op.id}"` }
-                }
+                const cell = findMxCellOrThrow(doc, op.id)
                 const shouldEscape = op.escape !== false
                 const nextValue = shouldEscape
                     ? escapeXmlAttrValue(op.value)
@@ -139,7 +94,93 @@ export function applyDiagramOps(
                 continue
             }
 
-            return { error: `不支持的操作类型: ${(op as any).type}` }
+            if (op.type === "updateCell") {
+                const cell = findMxCellOrThrow(doc, op.id)
+                if (op.value !== undefined) {
+                    cell.setAttribute("value", escapeXmlAttrValue(op.value))
+                }
+                if (op.style !== undefined) {
+                    cell.setAttribute("style", op.style)
+                }
+                if (op.geometry) {
+                    const geometry = ensureChildElement(
+                        doc,
+                        cell,
+                        "mxGeometry",
+                        (g) => g.getAttribute("as") === "geometry",
+                    )
+                    if (op.geometry.x !== undefined)
+                        geometry.setAttribute("x", String(op.geometry.x))
+                    if (op.geometry.y !== undefined)
+                        geometry.setAttribute("y", String(op.geometry.y))
+                    if (op.geometry.width !== undefined)
+                        geometry.setAttribute(
+                            "width",
+                            String(op.geometry.width),
+                        )
+                    if (op.geometry.height !== undefined)
+                        geometry.setAttribute(
+                            "height",
+                            String(op.geometry.height),
+                        )
+                }
+                continue
+            }
+
+            if (op.type === "addCell") {
+                if (findMxCell(doc, op.id)) {
+                    throw new Error(`Cell id="${op.id}" already exists`)
+                }
+                const _parent = findMxCellOrThrow(doc, op.parent)
+
+                // Locate root (to append cell to correct location in DOM if needed, usually children of root)
+                // In flat draw.io model, all cells are children of <root>
+                // We typically insert new cell at the end of <root>
+                const root = doc.querySelector("root")
+                if (!root) throw new Error("Invalid XML: missing <root>")
+
+                const newCell = doc.createElement("mxCell")
+                newCell.setAttribute("id", op.id)
+                newCell.setAttribute("parent", op.parent)
+                if (op.value)
+                    newCell.setAttribute("value", escapeXmlAttrValue(op.value))
+                if (op.style) newCell.setAttribute("style", op.style)
+                if (op.vertex) newCell.setAttribute("vertex", "1")
+                if (op.edge) {
+                    newCell.setAttribute("edge", "1")
+                    if (op.source) newCell.setAttribute("source", op.source)
+                    if (op.target) newCell.setAttribute("target", op.target)
+                }
+
+                if (op.geometry) {
+                    const geo = doc.createElement("mxGeometry")
+                    geo.setAttribute("as", "geometry")
+                    if (op.geometry.x !== undefined)
+                        geo.setAttribute("x", String(op.geometry.x))
+                    if (op.geometry.y !== undefined)
+                        geo.setAttribute("y", String(op.geometry.y))
+                    if (op.geometry.width !== undefined)
+                        geo.setAttribute("width", String(op.geometry.width))
+                    if (op.geometry.height !== undefined)
+                        geo.setAttribute("height", String(op.geometry.height))
+                    if (op.edge) geo.setAttribute("relative", "1")
+
+                    newCell.appendChild(geo)
+                }
+
+                root.appendChild(newCell)
+                continue
+            }
+
+            if (op.type === "deleteCell") {
+                const cell = findMxCell(doc, op.id)
+                if (cell?.parentNode) {
+                    cell.parentNode.removeChild(cell)
+                }
+                continue
+            }
+
+            return { error: `Unsupported op type: ${(op as any).type}` }
         }
 
         return { xml: serializeXml(doc) }
@@ -147,9 +188,9 @@ export function applyDiagramOps(
         const msg = error instanceof Error ? error.message : String(error)
         if (msg === "XML_PARSE_ERROR") {
             return {
-                error: "当前 diagram XML 无法解析（XML_PARSE_ERROR），请先用 display_diagram 重新生成一份可解析的完整 XML。",
+                error: "Current diagram XML is invalid (XML_PARSE_ERROR). Use display_diagram to regenerate.",
             }
         }
-        return { error: `结构化编辑失败: ${msg}` }
+        return { error: `Structured edit failed: ${msg}` }
     }
 }

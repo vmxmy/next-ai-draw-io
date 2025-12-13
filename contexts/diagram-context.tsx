@@ -5,6 +5,7 @@ import {
     createContext,
     useCallback,
     useContext,
+    useEffect,
     useMemo,
     useRef,
     useState,
@@ -18,6 +19,11 @@ interface DiagramContextType {
     chartXML: string
     latestSvg: string
     diagramHistory: { svg: string; xml: string }[]
+    canUndo: boolean
+    canRedo: boolean
+    undoDiagram: () => void
+    redoDiagram: () => void
+    restoreHistoryIndex: (index: number) => void
     loadDiagram: (chart: string, skipValidation?: boolean) => string | null
     syncDiagramXml: (chart: string) => void
     handleExport: () => void
@@ -44,12 +50,18 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
     const [diagramHistory, setDiagramHistory] = useState<
         { svg: string; xml: string }[]
     >([])
+    const [historyCursor, setHistoryCursor] = useState<number>(-1)
     const [isDrawioReady, setIsDrawioReady] = useState(false)
     const hasCalledOnLoadRef = useRef(false)
     const drawioRef = useRef<DrawIoEmbedRef | null>(null)
     const resolverRef = useRef<((value: string) => void) | null>(null)
     // Track if we're expecting an export for history (user-initiated)
     const expectHistoryExportRef = useRef<boolean>(false)
+    const historyCursorRef = useRef<number>(-1)
+
+    useEffect(() => {
+        historyCursorRef.current = historyCursor
+    }, [historyCursor])
 
     const onDrawioLoad = useCallback(() => {
         // Only set ready state once to prevent infinite loops
@@ -147,13 +159,22 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
 
         // Only add to history if this was a user-initiated export
         if (expectHistoryExportRef.current) {
-            setDiagramHistory((prev) => [
-                ...prev,
-                {
-                    svg: data.data,
-                    xml: extractedXML,
-                },
-            ])
+            setDiagramHistory((prev) => {
+                const cursor = historyCursorRef.current
+                const truncated =
+                    cursor >= 0 && cursor < prev.length - 1
+                        ? prev.slice(0, cursor + 1)
+                        : prev
+                const next = [
+                    ...truncated,
+                    {
+                        svg: data.data,
+                        xml: extractedXML,
+                    },
+                ]
+                setHistoryCursor(next.length - 1)
+                return next
+            })
             expectHistoryExportRef.current = false
         }
 
@@ -169,7 +190,32 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
         loadDiagram(emptyDiagram, true)
         setLatestSvg("")
         setDiagramHistory([])
+        setHistoryCursor(-1)
     }, [loadDiagram])
+
+    const restoreHistoryIndex = useCallback(
+        (index: number) => {
+            const item = diagramHistory[index]
+            if (!item) return
+            loadDiagram(item.xml, true)
+            setHistoryCursor(index)
+        },
+        [diagramHistory, loadDiagram],
+    )
+
+    const canUndo = historyCursor > 0
+    const canRedo =
+        historyCursor >= 0 && historyCursor < diagramHistory.length - 1
+
+    const undoDiagram = useCallback(() => {
+        if (!canUndo) return
+        restoreHistoryIndex(historyCursor - 1)
+    }, [canUndo, historyCursor, restoreHistoryIndex])
+
+    const redoDiagram = useCallback(() => {
+        if (!canRedo) return
+        restoreHistoryIndex(historyCursor + 1)
+    }, [canRedo, historyCursor, restoreHistoryIndex])
 
     // Log save event to Langfuse (just flags the trace, doesn't send content)
     const logSaveToLangfuse = useCallback(
@@ -274,6 +320,11 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
             chartXML,
             latestSvg,
             diagramHistory,
+            canUndo,
+            canRedo,
+            undoDiagram,
+            redoDiagram,
+            restoreHistoryIndex,
             loadDiagram,
             syncDiagramXml,
             handleExport,
@@ -291,6 +342,11 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
             chartXML,
             latestSvg,
             diagramHistory,
+            canUndo,
+            canRedo,
+            undoDiagram,
+            redoDiagram,
+            restoreHistoryIndex,
             loadDiagram,
             syncDiagramXml,
             handleExport,

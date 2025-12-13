@@ -5,9 +5,11 @@ import {
     History,
     Image as ImageIcon,
     Loader2,
+    Redo2,
     Send,
     Square,
     Trash2,
+    Undo2,
 } from "lucide-react"
 import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -171,7 +173,14 @@ export function ChatInput({
     disableImageUpload = false,
 }: ChatInputProps) {
     const { t } = useI18n()
-    const { diagramHistory, saveDiagramToFile } = useDiagram()
+    const {
+        diagramHistory,
+        saveDiagramToFile,
+        canUndo,
+        canRedo,
+        undoDiagram,
+        redoDiagram,
+    } = useDiagram()
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [isDragging, setIsDragging] = useState(false)
@@ -356,16 +365,16 @@ export function ChatInput({
                 />
 
                 {/* Action bar */}
-                <div className="flex items-center justify-between px-3 py-2 border-t border-border/50">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t border-border/50">
                     {/* Left actions */}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                         <ButtonWithTooltip
                             type="button"
                             variant="ghost"
                             size="sm"
                             onClick={() => setShowClearDialog(true)}
                             tooltipContent={t("chat.tooltip.clear")}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                         >
                             <Trash2 className="h-4 w-4" />
                         </ButtonWithTooltip>
@@ -386,7 +395,31 @@ export function ChatInput({
                     </div>
 
                     {/* Right actions */}
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 ml-auto shrink-0">
+                        <ButtonWithTooltip
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={undoDiagram}
+                            disabled={isDisabled || !canUndo}
+                            tooltipContent={t("chat.tooltip.undo")}
+                            className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                        >
+                            <Undo2 className="h-4 w-4" />
+                        </ButtonWithTooltip>
+
+                        <ButtonWithTooltip
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={redoDiagram}
+                            disabled={isDisabled || !canRedo}
+                            tooltipContent={t("chat.tooltip.redo")}
+                            className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                        >
+                            <Redo2 className="h-4 w-4" />
+                        </ButtonWithTooltip>
+
                         <ButtonWithTooltip
                             type="button"
                             variant="ghost"
@@ -394,7 +427,7 @@ export function ChatInput({
                             onClick={() => onToggleHistory(true)}
                             disabled={isDisabled || diagramHistory.length === 0}
                             tooltipContent={t("chat.tooltip.history")}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                         >
                             <History className="h-4 w-4" />
                         </ButtonWithTooltip>
@@ -406,7 +439,7 @@ export function ChatInput({
                             onClick={() => setShowSaveDialog(true)}
                             disabled={isDisabled}
                             tooltipContent={t("chat.tooltip.save")}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                         >
                             <Download className="h-4 w-4" />
                         </ButtonWithTooltip>
@@ -429,7 +462,7 @@ export function ChatInput({
                             onClick={triggerFileInput}
                             disabled={isDisabled}
                             tooltipContent={t("chat.tooltip.upload")}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                         >
                             <ImageIcon className="h-4 w-4" />
                         </ButtonWithTooltip>
@@ -458,7 +491,7 @@ export function ChatInput({
                                 !showStop && (isDisabled || !input.trim())
                             }
                             size="sm"
-                            className="h-8 px-4 rounded-xl font-medium shadow-sm"
+                            className="h-8 px-4 rounded-xl font-medium shadow-sm whitespace-nowrap"
                             aria-label={
                                 showStop
                                     ? t("chat.stop")
@@ -470,7 +503,9 @@ export function ChatInput({
                             {showStop ? (
                                 <>
                                     <Square className="h-4 w-4 mr-1.5" />
-                                    {t("chat.stop")}
+                                    <span className="hidden sm:inline">
+                                        {t("chat.stop")}
+                                    </span>
                                     <Loader2 className="h-4 w-4 ml-1.5 animate-spin" />
                                 </>
                             ) : isDisabled ? (
@@ -478,7 +513,9 @@ export function ChatInput({
                             ) : (
                                 <>
                                     <Send className="h-4 w-4 mr-1.5" />
-                                    {t("chat.send")}
+                                    <span className="hidden sm:inline">
+                                        {t("chat.send")}
+                                    </span>
                                 </>
                             )}
                         </Button>

@@ -95,6 +95,8 @@ type I18nKey =
     | "chat.tooltip.clear"
     | "chat.tooltip.history"
     | "chat.tooltip.save"
+    | "chat.tooltip.undo"
+    | "chat.tooltip.redo"
     | "chat.tooltip.upload"
     | "chat.send"
     | "chat.sending"
@@ -286,6 +288,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.clear": "Clear conversation",
         "chat.tooltip.history": "Diagram history",
         "chat.tooltip.save": "Save diagram",
+        "chat.tooltip.undo": "Undo",
+        "chat.tooltip.redo": "Redo",
         "chat.tooltip.upload": "Upload file (image, PDF, text)",
         "chat.send": "Send",
         "chat.sending": "Sending...",
@@ -475,6 +479,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.clear": "清空对话",
         "chat.tooltip.history": "图表历史",
         "chat.tooltip.save": "保存图表",
+        "chat.tooltip.undo": "撤销",
+        "chat.tooltip.redo": "重做",
         "chat.tooltip.upload": "上传文件（图片 / PDF / 文本）",
         "chat.send": "发送",
         "chat.sending": "发送中…",

@@ -24,7 +24,7 @@ export function HistoryDialog({
     onToggleHistory,
 }: HistoryDialogProps) {
     const { t } = useI18n()
-    const { loadDiagram: onDisplayChart, diagramHistory } = useDiagram()
+    const { restoreHistoryIndex, diagramHistory } = useDiagram()
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
 
     const handleClose = () => {
@@ -34,8 +34,7 @@ export function HistoryDialog({
 
     const handleConfirmRestore = () => {
         if (selectedIndex !== null) {
-            // Skip validation for trusted history snapshots
-            onDisplayChart(diagramHistory[selectedIndex].xml, true)
+            restoreHistoryIndex(selectedIndex)
             handleClose()
         }
     }

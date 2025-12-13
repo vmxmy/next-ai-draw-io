@@ -315,8 +315,7 @@ ${xml}
                     }
                 }
             } else if (toolCall.toolName === "edit_diagram") {
-                const { edits } = toolCall.input as {
-                    edits?: Array<{ search: string; replace: string }>
+                const { ops } = toolCall.input as {
                     ops?: any[]
                 }
 
@@ -345,17 +344,11 @@ ${xml}
                         )
                     }
 
-                    const { replaceXMLParts, formatXML } = await import(
-                        "@/lib/utils"
-                    )
                     const { applyDiagramOps } = await import(
                         "@/lib/diagram-ops"
                     )
 
-                    // v2: Prefer structured ops when provided (more robust than string search/replace)
-                    const ops = Array.isArray((toolCall.input as any)?.ops)
-                        ? ((toolCall.input as any).ops as any[])
-                        : null
+                    // Strict Ops Mode: search/replace (edits) is no longer supported
                     if (ops && ops.length > 0) {
                         const applied = applyDiagramOps(currentXml, ops as any)
                         if ("error" in applied) {
@@ -389,105 +382,15 @@ ${xml}
                         return
                     }
 
-                    if (!edits || edits.length === 0) {
-                        addToolOutput({
-                            tool: "edit_diagram",
-                            toolCallId: toolCall.toolCallId,
-                            state: "output-error",
-                            errorText:
-                                "edit_diagram 缺少 edits/ops。请提供 ops（推荐）或 edits。",
-                        })
-                        return
-                    }
-
-                    // Pattern precheck: ensure each search block exists in current XML
-                    const formattedCurrent = formatXML(currentXml)
-                    const missing = edits
-                        .map((edit, index) => {
-                            const rawHit = currentXml.includes(edit.search)
-                            if (rawHit) return null
-                            const formattedSearch = formatXML(edit.search)
-                            const formattedHit =
-                                formattedSearch &&
-                                formattedCurrent.includes(formattedSearch)
-                            if (formattedHit) return null
-
-                            const id = extractIdFromSearch(edit.search)
-                            const idHint =
-                                id && currentXml
-                                    ? findMxCellLineById(currentXml, id)
-                                    : null
-
-                            return {
-                                index,
-                                id,
-                                idHint,
-                                searchPreview: edit.search.trim().slice(0, 200),
-                            }
-                        })
-                        .filter(Boolean) as Array<{
-                        index: number
-                        id: string | null
-                        idHint: string | null
-                        searchPreview: string
-                    }>
-
-                    if (missing.length > 0) {
-                        const details = missing
-                            .map((m) => {
-                                const header = `Change ${m.index + 1} not found`
-                                const idPart = m.id ? ` (id="${m.id}")` : ""
-                                const hintPart = m.idHint
-                                    ? `Suggested mxCell line from current XML:\n${m.idHint}`
-                                    : "Suggestion: copy the exact mxCell lines (attribute order matters) from the CURRENT XML."
-                                return `${header}${idPart}\nSearch preview:\n${m.searchPreview}\n\n${hintPart}`
-                            })
-                            .join("\n\n---\n\n")
-
-                        addToolOutput({
-                            tool: "edit_diagram",
-                            toolCallId: toolCall.toolCallId,
-                            state: "output-error",
-                            errorText: `Search pattern(s) not found in CURRENT diagram XML.
-
-${details}
-
-Please retry edit_diagram with exact lines copied from the CURRENT XML (preserve attribute order and whitespace).`,
-                        })
-                        return
-                    }
-
-                    const editedXml = replaceXMLParts(currentXml, edits)
-
-                    // loadDiagram validates and returns error if invalid
-                    const validationError = onDisplayChart(editedXml)
-                    if (validationError) {
-                        console.warn(
-                            "[edit_diagram] Validation error:",
-                            validationError,
-                        )
-                        addToolOutput({
-                            tool: "edit_diagram",
-                            toolCallId: toolCall.toolCallId,
-                            state: "output-error",
-                            errorText: `Edit produced invalid XML: ${validationError}
-
-Current diagram XML:
-\`\`\`xml
-${currentXml}
-\`\`\`
-
-Please fix the edit to avoid structural issues (e.g., duplicate IDs, invalid references).`,
-                        })
-                        return
-                    }
-                    onExport()
+                    // No ops provided
                     addToolOutput({
                         tool: "edit_diagram",
                         toolCallId: toolCall.toolCallId,
-                        output: `Successfully applied ${edits.length} edit(s) to the diagram.`,
+                        state: "output-error",
+                        errorText:
+                            "edit_diagram 缺少 ops 参数。请使用 structured ops 进行编辑。",
                     })
-                    console.log("[edit_diagram] Success")
+                    return
                 } catch (error) {
                     console.error("[edit_diagram] Failed:", error)
 
