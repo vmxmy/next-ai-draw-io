@@ -141,14 +141,8 @@ export function ThemeProvider({
             appearance === "system" ? getSystemAppearance() : appearance
 
         const update = () => {
-            const resolvedApp = resolveAppearance()
-            applyVisualAppearance(resolvedApp)
+            applyVisualAppearance(resolveAppearance())
             applyPalette(palette)
-            console.log("[ThemeProvider] Applied classes:", {
-                appearance: resolvedApp,
-                palette: palette,
-                classList: Array.from(root.classList),
-            })
         }
 
         update()

@@ -1,5 +1,6 @@
 import { createHash, randomInt } from "crypto"
 import { db } from "@/server/db"
+import { sendSmsBaoMessage } from "./smsbao"
 
 const CODE_LENGTH = 6
 const RESEND_WINDOW_SECONDS = 60
@@ -22,16 +23,11 @@ const generateCode = () =>
         .padStart(CODE_LENGTH, "0")
 
 async function sendSmsMessage(phone: string, message: string) {
-    // 开发环境：直接在控制台输出验证码
-    if (process.env.NODE_ENV !== "production") {
-        console.log(`[SMS] Sending to ${phone}: ${message}`)
-        return
-    }
+    const result = await sendSmsBaoMessage({ phone, content: message })
 
-    // 生产环境：这里可以集成真实的 SMS 服务提供商
-    // 例如：Twilio, Aliyun SMS, Tencent Cloud SMS 等
-    // TODO: 集成 SMS 服务提供商
-    console.warn("[SMS] SMS service not configured in production")
+    if (result.skipped && process.env.NODE_ENV !== "production") {
+        console.log(`[SMS][dev] Sent to ${phone}: ${message}`)
+    }
 }
 
 export async function sendPhoneLoginCode(phone: string) {
