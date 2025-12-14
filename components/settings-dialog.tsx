@@ -1,6 +1,7 @@
 "use client"
 
 import {
+    Check,
     ChevronDown,
     Cloud,
     HardDrive,
@@ -95,6 +96,7 @@ export function SettingsDialog({
     >()
     const [cloudBaseUrl, setCloudBaseUrl] = useState<string | undefined>()
     const [cloudModelId, setCloudModelId] = useState<string | undefined>()
+    const [syncSuccess, setSyncSuccess] = useState(false)
 
     // Theme hook
     const { palette, setPalette } = useTheme()
@@ -445,10 +447,19 @@ export function SettingsDialog({
                                 {provider && provider !== "default" && (
                                     <>
                                         <div className="space-y-2">
-                                            <Label htmlFor="ai-model">
+                                            <Label
+                                                htmlFor="ai-model"
+                                                className="flex items-center gap-1.5"
+                                            >
                                                 {t(
                                                     "settings.aiProvider.modelIdLabel",
                                                 )}
+                                                {session?.user &&
+                                                    (modelId ? (
+                                                        <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                                    ) : cloudModelId ? (
+                                                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                    ) : null)}
                                             </Label>
                                             <div className="relative">
                                                 <div className="relative">
@@ -601,22 +612,6 @@ export function SettingsDialog({
                                                         </div>
                                                     )}
                                             </div>
-                                            {session?.user && (
-                                                <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
-                                                    {modelId ? (
-                                                        <>
-                                                            <HardDrive className="h-3 w-3" />
-                                                            Using local config
-                                                        </>
-                                                    ) : cloudModelId ? (
-                                                        <>
-                                                            <Cloud className="h-3 w-3" />
-                                                            Using cloud default:{" "}
-                                                            {cloudModelId}
-                                                        </>
-                                                    ) : null}
-                                                </p>
-                                            )}
                                             <p className="text-[0.8rem] text-muted-foreground">
                                                 {isLoadingModels
                                                     ? t(
@@ -637,10 +632,19 @@ export function SettingsDialog({
                                             </p>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="ai-api-key">
+                                            <Label
+                                                htmlFor="ai-api-key"
+                                                className="flex items-center gap-1.5"
+                                            >
                                                 {t(
                                                     "settings.aiProvider.apiKeyLabel",
                                                 )}
+                                                {session?.user &&
+                                                    (apiKey ? (
+                                                        <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                                    ) : cloudApiKeyPreview ? (
+                                                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                    ) : null)}
                                             </Label>
                                             <Input
                                                 id="ai-api-key"
@@ -689,59 +693,21 @@ export function SettingsDialog({
                                                 )}
                                                 autoComplete="off"
                                             />
-                                            {session?.user && (
-                                                <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
-                                                    {apiKey ? (
-                                                        <>
-                                                            <HardDrive className="h-3 w-3" />
-                                                            Using local API key
-                                                        </>
-                                                    ) : cloudApiKeyPreview ? (
-                                                        <>
-                                                            <Cloud className="h-3 w-3" />
-                                                            Using cloud saved
-                                                            key:{" "}
-                                                            {cloudApiKeyPreview}
-                                                        </>
-                                                    ) : null}
-                                                </p>
-                                            )}
-                                            <p className="text-[0.8rem] text-muted-foreground">
-                                                {t(
-                                                    "settings.aiProvider.overrides",
-                                                    {
-                                                        env:
-                                                            provider ===
-                                                            "openai"
-                                                                ? "OPENAI_API_KEY"
-                                                                : provider ===
-                                                                    "anthropic"
-                                                                  ? "ANTHROPIC_API_KEY"
-                                                                  : provider ===
-                                                                      "google"
-                                                                    ? "GOOGLE_GENERATIVE_AI_API_KEY"
-                                                                    : provider ===
-                                                                        "azure"
-                                                                      ? "AZURE_API_KEY"
-                                                                      : provider ===
-                                                                          "openrouter"
-                                                                        ? "OPENROUTER_API_KEY"
-                                                                        : provider ===
-                                                                            "deepseek"
-                                                                          ? "DEEPSEEK_API_KEY"
-                                                                          : provider ===
-                                                                              "siliconflow"
-                                                                            ? "SILICONFLOW_API_KEY"
-                                                                            : "server API key",
-                                                    },
-                                                )}
-                                            </p>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="ai-base-url">
+                                            <Label
+                                                htmlFor="ai-base-url"
+                                                className="flex items-center gap-1.5"
+                                            >
                                                 {t(
                                                     "settings.aiProvider.baseUrlLabel",
                                                 )}
+                                                {session?.user &&
+                                                    (baseUrl ? (
+                                                        <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                                    ) : cloudBaseUrl ? (
+                                                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                    ) : null)}
                                             </Label>
                                             <Input
                                                 id="ai-base-url"
@@ -764,23 +730,78 @@ export function SettingsDialog({
                                                             )
                                                 }
                                             />
-                                            {session?.user && (
-                                                <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
-                                                    {baseUrl ? (
-                                                        <>
-                                                            <HardDrive className="h-3 w-3" />
-                                                            Using local config
-                                                        </>
-                                                    ) : cloudBaseUrl ? (
-                                                        <>
-                                                            <Cloud className="h-3 w-3" />
-                                                            Using cloud default:{" "}
-                                                            {cloudBaseUrl}
-                                                        </>
-                                                    ) : null}
-                                                </p>
-                                            )}
                                         </div>
+                                        {session?.user && provider && (
+                                            <Button
+                                                variant={
+                                                    syncSuccess
+                                                        ? "outline"
+                                                        : "default"
+                                                }
+                                                size="sm"
+                                                className="w-full"
+                                                disabled={
+                                                    upsertConfigMutation.isPending ||
+                                                    syncSuccess
+                                                }
+                                                onClick={() => {
+                                                    upsertConfigMutation.mutate(
+                                                        {
+                                                            provider:
+                                                                provider as any,
+                                                            apiKey:
+                                                                apiKey ||
+                                                                undefined,
+                                                            baseUrl:
+                                                                baseUrl ||
+                                                                undefined,
+                                                            modelId:
+                                                                modelId ||
+                                                                undefined,
+                                                        },
+                                                        {
+                                                            onSuccess: () => {
+                                                                console.log(
+                                                                    "[settings] Synced to cloud:",
+                                                                    provider,
+                                                                )
+                                                                setSyncSuccess(
+                                                                    true,
+                                                                )
+                                                                setTimeout(
+                                                                    () => {
+                                                                        setSyncSuccess(
+                                                                            false,
+                                                                        )
+                                                                    },
+                                                                    2000,
+                                                                )
+                                                            },
+                                                        },
+                                                    )
+                                                }}
+                                            >
+                                                {syncSuccess ? (
+                                                    <>
+                                                        <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                        {t(
+                                                            "settings.aiProvider.synced",
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Cloud className="h-4 w-4 mr-2" />
+                                                        {upsertConfigMutation.isPending
+                                                            ? t(
+                                                                  "settings.aiProvider.syncing",
+                                                              )
+                                                            : t(
+                                                                  "settings.aiProvider.syncToCloud",
+                                                              )}
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
                                         <Button
                                             variant="outline"
                                             size="sm"

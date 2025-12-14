@@ -1,0 +1,60 @@
+Next AI Draw.io
+Copyright 2024 Dayuan Jiang
+
+This product includes software developed at Next AI Draw.io (https://next-ai-drawio.jiang.jp)
+
+================================================================================
+
+This project includes third-party components and resources:
+
+1. Tweakcn Theme System
+   - Source: tweakcn (https://tweakcn.com/)
+   - License: MIT License
+   - Copyright: jnsahaj and contributors
+   - Files: styles/palettes.css, styles/design-tokens.css
+   - Description: Visual theme presets for shadcn/ui components
+   - Note: Themes were adapted from salary_system project
+
+2. Radix UI Primitives
+   - Source: https://github.com/radix-ui/primitives
+   - License: MIT License
+   - Copyright: 2022-present WorkOS
+   - Used in: UI components (@radix-ui/react-*)
+
+3. shadcn/ui Components
+   - Source: https://ui.shadcn.com/
+   - License: MIT License
+   - Copyright: shadcn
+   - Used in: components/ui/*
+
+4. AI SDK by Vercel
+   - Source: https://sdk.vercel.ai/
+   - License: Apache License 2.0
+   - Copyright: Vercel, Inc.
+   - Used in: @ai-sdk/* packages
+
+5. Next.js Framework
+   - Source: https://nextjs.org/
+   - License: MIT License
+   - Copyright: Vercel, Inc.
+
+6. Draw.io Integration
+   - Source: https://www.drawio.com/
+   - License: Apache License 2.0
+   - Copyright: JGraph Ltd
+
+================================================================================
+
+For a complete list of dependencies and their licenses, run:
+  npm list --production
+
+Dependencies use the following licenses (compatible with Apache 2.0):
+- MIT License
+- Apache License 2.0
+- ISC License
+- BSD-2-Clause
+- BSD-3-Clause
+
+Note: sharp-libvips (LGPL-3.0-or-later) is a dynamically linked native library
+used by Next.js for image optimization and does not impose copyleft restrictions
+on this Apache-licensed project.

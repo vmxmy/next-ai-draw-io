@@ -115,15 +115,6 @@ export function ChatHeader({
                 </div>
 
                 <div className="flex items-center gap-1">
-                    <AuthButton
-                        authStatus={authStatus}
-                        userImage={userImage}
-                        signInLabel={signInLabel}
-                        profileLabel={profileLabel}
-                        onSignIn={onSignIn}
-                        onProfileClick={onProfileClick}
-                    />
-
                     <CloudSyncStatusButton
                         visible={showSync}
                         isOnline={isOnline}
@@ -188,6 +179,15 @@ export function ChatHeader({
                             className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
                         />
                     </ButtonWithTooltip>
+
+                    <AuthButton
+                        authStatus={authStatus}
+                        userImage={userImage}
+                        signInLabel={signInLabel}
+                        profileLabel={profileLabel}
+                        onSignIn={onSignIn}
+                        onProfileClick={onProfileClick}
+                    />
 
                     {!isMobile && (
                         <ButtonWithTooltip

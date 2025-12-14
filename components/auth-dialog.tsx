@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useI18n } from "@/contexts/i18n-context"
 import {
     isValidPhoneNumber,
     normalizePhoneNumber,
@@ -26,6 +27,7 @@ interface AuthDialogProps {
 }
 
 export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
+    const { t } = useI18n()
     const [mode, setMode] = useState<"oauth" | "phone">("oauth")
     const [phoneMode, setPhoneMode] = useState<"login" | "register">("login")
     const [isLoading, setIsLoading] = useState<string | null>(null)
@@ -58,12 +60,12 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
     const handleSendCode = async () => {
         const phone = phoneNumber.trim()
         if (!phone) {
-            setPhoneError("Please enter your phone number")
+            setPhoneError(t("auth.error.enterPhone"))
             return
         }
         const normalized = normalizePhoneNumber(phone)
         if (!isValidPhoneNumber(normalized)) {
-            setPhoneError("Invalid phone number format")
+            setPhoneError(t("auth.error.invalidPhone"))
             return
         }
 
@@ -85,13 +87,13 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
             if (!response.ok) {
                 const code = result?.error ?? "UNKNOWN"
                 if (code === "INVALID_PHONE") {
-                    setPhoneError("Invalid phone number")
+                    setPhoneError(t("auth.error.invalidPhone"))
                 } else if (code === "USER_NOT_FOUND") {
-                    setPhoneError("Phone number not registered")
+                    setPhoneError(t("auth.error.phoneNotRegistered"))
                 } else if (code === "PHONE_IN_USE") {
-                    setPhoneError("Phone number already registered")
+                    setPhoneError(t("auth.error.phoneInUse"))
                 } else {
-                    setPhoneError("Failed to send verification code")
+                    setPhoneError(t("auth.error.sendCodeFailed"))
                 }
                 return
             }
@@ -99,12 +101,12 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
             const debugCode = result?.debugCode
             setCodeMessage(
                 debugCode
-                    ? `Verification code sent! (Dev: ${debugCode})`
-                    : "Verification code sent to your phone",
+                    ? t("auth.phone.codeSentDev", { code: debugCode })
+                    : t("auth.phone.codeSent"),
             )
         } catch (error) {
             console.error("[auth][phone][send-code]", error)
-            setPhoneError("Failed to send verification code")
+            setPhoneError(t("auth.error.sendCodeFailed"))
         } finally {
             setIsSendingCode(false)
         }
@@ -117,16 +119,16 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
         const name = userName.trim()
 
         if (!phone) {
-            setPhoneError("Please enter your phone number")
+            setPhoneError(t("auth.error.enterPhone"))
             return
         }
         const normalized = normalizePhoneNumber(phone)
         if (!isValidPhoneNumber(normalized)) {
-            setPhoneError("Invalid phone number format")
+            setPhoneError(t("auth.error.invalidPhone"))
             return
         }
         if (!code) {
-            setPhoneError("Please enter verification code")
+            setPhoneError(t("auth.error.enterCode"))
             return
         }
 
@@ -149,15 +151,15 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                 if (!response.ok) {
                     const errorCode = result?.error ?? "UNKNOWN"
                     if (errorCode === "CODE_EXPIRED") {
-                        setPhoneError("Verification code expired")
+                        setPhoneError(t("auth.error.codeExpired"))
                     } else if (errorCode === "CODE_INVALID") {
-                        setPhoneError("Invalid verification code")
+                        setPhoneError(t("auth.error.codeInvalid"))
                     } else if (errorCode === "CODE_USED") {
-                        setPhoneError("Verification code already used")
+                        setPhoneError(t("auth.error.codeUsed"))
                     } else if (errorCode === "PHONE_IN_USE") {
-                        setPhoneError("Phone number already registered")
+                        setPhoneError(t("auth.error.phoneInUse"))
                     } else {
-                        setPhoneError("Registration failed")
+                        setPhoneError(t("auth.error.registrationFailed"))
                     }
                     setIsLoading(null)
                     return
@@ -175,7 +177,7 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                     window.location.href = loginResult.url ?? "/"
                 } else {
                     // 注册成功但自动登录失败，提示用户手动登录
-                    setCodeMessage("Registration successful! Please sign in.")
+                    setCodeMessage(t("auth.phone.registrationSuccess"))
                     setPhoneMode("login")
                     setVerificationCode("")
                     setIsLoading(null)
@@ -192,13 +194,13 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                 if (result?.ok) {
                     window.location.href = result.url ?? "/"
                 } else {
-                    setPhoneError("Invalid verification code")
+                    setPhoneError(t("auth.error.codeInvalid"))
                     setIsLoading(null)
                 }
             }
         } catch (error) {
             console.error("[auth][phone][submit]", error)
-            setPhoneError("Authentication failed")
+            setPhoneError(t("auth.error.authFailed"))
             setIsLoading(null)
         }
     }
@@ -227,10 +229,10 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                         </div>
                     </div>
                     <DialogTitle className="text-2xl text-center">
-                        Welcome to AI Draw.io
+                        {t("auth.dialog.title")}
                     </DialogTitle>
                     <DialogDescription className="text-center">
-                        Sign in to access your diagrams and continue creating
+                        {t("auth.dialog.description")}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -242,8 +244,12 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                     className="space-y-4 pt-4"
                 >
                     <TabsList className="grid grid-cols-2 w-full">
-                        <TabsTrigger value="oauth">OAuth</TabsTrigger>
-                        <TabsTrigger value="phone">Phone</TabsTrigger>
+                        <TabsTrigger value="oauth">
+                            {t("auth.dialog.oauth")}
+                        </TabsTrigger>
+                        <TabsTrigger value="phone">
+                            {t("auth.dialog.phone")}
+                        </TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="oauth" className="space-y-4">
@@ -252,21 +258,29 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
                                 <p className="text-sm text-destructive text-center">
                                     {error === "OAuthSignin"
-                                        ? "Error connecting to authentication provider"
+                                        ? t("auth.error.oauthSignin")
                                         : error === "OAuthCallback"
-                                          ? "Error during authentication callback"
+                                          ? t("auth.error.oauthCallback")
                                           : error === "OAuthCreateAccount"
-                                            ? "Could not create account"
+                                            ? t("auth.error.oauthCreateAccount")
                                             : error === "EmailCreateAccount"
-                                              ? "Could not create account with email"
+                                              ? t(
+                                                    "auth.error.emailCreateAccount",
+                                                )
                                               : error === "Callback"
-                                                ? "Error during callback"
+                                                ? t("auth.error.callback")
                                                 : error ===
                                                     "OAuthAccountNotLinked"
-                                                  ? "Email already in use with different provider"
+                                                  ? t(
+                                                        "auth.error.oauthAccountNotLinked",
+                                                    )
                                                   : error === "SessionRequired"
-                                                    ? "Please sign in to access this page"
-                                                    : "An error occurred during authentication"}
+                                                    ? t(
+                                                          "auth.error.sessionRequired",
+                                                      )
+                                                    : t(
+                                                          "auth.error.unknownError",
+                                                      )}
                                 </p>
                             </div>
                         )}
@@ -286,7 +300,9 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                     ) : (
                                         <FaGoogle className="w-5 h-5 text-[#4285F4]" />
                                     )}
-                                    <span>Continue with Google</span>
+                                    <span>
+                                        {t("auth.dialog.continueWithGoogle")}
+                                    </span>
                                 </div>
                             </Button>
 
@@ -303,7 +319,9 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                     ) : (
                                         <FaGithub className="w-5 h-5" />
                                     )}
-                                    <span>Continue with GitHub</span>
+                                    <span>
+                                        {t("auth.dialog.continueWithGithub")}
+                                    </span>
                                 </div>
                             </Button>
                         </div>
@@ -315,7 +333,7 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                             </div>
                             <div className="relative flex justify-center text-xs uppercase">
                                 <span className="bg-background px-2 text-muted-foreground">
-                                    Secure Authentication
+                                    {t("auth.dialog.secureAuth")}
                                 </span>
                             </div>
                         </div>
@@ -323,19 +341,19 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                         {/* Footer */}
                         <div className="text-center text-sm text-muted-foreground">
                             <p>
-                                By continuing, you agree to our{" "}
+                                {t("auth.dialog.byContining")}{" "}
                                 <a
                                     href="/terms"
                                     className="underline hover:text-foreground transition-colors"
                                 >
-                                    Terms of Service
+                                    {t("auth.dialog.terms")}
                                 </a>{" "}
-                                and{" "}
+                                {t("auth.dialog.and")}{" "}
                                 <a
                                     href="/privacy"
                                     className="underline hover:text-foreground transition-colors"
                                 >
-                                    Privacy Policy
+                                    {t("auth.dialog.privacy")}
                                 </a>
                             </p>
                         </div>
@@ -353,7 +371,7 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                         : "text-muted-foreground hover:text-foreground"
                                 }`}
                             >
-                                Sign In
+                                {t("auth.phone.signIn")}
                             </button>
                             <span className="text-muted-foreground">|</span>
                             <button
@@ -365,7 +383,7 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                         : "text-muted-foreground hover:text-foreground"
                                 }`}
                             >
-                                Sign Up
+                                {t("auth.phone.signUp")}
                             </button>
                         </div>
 
@@ -376,9 +394,9 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                             {phoneMode === "register" && (
                                 <div className="space-y-2">
                                     <Label htmlFor="name">
-                                        Name{" "}
+                                        {t("auth.phone.name")}{" "}
                                         <span className="text-muted-foreground text-xs">
-                                            (Optional)
+                                            {t("auth.phone.optional")}
                                         </span>
                                     </Label>
                                     <Input
@@ -388,13 +406,15 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                         onChange={(e) =>
                                             setUserName(e.target.value)
                                         }
-                                        placeholder="Your name"
+                                        placeholder={t("auth.phone.yourName")}
                                         autoComplete="name"
                                     />
                                 </div>
                             )}
                             <div className="space-y-2">
-                                <Label htmlFor="phone">Phone Number</Label>
+                                <Label htmlFor="phone">
+                                    {t("auth.phone.phoneNumber")}
+                                </Label>
                                 <Input
                                     id="phone"
                                     type="tel"
@@ -407,7 +427,9 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="code">Verification Code</Label>
+                                <Label htmlFor="code">
+                                    {t("auth.phone.verificationCode")}
+                                </Label>
                                 <div className="flex gap-2">
                                     <Input
                                         id="code"
@@ -433,8 +455,8 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                         {countdown > 0
                                             ? `${countdown}s`
                                             : isSendingCode
-                                              ? "Sending..."
-                                              : "Send Code"}
+                                              ? t("auth.phone.sending")
+                                              : t("auth.phone.sendCode")}
                                     </Button>
                                 </div>
                                 {codeMessage && (
@@ -458,30 +480,30 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                             >
                                 {isLoading === "phone"
                                     ? phoneMode === "register"
-                                        ? "Signing up..."
-                                        : "Signing in..."
+                                        ? t("auth.phone.signingUp")
+                                        : t("auth.phone.signingIn")
                                     : phoneMode === "register"
-                                      ? "Sign Up"
-                                      : "Sign In"}
+                                      ? t("auth.phone.signUp")
+                                      : t("auth.phone.signIn")}
                             </Button>
                         </form>
 
                         {/* Footer */}
                         <div className="text-center text-sm text-muted-foreground">
                             <p>
-                                By continuing, you agree to our{" "}
+                                {t("auth.dialog.byContining")}{" "}
                                 <a
                                     href="/terms"
                                     className="underline hover:text-foreground transition-colors"
                                 >
-                                    Terms of Service
+                                    {t("auth.dialog.terms")}
                                 </a>{" "}
-                                and{" "}
+                                {t("auth.dialog.and")}{" "}
                                 <a
                                     href="/privacy"
                                     className="underline hover:text-foreground transition-colors"
                                 >
-                                    Privacy Policy
+                                    {t("auth.dialog.privacy")}
                                 </a>
                             </p>
                         </div>

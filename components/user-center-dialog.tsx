@@ -10,7 +10,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import { Separator } from "@/components/ui/separator"
+import { useI18n } from "@/contexts/i18n-context"
 
 interface UserCenterDialogProps {
     open: boolean
@@ -28,6 +28,7 @@ export function UserCenterDialog({
     onOpenChange,
     user,
 }: UserCenterDialogProps) {
+    const { t } = useI18n()
     const [isSigningOut, setIsSigningOut] = useState(false)
 
     const handleSignOut = async () => {
@@ -44,9 +45,11 @@ export function UserCenterDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl">User Center</DialogTitle>
+                    <DialogTitle className="text-2xl">
+                        {t("userCenter.title")}
+                    </DialogTitle>
                     <DialogDescription>
-                        Manage your account and preferences
+                        {t("userCenter.description")}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -54,13 +57,13 @@ export function UserCenterDialog({
                     {/* User Info */}
                     <div className="space-y-4">
                         <h3 className="text-sm font-medium text-muted-foreground">
-                            Account Information
+                            {t("userCenter.accountInfo")}
                         </h3>
                         <div className="space-y-3">
                             {user?.name && (
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm text-muted-foreground">
-                                        Name
+                                        {t("userCenter.name")}
                                     </span>
                                     <span className="text-sm font-medium">
                                         {user.name}
@@ -70,7 +73,7 @@ export function UserCenterDialog({
                             {user?.email && (
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm text-muted-foreground">
-                                        Email
+                                        {t("userCenter.email")}
                                     </span>
                                     <span className="text-sm font-medium">
                                         {user.email}
@@ -80,7 +83,7 @@ export function UserCenterDialog({
                             {user?.phone && (
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm text-muted-foreground">
-                                        Phone
+                                        {t("userCenter.phone")}
                                     </span>
                                     <span className="text-sm font-medium">
                                         {user.phone}
@@ -90,7 +93,7 @@ export function UserCenterDialog({
                         </div>
                     </div>
 
-                    <Separator />
+                    <div className="border-t border-border" />
 
                     {/* Sign Out */}
                     <div className="space-y-3">
@@ -100,7 +103,9 @@ export function UserCenterDialog({
                             onClick={handleSignOut}
                             disabled={isSigningOut}
                         >
-                            {isSigningOut ? "Signing out..." : "Sign Out"}
+                            {isSigningOut
+                                ? t("userCenter.signingOut")
+                                : t("userCenter.signOut")}
                         </Button>
                     </div>
                 </div>

@@ -176,10 +176,65 @@ type I18nKey =
     | "auth.signIn"
     | "auth.signOut"
     | "auth.profile"
+    | "auth.dialog.title"
+    | "auth.dialog.description"
+    | "auth.dialog.oauth"
+    | "auth.dialog.phone"
+    | "auth.dialog.continueWithGoogle"
+    | "auth.dialog.continueWithGithub"
+    | "auth.dialog.secureAuth"
+    | "auth.dialog.terms"
+    | "auth.dialog.privacy"
+    | "auth.dialog.byContining"
+    | "auth.dialog.and"
+    | "auth.phone.signIn"
+    | "auth.phone.signUp"
+    | "auth.phone.name"
+    | "auth.phone.optional"
+    | "auth.phone.phoneNumber"
+    | "auth.phone.verificationCode"
+    | "auth.phone.sendCode"
+    | "auth.phone.sending"
+    | "auth.phone.yourName"
+    | "auth.phone.signingIn"
+    | "auth.phone.signingUp"
+    | "auth.phone.codeSent"
+    | "auth.phone.codeSentDev"
+    | "auth.phone.registrationSuccess"
+    | "auth.error.enterPhone"
+    | "auth.error.invalidPhone"
+    | "auth.error.phoneNotRegistered"
+    | "auth.error.phoneInUse"
+    | "auth.error.sendCodeFailed"
+    | "auth.error.enterCode"
+    | "auth.error.codeExpired"
+    | "auth.error.codeInvalid"
+    | "auth.error.codeUsed"
+    | "auth.error.registrationFailed"
+    | "auth.error.authFailed"
+    | "auth.error.oauthSignin"
+    | "auth.error.oauthCallback"
+    | "auth.error.oauthCreateAccount"
+    | "auth.error.emailCreateAccount"
+    | "auth.error.callback"
+    | "auth.error.oauthAccountNotLinked"
+    | "auth.error.sessionRequired"
+    | "auth.error.unknownError"
+    | "userCenter.title"
+    | "userCenter.description"
+    | "userCenter.accountInfo"
+    | "userCenter.name"
+    | "userCenter.email"
+    | "userCenter.phone"
+    | "userCenter.signOut"
+    | "userCenter.signingOut"
     | "settings.aiProvider.modelsLoading"
     | "settings.aiProvider.modelsCount"
     | "settings.aiProvider.modelIdSelectPlaceholder"
     | "settings.aiProvider.modelsHint"
+    | "settings.aiProvider.syncToCloud"
+    | "settings.aiProvider.syncing"
+    | "settings.aiProvider.synced"
     | "chat.header.sessionSwitcher"
     | "chat.header.newSessionTooltip"
     | "chat.tooltip.edit"
@@ -263,7 +318,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.accessCode.verifyFailed": "Failed to verify access code",
         "settings.aiProvider.title": "AI Provider Settings",
         "settings.aiProvider.note":
-            "Use your own API key to bypass usage limits. Your key is stored locally in your browser and is never stored on the server.",
+            "Use your own API key to bypass usage limits. Your key is stored locally and can optionally be synced to the cloud if you sign in.",
         "settings.aiProvider.providerLabel": "Provider",
         "settings.aiProvider.useServerDefault": "Use Server Default",
         "settings.aiProvider.modelIdLabel": "Model ID",
@@ -386,10 +441,68 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "auth.signIn": "Sign in with GitHub",
         "auth.signOut": "Sign out",
         "auth.profile": "User Center",
+        "auth.dialog.title": "Welcome to AI Draw.io",
+        "auth.dialog.description":
+            "Sign in to access your diagrams and continue creating",
+        "auth.dialog.oauth": "OAuth",
+        "auth.dialog.phone": "Phone",
+        "auth.dialog.continueWithGoogle": "Continue with Google",
+        "auth.dialog.continueWithGithub": "Continue with GitHub",
+        "auth.dialog.secureAuth": "Secure Authentication",
+        "auth.dialog.terms": "Terms of Service",
+        "auth.dialog.privacy": "Privacy Policy",
+        "auth.dialog.byContining": "By continuing, you agree to our",
+        "auth.dialog.and": "and",
+        "auth.phone.signIn": "Sign In",
+        "auth.phone.signUp": "Sign Up",
+        "auth.phone.name": "Name",
+        "auth.phone.optional": "(Optional)",
+        "auth.phone.phoneNumber": "Phone Number",
+        "auth.phone.verificationCode": "Verification Code",
+        "auth.phone.sendCode": "Send Code",
+        "auth.phone.sending": "Sending...",
+        "auth.phone.yourName": "Your name",
+        "auth.phone.signingIn": "Signing in...",
+        "auth.phone.signingUp": "Signing up...",
+        "auth.phone.codeSent": "Verification code sent to your phone",
+        "auth.phone.codeSentDev": "Verification code sent! (Dev: {code})",
+        "auth.phone.registrationSuccess":
+            "Registration successful! Please sign in.",
+        "auth.error.enterPhone": "Please enter your phone number",
+        "auth.error.invalidPhone": "Invalid phone number format",
+        "auth.error.phoneNotRegistered": "Phone number not registered",
+        "auth.error.phoneInUse": "Phone number already registered",
+        "auth.error.sendCodeFailed": "Failed to send verification code",
+        "auth.error.enterCode": "Please enter verification code",
+        "auth.error.codeExpired": "Verification code expired",
+        "auth.error.codeInvalid": "Invalid verification code",
+        "auth.error.codeUsed": "Verification code already used",
+        "auth.error.registrationFailed": "Registration failed",
+        "auth.error.authFailed": "Authentication failed",
+        "auth.error.oauthSignin": "Error connecting to authentication provider",
+        "auth.error.oauthCallback": "Error during authentication callback",
+        "auth.error.oauthCreateAccount": "Could not create account",
+        "auth.error.emailCreateAccount": "Could not create account with email",
+        "auth.error.callback": "Error during callback",
+        "auth.error.oauthAccountNotLinked":
+            "Email already in use with different provider",
+        "auth.error.sessionRequired": "Please sign in to access this page",
+        "auth.error.unknownError": "An error occurred during authentication",
+        "userCenter.title": "User Center",
+        "userCenter.description": "Manage your account and preferences",
+        "userCenter.accountInfo": "Account Information",
+        "userCenter.name": "Name",
+        "userCenter.email": "Email",
+        "userCenter.phone": "Phone",
+        "userCenter.signOut": "Sign Out",
+        "userCenter.signingOut": "Signing out...",
         "settings.aiProvider.modelsLoading": "Loading models…",
         "settings.aiProvider.modelsCount": "{count} models",
         "settings.aiProvider.modelIdSelectPlaceholder": "Select a model",
         "settings.aiProvider.modelsHint": "Enter API key to load models",
+        "settings.aiProvider.syncToCloud": "Sync to Cloud",
+        "settings.aiProvider.syncing": "Syncing...",
+        "settings.aiProvider.synced": "Synced",
         "chat.header.sessionSwitcher": "Switch session",
         "chat.header.newSessionTooltip": "New session",
         "chat.tooltip.edit": "Edit message",
@@ -462,7 +575,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.accessCode.verifyFailed": "访问码验证失败",
         "settings.aiProvider.title": "AI 提供商设置",
         "settings.aiProvider.note":
-            "填写你自己的 API Key 以绕过使用限制。你的 Key 仅保存在浏览器本地，不会上传到服务器。",
+            "填写你自己的 API Key 以绕过使用限制。你的 Key 保存在浏览器本地，登录后可选择同步到云端。",
         "settings.aiProvider.providerLabel": "提供商",
         "settings.aiProvider.useServerDefault": "使用服务器默认值",
         "settings.aiProvider.modelIdLabel": "模型 ID",
@@ -578,10 +691,65 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "auth.signIn": "使用 GitHub 登录",
         "auth.signOut": "退出登录",
         "auth.profile": "个人中心",
+        "auth.dialog.title": "欢迎使用 AI Draw.io",
+        "auth.dialog.description": "登录以访问您的图表并继续创作",
+        "auth.dialog.oauth": "OAuth",
+        "auth.dialog.phone": "手机",
+        "auth.dialog.continueWithGoogle": "使用 Google 继续",
+        "auth.dialog.continueWithGithub": "使用 GitHub 继续",
+        "auth.dialog.secureAuth": "安全认证",
+        "auth.dialog.terms": "服务条款",
+        "auth.dialog.privacy": "隐私政策",
+        "auth.dialog.byContining": "继续即表示您同意我们的",
+        "auth.dialog.and": "和",
+        "auth.phone.signIn": "登录",
+        "auth.phone.signUp": "注册",
+        "auth.phone.name": "姓名",
+        "auth.phone.optional": "（可选）",
+        "auth.phone.phoneNumber": "手机号",
+        "auth.phone.verificationCode": "验证码",
+        "auth.phone.sendCode": "发送验证码",
+        "auth.phone.sending": "发送中...",
+        "auth.phone.yourName": "您的姓名",
+        "auth.phone.signingIn": "登录中...",
+        "auth.phone.signingUp": "注册中...",
+        "auth.phone.codeSent": "验证码已发送到您的手机",
+        "auth.phone.codeSentDev": "验证码已发送！（开发模式：{code}）",
+        "auth.phone.registrationSuccess": "注册成功！请登录。",
+        "auth.error.enterPhone": "请输入手机号",
+        "auth.error.invalidPhone": "手机号格式无效",
+        "auth.error.phoneNotRegistered": "手机号未注册",
+        "auth.error.phoneInUse": "手机号已被注册",
+        "auth.error.sendCodeFailed": "发送验证码失败",
+        "auth.error.enterCode": "请输入验证码",
+        "auth.error.codeExpired": "验证码已过期",
+        "auth.error.codeInvalid": "验证码无效",
+        "auth.error.codeUsed": "验证码已被使用",
+        "auth.error.registrationFailed": "注册失败",
+        "auth.error.authFailed": "认证失败",
+        "auth.error.oauthSignin": "连接认证提供商时出错",
+        "auth.error.oauthCallback": "认证回调时出错",
+        "auth.error.oauthCreateAccount": "无法创建账号",
+        "auth.error.emailCreateAccount": "无法使用邮箱创建账号",
+        "auth.error.callback": "回调时出错",
+        "auth.error.oauthAccountNotLinked": "该邮箱已被其他提供商使用",
+        "auth.error.sessionRequired": "请登录以访问此页面",
+        "auth.error.unknownError": "认证时发生错误",
+        "userCenter.title": "个人中心",
+        "userCenter.description": "管理您的账号和偏好设置",
+        "userCenter.accountInfo": "账号信息",
+        "userCenter.name": "姓名",
+        "userCenter.email": "邮箱",
+        "userCenter.phone": "手机",
+        "userCenter.signOut": "退出登录",
+        "userCenter.signingOut": "退出中...",
         "settings.aiProvider.modelsLoading": "正在加载模型列表…",
         "settings.aiProvider.modelsCount": "共 {count} 个模型",
         "settings.aiProvider.modelIdSelectPlaceholder": "选择一个模型",
         "settings.aiProvider.modelsHint": "填写 API Key 后可加载模型列表",
+        "settings.aiProvider.syncToCloud": "同步到云端",
+        "settings.aiProvider.syncing": "同步中...",
+        "settings.aiProvider.synced": "已同步",
         "chat.header.sessionSwitcher": "切换会话",
         "chat.header.newSessionTooltip": "新建会话",
         "chat.tooltip.edit": "编辑消息",

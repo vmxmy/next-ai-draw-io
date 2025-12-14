@@ -25,6 +25,9 @@ const credentialsSchema = z.object({
 
 export const authOptions: NextAuthOptions = {
     adapter: PrismaAdapter(db),
+    session: {
+        strategy: "jwt",
+    },
     debug:
         process.env.NEXTAUTH_DEBUG === "true" ||
         process.env.NODE_ENV === "development",
@@ -124,9 +127,28 @@ export const authOptions: NextAuthOptions = {
         error: "/auth/error",
     },
     callbacks: {
-        session: ({ session, user }) => {
-            if (session.user) {
-                session.user.id = user.id
+        async jwt({ token, user, account }) {
+            // 初次登录时，将用户信息添加到 token
+            if (user) {
+                token.id = user.id
+                token.phone = user.phone
+            }
+            // OAuth 登录时，从数据库获取 phone 信息
+            if (account && account.provider !== "phone" && token.id) {
+                const dbUser = await db.user.findUnique({
+                    where: { id: token.id as string },
+                    select: { phone: true },
+                })
+                if (dbUser) {
+                    token.phone = dbUser.phone
+                }
+            }
+            return token
+        },
+        session: ({ session, token }) => {
+            if (session.user && token) {
+                session.user.id = token.id as string
+                session.user.phone = token.phone as string | null
             }
             return session
         },
