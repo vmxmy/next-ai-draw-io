@@ -175,6 +175,7 @@ type I18nKey =
     | "sync.status.error"
     | "auth.signIn"
     | "auth.signOut"
+    | "auth.profile"
     | "settings.aiProvider.modelsLoading"
     | "settings.aiProvider.modelsCount"
     | "settings.aiProvider.modelIdSelectPlaceholder"
@@ -384,6 +385,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "sync.status.error": "Sync failed (will retry automatically)",
         "auth.signIn": "Sign in with GitHub",
         "auth.signOut": "Sign out",
+        "auth.profile": "User Center",
         "settings.aiProvider.modelsLoading": "Loading models…",
         "settings.aiProvider.modelsCount": "{count} models",
         "settings.aiProvider.modelIdSelectPlaceholder": "Select a model",
@@ -575,6 +577,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "sync.status.error": "同步失败（将自动重试）",
         "auth.signIn": "使用 GitHub 登录",
         "auth.signOut": "退出登录",
+        "auth.profile": "个人中心",
         "settings.aiProvider.modelsLoading": "正在加载模型列表…",
         "settings.aiProvider.modelsCount": "共 {count} 个模型",
         "settings.aiProvider.modelIdSelectPlaceholder": "选择一个模型",
