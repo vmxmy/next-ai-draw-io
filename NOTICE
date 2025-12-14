@@ -1,16 +1,22 @@
 Next AI Draw.io
 Copyright 2024 Dayuan Jiang
 
-This product is based on and includes software developed from the original
-Next AI Draw.io project (https://github.com/DayuanJiang/next-ai-draw-io)
+This project (https://github.com/vmxmy/next-ai-draw-io) is a derivative work
+based on the original Next AI Draw.io project by Dayuan Jiang.
 
 Original Project:
   Repository: https://github.com/DayuanJiang/next-ai-draw-io
   Author: Dayuan Jiang
   License: Apache License 2.0
 
+This Repository:
+  Repository: https://github.com/vmxmy/next-ai-draw-io
+  Maintainer: vmxmy
+  License: Apache License 2.0 (same as original)
+
 This derivative work includes modifications and enhancements while maintaining
-the Apache License 2.0 terms of the original project.
+the Apache License 2.0 terms of the original project. All modifications are
+licensed under Apache License 2.0.
 
 ================================================================================
 

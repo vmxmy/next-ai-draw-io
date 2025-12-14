@@ -1,6 +1,7 @@
 # Apache License 2.0 Compliance Audit Report
 
 **Project:** Next AI Draw.io (Derivative Work)
+**Project Repository:** https://github.com/vmxmy/next-ai-draw-io
 **Original Project:** https://github.com/DayuanJiang/next-ai-draw-io
 **License:** Apache License 2.0
 **Audit Date:** 2025-12-14
@@ -14,11 +15,19 @@ This audit evaluates the compliance of the Next AI Draw.io project (a derivative
 
 ### Derivative Work Declaration
 
-This project is a derivative work based on:
-- **Original Repository**: https://github.com/DayuanJiang/next-ai-draw-io
-- **Original Author**: Dayuan Jiang
-- **Original License**: Apache License 2.0
-- **Modifications**: Includes enhancements and customizations while maintaining Apache 2.0 compliance
+**This Repository:**
+- **Repository**: https://github.com/vmxmy/next-ai-draw-io
+- **Maintainer**: vmxmy
+- **License**: Apache License 2.0 (same as original)
+- **Status**: Derivative work / Fork
+
+**Original Project:**
+- **Repository**: https://github.com/DayuanJiang/next-ai-draw-io
+- **Author**: Dayuan Jiang
+- **License**: Apache License 2.0
+
+**Modifications:**
+This derivative work includes enhancements, customizations, and additional features while maintaining full compliance with Apache License 2.0 terms of the original project.
 
 ### Compliance Status: ✅ COMPLIANT
 
