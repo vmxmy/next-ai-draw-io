@@ -29,9 +29,9 @@ export function ChatHeader({
     authStatus,
     userImage,
     signInLabel,
-    signOutLabel,
+    profileLabel,
     onSignIn,
-    onSignOut,
+    onProfileClick,
     showSync,
     isOnline,
     syncInFlightCount,
@@ -66,9 +66,9 @@ export function ChatHeader({
     authStatus: "authenticated" | "loading" | "unauthenticated"
     userImage?: string | null
     signInLabel: string
-    signOutLabel: string
+    profileLabel: string
     onSignIn: () => void
-    onSignOut: () => void
+    onProfileClick: () => void
     showSync: boolean
     isOnline: boolean
     syncInFlightCount: number
@@ -119,9 +119,9 @@ export function ChatHeader({
                         authStatus={authStatus}
                         userImage={userImage}
                         signInLabel={signInLabel}
-                        signOutLabel={signOutLabel}
+                        profileLabel={profileLabel}
                         onSignIn={onSignIn}
-                        onSignOut={onSignOut}
+                        onProfileClick={onProfileClick}
                     />
 
                     <CloudSyncStatusButton

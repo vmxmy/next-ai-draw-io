@@ -46,7 +46,14 @@ async function issueVerificationCode(
     purpose: SmsVerificationPurpose,
 ) {
     const code = generateCode()
-    const message = `【AI Draw.io】Your verification code is ${code}, valid for ${TTL_MINUTES} minutes. Do not share it with anyone.`
+    const signature = process.env.SMSBAO_SIGNATURE || "【AI Draw.io】"
+    const template =
+        process.env.SMSBAO_MESSAGE_TEMPLATE ||
+        "您的验证码是{code}，{minutes}分钟内有效，请勿泄露。"
+    const messageBody = template
+        .replace("{code}", code)
+        .replace("{minutes}", TTL_MINUTES.toString())
+    const message = `${signature}${messageBody}`
 
     await sendSmsMessage(phone, message)
 
