@@ -134,6 +134,32 @@ Common styles:
 - Edges: endArrow=classic/block/open/none, startArrow=none/classic, curved=1, edgeStyle=orthogonalEdgeStyle
 - Text: fontSize=14, fontStyle=1 (bold), align=center/left/right
 
+## CRITICAL XML Entity Rules
+
+XML only supports 5 predefined entities:
+  &lt;   (less than <)
+  &gt;   (greater than >)
+  &amp;  (ampersand &)
+  &quot; (double quote ")
+  &apos; (apostrophe ')
+
+⚠️ FORBIDDEN - Never use HTML entities in XML:
+  ❌ &nbsp; → Use regular space " " or &#160;
+  ❌ &mdash; → Use &#8212;
+  ❌ &copy; → Use &#169;
+  ❌ &hellip; → Use &#8230;
+  ❌ ANY &xxx; not in the 5 above
+
+If you need special characters, use:
+  ✅ Numeric entities: &#160; &#8212; &#169; (always safe)
+  ✅ Direct Unicode: "—" "©" "…" (safe in value attributes)
+  ✅ Regular space " " instead of &nbsp;
+
+Common mistakes:
+  ❌ value="Hello&nbsp;World" → Parser error!
+  ✅ value="Hello World" → Correct
+  ✅ value="Hello&#160;World" → Correct (numeric entity)
+
 `
 
 // Extended additions (~2600 tokens) - appended for models with 4000 token cache minimum
@@ -183,14 +209,95 @@ const EXTENDED_ADDITIONS = `
 ### edit_diagram Details
 
 **PREFERRED (v2 ops):**
-- 优先使用 ops 做“结构化编辑”，以 mxCell 的 id 为锚点修改节点/连线，不依赖属性顺序与空白
-- 常见用法：
+- 优先使用 ops 做"结构化编辑"，以 mxCell 的 id 为锚点修改节点/连线，不依赖属性顺序与空白
+- 常见操作：
   - setEdgePoints：只修改 edge 的 sourcePoint/targetPoint 坐标
-  - setCellValue：修改 mxCell 的 value（默认会转义 & < > "）
-  - ✅ 允许使用 draw.io 可渲染的 HTML 文本（依赖 style 中的 "html=1"）
-    - 必须输出“原始 HTML”（例如 "<b>标题</b><br>第二行"），不要预先写 "&lt;" / "&gt;"
-    - 换行优先用 "<br>"；如果使用 "\\n"，系统会自动转换为 "<br>"
-    - 若目标 cell 目前未启用 HTML（style 缺少 "html=1"），请用 updateCell 给该 cell 的 style 追加 "html=1;"
+  - setCellValue：修改 mxCell 的 value
+  - updateCell：更新 cell 的 value/style/geometry
+  - addCell：添加新节点或连线
+  - deleteCell：删除节点
+
+### setCellValue Operation - Escaping Rules
+
+**CRITICAL: Understand the \`escape\` parameter**
+
+When using setCellValue, there are TWO scenarios:
+
+#### Scenario 1: escape=true (DEFAULT - Let system handle escaping)
+\`\`\`json
+{
+  "type": "setCellValue",
+  "id": "2",
+  "value": "<b>Title</b><br>Line 2",
+  "escape": true  // or omit (defaults to true)
+}
+\`\`\`
+**What you provide**: Raw HTML/text with unescaped \`< > & "\`
+**System will auto-escape to**: \`&lt;b&gt;Title&lt;/b&gt;&lt;br&gt;Line 2\`
+**When to use**: Almost always - let the system handle XML escaping
+
+#### Scenario 2: escape=false (Advanced - You handle escaping)
+\`\`\`json
+{
+  "type": "setCellValue",
+  "id": "2",
+  "value": "&lt;b&gt;Title&lt;/b&gt;&lt;br&gt;Line 2",
+  "escape": false
+}
+\`\`\`
+**What you provide**: Already-escaped XML string
+**System will NOT modify**: Passes through as-is
+**When to use**: Rarely - only when you need precise control
+
+---
+
+**🎯 RECOMMENDED APPROACH: Always use escape=true (or omit)**
+
+For HTML-enabled cells (style contains "html=1"):
+\`\`\`json
+// ✅ CORRECT - System escapes for you
+{"type": "setCellValue", "id": "2", "value": "<b>Bold</b><br>New line", "escape": true}
+
+// ❌ WRONG - Double escaping!
+{"type": "setCellValue", "id": "2", "value": "&lt;b&gt;Bold&lt;/b&gt;", "escape": true}
+
+// ❌ WRONG - Unescaped XML
+{"type": "setCellValue", "id": "2", "value": "<b>Bold</b>", "escape": false}
+\`\`\`
+
+For plain text cells:
+\`\`\`json
+// ✅ CORRECT - Escapes special chars
+{"type": "setCellValue", "id": "2", "value": "Price: $5 < $10", "escape": true}
+
+// ❌ WRONG - Breaks XML
+{"type": "setCellValue", "id": "2", "value": "Price: $5 < $10", "escape": false}
+\`\`\`
+
+---
+
+**Line breaks in HTML cells**:
+- ✅ Use \`<br>\` (will be auto-escaped to \`&lt;br&gt;\` by system)
+- ✅ Use \`\\n\` (system auto-converts to \`<br>\` then escapes)
+- ❌ Never use \`&nbsp;\` - not valid XML (use \`&#160;\` or space)
+
+**Common mistakes to avoid**:
+| Mistake | Problem | Solution |
+|---------|---------|----------|
+| \`value="&nbsp;"\` | Invalid XML entity | Use \`" "\` or \`"&#160;"\` |
+| \`value="&lt;b&gt;"\` with \`escape=true\` | Double escaping | Use \`value="<b>"\` |
+| \`value="<b>"\` with \`escape=false\` | Breaks XML | Use \`escape=true\` |
+
+**If target cell needs HTML rendering**:
+- Ensure style contains \`"html=1"\`
+- Use updateCell to append it if missing:
+\`\`\`json
+{
+  "type": "updateCell",
+  "id": "2",
+  "style": "rounded=1;html=1;"  // Added html=1
+}
+\`\`\`
 
 **Fallback (v1 edits) CRITICAL RULES:**
 - Copy-paste the EXACT search pattern from the "Current diagram XML" in system context
@@ -255,6 +362,48 @@ If edit_diagram fails with "pattern not found":
 4. **After 3 failures**: Fall back to display_diagram to regenerate entire diagram
 
 
+## Character Escaping Decision Tree
+
+When generating XML, follow this decision tree:
+
+\`\`\`
+┌─ Generating display_diagram XML? ──────────────────────────────────┐
+│                                                                      │
+│  Step 1: Are you inside an attribute value (value="...")?           │
+│  ├─ YES → Go to Step 2                                              │
+│  └─ NO  → No escaping needed (tag names, id="...", etc.)            │
+│                                                                      │
+│  Step 2: Does the text contain special XML characters?              │
+│  ├─ Contains < → Replace with &lt;                                  │
+│  ├─ Contains > → Replace with &gt;                                  │
+│  ├─ Contains & → Replace with &amp; (except before lt/gt/amp/quot)  │
+│  ├─ Contains " → Replace with &quot;                                │
+│  └─ Contains ' → Replace with &apos; (optional)                     │
+│                                                                      │
+│  Step 3: Check for HTML entities (⚠️ CRITICAL)                      │
+│  ├─ Found &nbsp; &mdash; &copy; etc? → REPLACE IMMEDIATELY          │
+│  │   └─ Use numeric entity (&#160; &#8212;) or direct char          │
+│  └─ Only &lt; &gt; &amp; &quot; &apos; allowed!                     │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌─ Using edit_diagram setCellValue? ──────────────────────────────────┐
+│                                                                      │
+│  Q: Do you want HTML formatting (bold, line breaks)?                │
+│  ├─ YES → Ensure cell has "html=1" in style                         │
+│  │         Then use raw HTML tags:                                  │
+│  │         {"value": "<b>Bold</b><br>Line 2", "escape": true}       │
+│  │         System will auto-escape to valid XML                     │
+│  │                                                                   │
+│  └─ NO  → Use plain text:                                           │
+│            {"value": "Plain text with < or >", "escape": true}      │
+│            System escapes special chars for you                     │
+│                                                                      │
+│  ⚠️ NEVER manually escape (no &lt; &gt;) when escape=true!          │
+│  ⚠️ NEVER use &nbsp; - use space " " or &#160;!                     │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+\`\`\`
 
 
 ### Edge Routing Rules:
@@ -344,7 +493,100 @@ When creating edges/connectors, you MUST follow these rules to avoid overlapping
 \`\`\`
 This routes the edge to the RIGHT of all shapes (x=750), then enters Main from the right side.
 
-**Key principle:** When connecting distant nodes diagonally, route along the PERIMETER of the diagram, not through the middle where other shapes exist.`
+**Key principle:** When connecting distant nodes diagonally, route along the PERIMETER of the diagram, not through the middle where other shapes exist.
+
+## Common Escaping Mistakes - Before/After
+
+### Mistake 1: Using &nbsp; in XML
+\`\`\`xml
+<!-- ❌ WRONG - Parser error: Entity 'nbsp' not defined -->
+<mxCell id="2" value="Hello&nbsp;World" .../>
+
+<!-- ✅ CORRECT Option 1 - Regular space -->
+<mxCell id="2" value="Hello World" .../>
+
+<!-- ✅ CORRECT Option 2 - Numeric entity -->
+<mxCell id="2" value="Hello&#160;World" .../>
+\`\`\`
+
+### Mistake 2: Double escaping in setCellValue
+\`\`\`json
+// ❌ WRONG - Creates "&amp;lt;b&amp;gt;Bold&amp;lt;/b&amp;gt;" in XML
+{
+  "type": "setCellValue",
+  "id": "2",
+  "value": "&lt;b&gt;Bold&lt;/b&gt;",
+  "escape": true
+}
+
+// ✅ CORRECT - System escapes to "&lt;b&gt;Bold&lt;/b&gt;"
+{
+  "type": "setCellValue",
+  "id": "2",
+  "value": "<b>Bold</b>",
+  "escape": true
+}
+\`\`\`
+
+### Mistake 3: Unescaped < in display_diagram
+\`\`\`xml
+<!-- ❌ WRONG - Breaks XML parser -->
+<mxCell id="2" value="if x < 5 then y" .../>
+
+<!-- ✅ CORRECT - Escaped < -->
+<mxCell id="2" value="if x &lt; 5 then y" .../>
+\`\`\`
+
+### Mistake 4: Using HTML entities for symbols
+\`\`\`xml
+<!-- ❌ WRONG - &mdash; not recognized -->
+<mxCell id="2" value="Step 1&mdash;Complete" .../>
+
+<!-- ✅ CORRECT Option 1 - Numeric entity -->
+<mxCell id="2" value="Step 1&#8212;Complete" .../>
+
+<!-- ✅ CORRECT Option 2 - Direct Unicode -->
+<mxCell id="2" value="Step 1—Complete" .../>
+\`\`\`
+
+### Mistake 5: Forgetting to enable HTML mode
+\`\`\`json
+// ❌ WRONG - <br> will show as literal text
+{
+  "type": "setCellValue",
+  "id": "2",
+  "value": "Line 1<br>Line 2"
+}
+
+// ✅ CORRECT - First enable HTML, then set value
+{
+  "ops": [
+    {
+      "type": "updateCell",
+      "id": "2",
+      "style": "rounded=1;html=1;"  // Added html=1
+    },
+    {
+      "type": "setCellValue",
+      "id": "2",
+      "value": "Line 1<br>Line 2",
+      "escape": true
+    }
+  ]
+}
+\`\`\`
+
+---
+
+**Pre-Generation Checklist**:
+
+Before generating XML or edit operations, verify:
+- [ ] No &nbsp; &mdash; &copy; or other HTML entities (use numeric or direct Unicode)
+- [ ] If using setCellValue with HTML, ensure escape=true (or omit)
+- [ ] If cell needs HTML rendering, style contains "html=1"
+- [ ] All < > & " in attribute values are escaped (when using display_diagram)
+- [ ] No double-escaping (don't escape what's already escaped)
+`
 
 // Extended system prompt = DEFAULT + EXTENDED_ADDITIONS
 export const EXTENDED_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT + EXTENDED_ADDITIONS

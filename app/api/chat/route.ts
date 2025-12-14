@@ -864,8 +864,29 @@ VALIDATION RULES (XML will be rejected if violated):
 2. Every mxCell needs a unique id
 3. Every mxCell (except id="0") needs a valid parent attribute
 4. Edge source/target must reference existing cell IDs
-5. Escape special chars ONLY inside attribute values (especially value="..."): &lt; &gt; &amp; &quot;
+5. Escape special chars ONLY inside attribute values (especially value="..."):
+   - &lt; for <
+   - &gt; for >
+   - &amp; for &
+   - &quot; for "
+   - &apos; for '
 6. Always start with: <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+⚠️ CRITICAL - XML Entity Rules:
+- ONLY use the 5 predefined XML entities above
+- NEVER use HTML entities like &nbsp; &mdash; &copy; - they will cause parser errors!
+- For non-breaking space: use regular space " " or numeric entity &#160;
+- For special symbols: use numeric entities (&#8212; for —, &#169; for ©)
+
+✅ CORRECT Examples:
+<mxCell value="Hello World" .../>              <!-- Regular space -->
+<mxCell value="Price: $5 &lt; $10" .../>       <!-- Escaped < -->
+<mxCell value="Copyright &#169; 2024" .../>    <!-- Numeric entity -->
+
+❌ WRONG Examples:
+<mxCell value="Hello&nbsp;World" .../>         <!-- Invalid entity! -->
+<mxCell value="Em&mdash;dash" .../>            <!-- Invalid entity! -->
+<mxCell value="Price: $5 < $10" .../>          <!-- Unescaped < -->
 
 CRITICAL (common failure): DO NOT HTML-escape XML tags
 - ✅ Correct: <mxGraphModel> / <root> / <mxCell>
