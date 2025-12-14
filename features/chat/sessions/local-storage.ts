@@ -12,29 +12,6 @@ import {
 } from "@/features/chat/sessions/storage"
 
 const STORAGE_WARNING_THRESHOLD = 0.8 // 80%
-const STORAGE_CRITICAL_THRESHOLD = 0.95 // 95%
-
-async function checkStorageQuota(): Promise<{
-    usage: number
-    isWarning: boolean
-    isCritical: boolean
-}> {
-    if (typeof navigator === "undefined" || !navigator.storage?.estimate) {
-        return { usage: 0, isWarning: false, isCritical: false }
-    }
-
-    try {
-        const estimate = await navigator.storage.estimate()
-        const usage = (estimate.usage || 0) / (estimate.quota || 1)
-        return {
-            usage,
-            isWarning: usage > STORAGE_WARNING_THRESHOLD,
-            isCritical: usage > STORAGE_CRITICAL_THRESHOLD,
-        }
-    } catch {
-        return { usage: 0, isWarning: false, isCritical: false }
-    }
-}
 
 export function cleanOldestConversations(count: number): number {
     try {

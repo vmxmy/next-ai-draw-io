@@ -424,6 +424,15 @@ export function useLocalConversations({
             const nextXml = String(xml ?? "")
             if (!nextXml) return
 
+            // 检查 XML 大小
+            if (nextXml.length > MAX_XML_SIZE) {
+                console.error(
+                    `[diagram] XML too large: ${nextXml.length} bytes (max ${MAX_XML_SIZE})`,
+                )
+                toast.error("图表过大，无法保存历史版本")
+                return
+            }
+
             const versions = diagramVersionsRef.current
             const cursor = diagramVersionCursorRef.current
             const currentXml =
@@ -432,10 +441,17 @@ export function useLocalConversations({
                     : ""
             if (nextXml === currentXml) return
 
-            const truncated =
+            let truncated =
                 cursor >= 0 && cursor < versions.length - 1
                     ? versions.slice(0, cursor + 1)
                     : versions.slice()
+
+            // 限制版本数量（FIFO）
+            if (truncated.length >= MAX_DIAGRAM_VERSIONS) {
+                truncated = truncated.slice(
+                    truncated.length - MAX_DIAGRAM_VERSIONS + 1,
+                )
+            }
 
             const entry: DiagramVersion = {
                 id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

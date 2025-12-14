@@ -301,7 +301,7 @@ export function useConversationSync({
             const cursor = getSyncCursor()
             const res = await pullConversationsMutateAsyncRef.current({
                 cursor,
-                limit: 200,
+                limit: 100,
             })
             if (res?.cursor) setSyncCursor(res.cursor)
             if (Array.isArray(res?.conversations) && res.conversations.length) {
