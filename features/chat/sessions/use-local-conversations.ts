@@ -342,12 +342,25 @@ export function useLocalConversations({
         })
     }, [persistCurrentConversation])
 
+    const MAX_DIAGRAM_VERSIONS = 50
+    const MAX_XML_SIZE = 5_000_000 // 5MB
+
     const normalizeCursor = (cursor: number, len: number) =>
         Math.min(Math.max(cursor, -1), len - 1)
 
     const ensureDiagramVersionForMessage = useCallback(
         (messageIndex: number, xml: string, note?: string) => {
             const nextXml = String(xml ?? "")
+
+            // 检查 XML 大小
+            if (nextXml.length > MAX_XML_SIZE) {
+                console.error(
+                    `[diagram] XML too large: ${nextXml.length} bytes (max ${MAX_XML_SIZE})`,
+                )
+                toast.error("图表过大，无法保存历史版本")
+                return nextXml
+            }
+
             const versions = diagramVersionsRef.current
             const cursor = diagramVersionCursorRef.current
 
@@ -358,10 +371,29 @@ export function useLocalConversations({
 
             let nextIndex = cursor
             if (nextXml && nextXml !== currentXml) {
-                const truncated =
+                let truncated =
                     cursor >= 0 && cursor < versions.length - 1
                         ? versions.slice(0, cursor + 1)
                         : versions.slice()
+
+                // 限制版本数量（FIFO）
+                if (truncated.length >= MAX_DIAGRAM_VERSIONS) {
+                    truncated = truncated.slice(
+                        truncated.length - MAX_DIAGRAM_VERSIONS + 1,
+                    )
+                    // 调整 marks
+                    const minIndex = versions.length - truncated.length
+                    const newMarks: Record<number, number> = {}
+                    for (const [k, v] of Object.entries(
+                        diagramVersionMarksRef.current,
+                    )) {
+                        const mi = Number(k)
+                        if (typeof v === "number" && v >= minIndex) {
+                            newMarks[mi] = v - minIndex
+                        }
+                    }
+                    diagramVersionMarksRef.current = newMarks
+                }
 
                 const entry: DiagramVersion = {
                     id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -392,6 +424,15 @@ export function useLocalConversations({
             const nextXml = String(xml ?? "")
             if (!nextXml) return
 
+            // 检查 XML 大小
+            if (nextXml.length > MAX_XML_SIZE) {
+                console.error(
+                    `[diagram] XML too large: ${nextXml.length} bytes (max ${MAX_XML_SIZE})`,
+                )
+                toast.error("图表过大，无法保存历史版本")
+                return
+            }
+
             const versions = diagramVersionsRef.current
             const cursor = diagramVersionCursorRef.current
             const currentXml =
@@ -400,10 +441,17 @@ export function useLocalConversations({
                     : ""
             if (nextXml === currentXml) return
 
-            const truncated =
+            let truncated =
                 cursor >= 0 && cursor < versions.length - 1
                     ? versions.slice(0, cursor + 1)
                     : versions.slice()
+
+            // 限制版本数量（FIFO）
+            if (truncated.length >= MAX_DIAGRAM_VERSIONS) {
+                truncated = truncated.slice(
+                    truncated.length - MAX_DIAGRAM_VERSIONS + 1,
+                )
+            }
 
             const entry: DiagramVersion = {
                 id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

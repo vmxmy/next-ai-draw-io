@@ -1,6 +1,18 @@
 "use client"
 
-import { ChevronDown, Cloud, HardDrive, Moon, Search, Sun } from "lucide-react"
+import {
+    BookOpen,
+    Check,
+    ChevronDown,
+    Cloud,
+    ExternalLink,
+    HardDrive,
+    Moon,
+    Palette,
+    Scale,
+    Search,
+    Sun,
+} from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -21,8 +33,11 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/contexts/i18n-context"
+import { useTheme } from "@/contexts/theme-context"
 import { api } from "@/lib/trpc/client"
+import { tweakcnThemes } from "@/lib/tweakcn-themes"
 
 interface ModelOption {
     id: string
@@ -84,6 +99,12 @@ export function SettingsDialog({
     >()
     const [cloudBaseUrl, setCloudBaseUrl] = useState<string | undefined>()
     const [cloudModelId, setCloudModelId] = useState<string | undefined>()
+    const [syncSuccess, setSyncSuccess] = useState(false)
+    const [restoreSuccess, setRestoreSuccess] = useState(false)
+    const [isRestoring, setIsRestoring] = useState(false)
+
+    // Theme hook
+    const { palette, setPalette } = useTheme()
 
     // TRPC mutations and utils
     const utils = api.useUtils()
@@ -144,8 +165,53 @@ export function SettingsDialog({
             setCloudApiKeyPreview(undefined)
             setCloudBaseUrl(undefined)
             setCloudModelId(undefined)
+
+            // Load cloud config if logged in and has provider
+            if (session?.user && localProvider && localProvider !== "default") {
+                ;(async () => {
+                    try {
+                        const cloudConfig =
+                            await utils.providerConfig.get.fetch({
+                                provider: localProvider as any,
+                            })
+                        if (cloudConfig) {
+                            // Save cloud config for source indicators
+                            if (cloudConfig.baseUrl) {
+                                setCloudBaseUrl(cloudConfig.baseUrl)
+                            }
+                            if (cloudConfig.modelId) {
+                                setCloudModelId(cloudConfig.modelId)
+                            }
+                            if (
+                                cloudConfig.hasApiKey &&
+                                cloudConfig.apiKeyPreview
+                            ) {
+                                setCloudApiKeyPreview(cloudConfig.apiKeyPreview)
+                            }
+
+                            // Auto-fill from cloud if local is empty
+                            if (!localBaseUrl && cloudConfig.baseUrl) {
+                                setBaseUrl(cloudConfig.baseUrl)
+                                localStorage.setItem(
+                                    STORAGE_AI_BASE_URL_KEY,
+                                    cloudConfig.baseUrl,
+                                )
+                            }
+                            if (!localModelId && cloudConfig.modelId) {
+                                setModelId(cloudConfig.modelId)
+                                localStorage.setItem(
+                                    STORAGE_AI_MODEL_KEY,
+                                    cloudConfig.modelId,
+                                )
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Failed to load cloud config:", error)
+                    }
+                })()
+            }
         }
-    }, [open])
+    }, [open, session, utils])
 
     useEffect(() => {
         if (!open) return
@@ -234,385 +300,510 @@ export function SettingsDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="w-[640px] h-[750px] max-h-[90vh] overflow-hidden flex flex-col">
                 <DialogHeader>
                     <DialogTitle>{t("dialog.settings.title")}</DialogTitle>
                     <DialogDescription>
                         {t("dialog.settings.description")}
                     </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-2">
-                    {accessCodeRequired && (
-                        <div className="space-y-2">
-                            <Label htmlFor="access-code">
-                                {t("settings.accessCode.label")}
-                            </Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="access-code"
-                                    type="password"
-                                    value={accessCode}
-                                    onChange={(e) =>
-                                        setAccessCode(e.target.value)
-                                    }
-                                    onKeyDown={handleKeyDown}
-                                    placeholder={t(
-                                        "settings.accessCode.placeholder",
-                                    )}
-                                    autoComplete="off"
-                                />
-                                <Button
-                                    onClick={handleSave}
-                                    disabled={isVerifying || !accessCode.trim()}
-                                >
-                                    {isVerifying
-                                        ? "..."
-                                        : t("settings.accessCode.save")}
-                                </Button>
-                            </div>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                {t("settings.accessCode.requiredNote")}
-                            </p>
-                            {error && (
-                                <p className="text-[0.8rem] text-destructive">
-                                    {error}
-                                </p>
-                            )}
-                        </div>
-                    )}
-                    <div className="space-y-2">
-                        <Label>{t("settings.aiProvider.title")}</Label>
-                        <p className="text-[0.8rem] text-muted-foreground">
-                            {t("settings.aiProvider.note")}
-                        </p>
-                        <div className="space-y-3 pt-2">
+                <Tabs
+                    defaultValue="model"
+                    className="w-full flex-1 flex flex-col overflow-hidden"
+                >
+                    <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+                        <TabsTrigger value="model">
+                            {t("settings.tabs.model")}
+                        </TabsTrigger>
+                        <TabsTrigger value="interface">
+                            {t("settings.tabs.interface")}
+                        </TabsTrigger>
+                        <TabsTrigger value="about">
+                            {t("settings.tabs.about")}
+                        </TabsTrigger>
+                    </TabsList>
+                    <TabsContent
+                        value="model"
+                        className="space-y-4 py-2 overflow-y-auto flex-1"
+                    >
+                        {accessCodeRequired && (
                             <div className="space-y-2">
-                                <Label htmlFor="ai-provider">
-                                    {t("settings.aiProvider.providerLabel")}
+                                <Label htmlFor="access-code">
+                                    {t("settings.accessCode.label")}
                                 </Label>
-                                <Select
-                                    value={provider || "default"}
-                                    onValueChange={async (value) => {
-                                        const actualValue =
-                                            value === "default" ? "" : value
-                                        setProvider(actualValue)
-                                        localStorage.setItem(
-                                            STORAGE_AI_PROVIDER_KEY,
-                                            actualValue,
-                                        )
-
-                                        // Load cloud config if available
-                                        setCloudApiKeyPreview(undefined)
-                                        setCloudBaseUrl(undefined)
-                                        setCloudModelId(undefined)
-                                        if (session?.user && actualValue) {
-                                            try {
-                                                const cloudConfig =
-                                                    await utils.providerConfig.get.fetch(
-                                                        {
-                                                            provider:
-                                                                actualValue as any,
-                                                        },
-                                                    )
-                                                if (cloudConfig) {
-                                                    // Save cloud config for source indicators
-                                                    if (cloudConfig.baseUrl) {
-                                                        setCloudBaseUrl(
-                                                            cloudConfig.baseUrl,
-                                                        )
-                                                    }
-                                                    if (cloudConfig.modelId) {
-                                                        setCloudModelId(
-                                                            cloudConfig.modelId,
-                                                        )
-                                                    }
-                                                    if (
-                                                        cloudConfig.hasApiKey &&
-                                                        cloudConfig.apiKeyPreview
-                                                    ) {
-                                                        setCloudApiKeyPreview(
-                                                            cloudConfig.apiKeyPreview,
-                                                        )
-                                                    }
-
-                                                    // Auto-fill from cloud if local is empty
-                                                    if (
-                                                        !baseUrl &&
-                                                        cloudConfig.baseUrl
-                                                    ) {
-                                                        setBaseUrl(
-                                                            cloudConfig.baseUrl,
-                                                        )
-                                                        localStorage.setItem(
-                                                            STORAGE_AI_BASE_URL_KEY,
-                                                            cloudConfig.baseUrl,
-                                                        )
-                                                    }
-                                                    if (
-                                                        !modelId &&
-                                                        cloudConfig.modelId
-                                                    ) {
-                                                        setModelId(
-                                                            cloudConfig.modelId,
-                                                        )
-                                                        localStorage.setItem(
-                                                            STORAGE_AI_MODEL_KEY,
-                                                            cloudConfig.modelId,
-                                                        )
-                                                    }
-                                                }
-                                            } catch (error) {
-                                                console.error(
-                                                    "Failed to load cloud config:",
-                                                    error,
-                                                )
-                                            }
+                                <div className="flex gap-2">
+                                    <Input
+                                        id="access-code"
+                                        type="password"
+                                        value={accessCode}
+                                        onChange={(e) =>
+                                            setAccessCode(e.target.value)
                                         }
-                                    }}
-                                >
-                                    <SelectTrigger id="ai-provider">
-                                        <SelectValue
-                                            placeholder={t(
-                                                "settings.aiProvider.useServerDefault",
-                                            )}
-                                        />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="default">
-                                            {t(
-                                                "settings.aiProvider.useServerDefault",
-                                            )}
-                                        </SelectItem>
-                                        <SelectItem value="openai">
-                                            OpenAI
-                                        </SelectItem>
-                                        <SelectItem value="anthropic">
-                                            Anthropic
-                                        </SelectItem>
-                                        <SelectItem value="google">
-                                            Google
-                                        </SelectItem>
-                                        <SelectItem value="azure">
-                                            Azure OpenAI
-                                        </SelectItem>
-                                        <SelectItem value="openrouter">
-                                            OpenRouter
-                                        </SelectItem>
-                                        <SelectItem value="deepseek">
-                                            DeepSeek
-                                        </SelectItem>
-                                        <SelectItem value="siliconflow">
-                                            SiliconFlow
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            {provider && provider !== "default" && (
-                                <>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="ai-model">
-                                            {t(
-                                                "settings.aiProvider.modelIdLabel",
-                                            )}
-                                        </Label>
-                                        <div className="relative">
-                                            <div className="relative">
-                                                <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                                <Input
-                                                    id="ai-model"
-                                                    value={modelId}
-                                                    onChange={(e) => {
-                                                        const value =
-                                                            e.target.value
-                                                        setModelId(value)
-                                                        localStorage.setItem(
-                                                            STORAGE_AI_MODEL_KEY,
-                                                            value,
-                                                        )
-                                                        setIsModelMenuOpen(true)
-                                                    }}
-                                                    onFocus={() =>
-                                                        setIsModelMenuOpen(true)
-                                                    }
-                                                    onBlur={() => {
-                                                        setTimeout(
-                                                            () =>
-                                                                setIsModelMenuOpen(
-                                                                    false,
-                                                                ),
-                                                            150,
-                                                        )
-                                                    }}
-                                                    placeholder={
-                                                        provider === "openai"
-                                                            ? "e.g., gpt-4o"
-                                                            : provider ===
-                                                                "anthropic"
-                                                              ? "e.g., claude-3-5-sonnet-latest"
-                                                              : provider ===
-                                                                  "google"
-                                                                ? "e.g., gemini-2.5-pro"
-                                                                : provider ===
-                                                                    "deepseek"
-                                                                  ? "e.g., deepseek-chat"
-                                                                  : t(
-                                                                        "settings.aiProvider.modelIdLabel",
-                                                                    )
-                                                    }
-                                                    className="pl-8 pr-9"
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
-                                                    onMouseDown={(e) => {
-                                                        e.preventDefault()
-                                                    }}
-                                                    onClick={() =>
-                                                        setIsModelMenuOpen(
-                                                            (v) => !v,
-                                                        )
-                                                    }
-                                                >
-                                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                                </Button>
-                                            </div>
-                                            {isModelMenuOpen &&
-                                                modelOptions.length > 0 && (
-                                                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
-                                                        <div className="max-h-56 overflow-auto">
-                                                            {modelOptions
-                                                                .filter((m) => {
-                                                                    const q =
-                                                                        modelId
-                                                                            .trim()
-                                                                            .toLowerCase()
-                                                                    if (!q)
-                                                                        return true
-                                                                    return (
-                                                                        String(
-                                                                            m.id,
-                                                                        )
-                                                                            .toLowerCase()
-                                                                            .includes(
-                                                                                q,
-                                                                            ) ||
-                                                                        String(
-                                                                            m.label ||
-                                                                                "",
-                                                                        )
-                                                                            .toLowerCase()
-                                                                            .includes(
-                                                                                q,
-                                                                            )
-                                                                    )
-                                                                })
-                                                                .slice(0, 100)
-                                                                .map((m) => (
-                                                                    <button
-                                                                        key={
-                                                                            m.id
-                                                                        }
-                                                                        type="button"
-                                                                        className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
-                                                                        onMouseDown={(
-                                                                            e,
-                                                                        ) => {
-                                                                            e.preventDefault()
-                                                                        }}
-                                                                        onClick={() => {
-                                                                            setModelId(
-                                                                                m.id,
-                                                                            )
-                                                                            localStorage.setItem(
-                                                                                STORAGE_AI_MODEL_KEY,
-                                                                                m.id,
-                                                                            )
-                                                                            setIsModelMenuOpen(
-                                                                                false,
-                                                                            )
-                                                                        }}
-                                                                    >
-                                                                        <span className="truncate">
-                                                                            {
-                                                                                m.id
-                                                                            }
-                                                                        </span>
-                                                                        {m.label ? (
-                                                                            <span className="ml-2 max-w-[45%] truncate text-xs text-muted-foreground">
-                                                                                {
-                                                                                    m.label
-                                                                                }
-                                                                            </span>
-                                                                        ) : null}
-                                                                    </button>
-                                                                ))}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                        </div>
-                                        {session?.user && (
-                                            <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
-                                                {modelId ? (
-                                                    <>
-                                                        <HardDrive className="h-3 w-3" />
-                                                        Using local config
-                                                    </>
-                                                ) : cloudModelId ? (
-                                                    <>
-                                                        <Cloud className="h-3 w-3" />
-                                                        Using cloud default:{" "}
-                                                        {cloudModelId}
-                                                    </>
-                                                ) : null}
-                                            </p>
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={t(
+                                            "settings.accessCode.placeholder",
                                         )}
-                                        <p className="text-[0.8rem] text-muted-foreground">
-                                            {isLoadingModels
-                                                ? t(
-                                                      "settings.aiProvider.modelsLoading",
-                                                  )
-                                                : modelOptions.length > 0
-                                                  ? t(
-                                                        "settings.aiProvider.modelsCount",
-                                                        {
-                                                            count: modelOptions.length,
-                                                        },
-                                                    )
-                                                  : apiKey
-                                                    ? ""
-                                                    : t(
-                                                          "settings.aiProvider.modelsHint",
-                                                      )}
-                                        </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="ai-api-key">
-                                            {t(
-                                                "settings.aiProvider.apiKeyLabel",
-                                            )}
-                                        </Label>
-                                        <Input
-                                            id="ai-api-key"
-                                            type="password"
-                                            value={apiKey}
-                                            onChange={(e) => {
-                                                const value = e.target.value
-                                                setApiKey(value)
-                                                localStorage.setItem(
-                                                    STORAGE_AI_API_KEY_KEY,
-                                                    value,
-                                                )
+                                        autoComplete="off"
+                                    />
+                                    <Button
+                                        onClick={handleSave}
+                                        disabled={
+                                            isVerifying || !accessCode.trim()
+                                        }
+                                    >
+                                        {isVerifying
+                                            ? "..."
+                                            : t("settings.accessCode.save")}
+                                    </Button>
+                                </div>
+                                <p className="text-[0.8rem] text-muted-foreground">
+                                    {t("settings.accessCode.requiredNote")}
+                                </p>
+                                {error && (
+                                    <p className="text-[0.8rem] text-destructive">
+                                        {error}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <Label>{t("settings.aiProvider.title")}</Label>
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                {t("settings.aiProvider.note")}
+                            </p>
+                            <div className="space-y-3 pt-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="ai-provider">
+                                        {t("settings.aiProvider.providerLabel")}
+                                    </Label>
+                                    <Select
+                                        value={provider || "default"}
+                                        onValueChange={async (value) => {
+                                            const actualValue =
+                                                value === "default" ? "" : value
+                                            setProvider(actualValue)
+                                            localStorage.setItem(
+                                                STORAGE_AI_PROVIDER_KEY,
+                                                actualValue,
+                                            )
 
-                                                // Sync to cloud if logged in
-                                                if (session?.user && provider) {
+                                            // Load cloud config if available
+                                            setCloudApiKeyPreview(undefined)
+                                            setCloudBaseUrl(undefined)
+                                            setCloudModelId(undefined)
+                                            if (session?.user && actualValue) {
+                                                try {
+                                                    const cloudConfig =
+                                                        await utils.providerConfig.get.fetch(
+                                                            {
+                                                                provider:
+                                                                    actualValue as any,
+                                                            },
+                                                        )
+                                                    if (cloudConfig) {
+                                                        // Save cloud config for source indicators
+                                                        if (
+                                                            cloudConfig.baseUrl
+                                                        ) {
+                                                            setCloudBaseUrl(
+                                                                cloudConfig.baseUrl,
+                                                            )
+                                                        }
+                                                        if (
+                                                            cloudConfig.modelId
+                                                        ) {
+                                                            setCloudModelId(
+                                                                cloudConfig.modelId,
+                                                            )
+                                                        }
+                                                        if (
+                                                            cloudConfig.hasApiKey &&
+                                                            cloudConfig.apiKeyPreview
+                                                        ) {
+                                                            setCloudApiKeyPreview(
+                                                                cloudConfig.apiKeyPreview,
+                                                            )
+                                                        }
+
+                                                        // Auto-fill from cloud if local is empty
+                                                        if (
+                                                            !baseUrl &&
+                                                            cloudConfig.baseUrl
+                                                        ) {
+                                                            setBaseUrl(
+                                                                cloudConfig.baseUrl,
+                                                            )
+                                                            localStorage.setItem(
+                                                                STORAGE_AI_BASE_URL_KEY,
+                                                                cloudConfig.baseUrl,
+                                                            )
+                                                        }
+                                                        if (
+                                                            !modelId &&
+                                                            cloudConfig.modelId
+                                                        ) {
+                                                            setModelId(
+                                                                cloudConfig.modelId,
+                                                            )
+                                                            localStorage.setItem(
+                                                                STORAGE_AI_MODEL_KEY,
+                                                                cloudConfig.modelId,
+                                                            )
+                                                        }
+                                                    }
+                                                } catch (error) {
+                                                    console.error(
+                                                        "Failed to load cloud config:",
+                                                        error,
+                                                    )
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger id="ai-provider">
+                                            <SelectValue
+                                                placeholder={t(
+                                                    "settings.aiProvider.useServerDefault",
+                                                )}
+                                            />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="default">
+                                                {t(
+                                                    "settings.aiProvider.useServerDefault",
+                                                )}
+                                            </SelectItem>
+                                            <SelectItem value="openai">
+                                                OpenAI
+                                            </SelectItem>
+                                            <SelectItem value="anthropic">
+                                                Anthropic
+                                            </SelectItem>
+                                            <SelectItem value="google">
+                                                Google
+                                            </SelectItem>
+                                            <SelectItem value="azure">
+                                                Azure OpenAI
+                                            </SelectItem>
+                                            <SelectItem value="openrouter">
+                                                OpenRouter
+                                            </SelectItem>
+                                            <SelectItem value="deepseek">
+                                                DeepSeek
+                                            </SelectItem>
+                                            <SelectItem value="siliconflow">
+                                                SiliconFlow
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {provider && provider !== "default" && (
+                                    <>
+                                        <div className="space-y-2">
+                                            <Label
+                                                htmlFor="ai-model"
+                                                className="flex items-center gap-1.5"
+                                            >
+                                                {t(
+                                                    "settings.aiProvider.modelIdLabel",
+                                                )}
+                                                {session?.user &&
+                                                    (modelId ? (
+                                                        <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                                    ) : cloudModelId ? (
+                                                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                    ) : null)}
+                                            </Label>
+                                            <div className="relative">
+                                                <div className="relative">
+                                                    <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                                    <Input
+                                                        id="ai-model"
+                                                        value={modelId}
+                                                        onChange={(e) => {
+                                                            const value =
+                                                                e.target.value
+                                                            setModelId(value)
+                                                            localStorage.setItem(
+                                                                STORAGE_AI_MODEL_KEY,
+                                                                value,
+                                                            )
+                                                            setIsModelMenuOpen(
+                                                                true,
+                                                            )
+                                                        }}
+                                                        onFocus={() =>
+                                                            setIsModelMenuOpen(
+                                                                true,
+                                                            )
+                                                        }
+                                                        onBlur={() => {
+                                                            setTimeout(
+                                                                () =>
+                                                                    setIsModelMenuOpen(
+                                                                        false,
+                                                                    ),
+                                                                150,
+                                                            )
+                                                        }}
+                                                        placeholder={
+                                                            provider ===
+                                                            "openai"
+                                                                ? "e.g., gpt-4o"
+                                                                : provider ===
+                                                                    "anthropic"
+                                                                  ? "e.g., claude-3-5-sonnet-latest"
+                                                                  : provider ===
+                                                                      "google"
+                                                                    ? "e.g., gemini-2.5-pro"
+                                                                    : provider ===
+                                                                        "deepseek"
+                                                                      ? "e.g., deepseek-chat"
+                                                                      : t(
+                                                                            "settings.aiProvider.modelIdLabel",
+                                                                        )
+                                                        }
+                                                        className="pl-8 pr-9"
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                                                        onMouseDown={(e) => {
+                                                            e.preventDefault()
+                                                        }}
+                                                        onClick={() =>
+                                                            setIsModelMenuOpen(
+                                                                (v) => !v,
+                                                            )
+                                                        }
+                                                    >
+                                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                                    </Button>
+                                                </div>
+                                                {isModelMenuOpen &&
+                                                    modelOptions.length > 0 && (
+                                                        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
+                                                            <div className="max-h-56 overflow-auto">
+                                                                {modelOptions
+                                                                    .filter(
+                                                                        (m) => {
+                                                                            const q =
+                                                                                modelId
+                                                                                    .trim()
+                                                                                    .toLowerCase()
+                                                                            if (
+                                                                                !q
+                                                                            )
+                                                                                return true
+                                                                            return (
+                                                                                String(
+                                                                                    m.id,
+                                                                                )
+                                                                                    .toLowerCase()
+                                                                                    .includes(
+                                                                                        q,
+                                                                                    ) ||
+                                                                                String(
+                                                                                    m.label ||
+                                                                                        "",
+                                                                                )
+                                                                                    .toLowerCase()
+                                                                                    .includes(
+                                                                                        q,
+                                                                                    )
+                                                                            )
+                                                                        },
+                                                                    )
+                                                                    .slice(
+                                                                        0,
+                                                                        100,
+                                                                    )
+                                                                    .map(
+                                                                        (m) => (
+                                                                            <button
+                                                                                key={
+                                                                                    m.id
+                                                                                }
+                                                                                type="button"
+                                                                                className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                                                                                onMouseDown={(
+                                                                                    e,
+                                                                                ) => {
+                                                                                    e.preventDefault()
+                                                                                }}
+                                                                                onClick={() => {
+                                                                                    setModelId(
+                                                                                        m.id,
+                                                                                    )
+                                                                                    localStorage.setItem(
+                                                                                        STORAGE_AI_MODEL_KEY,
+                                                                                        m.id,
+                                                                                    )
+                                                                                    setIsModelMenuOpen(
+                                                                                        false,
+                                                                                    )
+                                                                                }}
+                                                                            >
+                                                                                <span className="truncate">
+                                                                                    {
+                                                                                        m.id
+                                                                                    }
+                                                                                </span>
+                                                                                {m.label ? (
+                                                                                    <span className="ml-2 max-w-[45%] truncate text-xs text-muted-foreground">
+                                                                                        {
+                                                                                            m.label
+                                                                                        }
+                                                                                    </span>
+                                                                                ) : null}
+                                                                            </button>
+                                                                        ),
+                                                                    )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                            </div>
+                                            <p className="text-[0.8rem] text-muted-foreground">
+                                                {isLoadingModels
+                                                    ? t(
+                                                          "settings.aiProvider.modelsLoading",
+                                                      )
+                                                    : modelOptions.length > 0
+                                                      ? t(
+                                                            "settings.aiProvider.modelsCount",
+                                                            {
+                                                                count: modelOptions.length,
+                                                            },
+                                                        )
+                                                      : apiKey
+                                                        ? ""
+                                                        : t(
+                                                              "settings.aiProvider.modelsHint",
+                                                          )}
+                                            </p>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label
+                                                htmlFor="ai-api-key"
+                                                className="flex items-center gap-1.5"
+                                            >
+                                                {t(
+                                                    "settings.aiProvider.apiKeyLabel",
+                                                )}
+                                                {session?.user &&
+                                                    (apiKey ? (
+                                                        <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                                    ) : cloudApiKeyPreview ? (
+                                                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                    ) : null)}
+                                            </Label>
+                                            <Input
+                                                id="ai-api-key"
+                                                type="password"
+                                                value={apiKey}
+                                                onChange={(e) => {
+                                                    const value = e.target.value
+                                                    setApiKey(value)
+                                                    localStorage.setItem(
+                                                        STORAGE_AI_API_KEY_KEY,
+                                                        value,
+                                                    )
+
+                                                    // Sync to cloud if logged in
+                                                    if (
+                                                        session?.user &&
+                                                        provider
+                                                    ) {
+                                                        upsertConfigMutation.mutate(
+                                                            {
+                                                                provider:
+                                                                    provider as any,
+                                                                apiKey:
+                                                                    value ||
+                                                                    undefined,
+                                                                baseUrl:
+                                                                    baseUrl ||
+                                                                    undefined,
+                                                                modelId:
+                                                                    modelId ||
+                                                                    undefined,
+                                                            },
+                                                            {
+                                                                onSuccess:
+                                                                    () => {
+                                                                        setCloudApiKeyPreview(
+                                                                            undefined,
+                                                                        )
+                                                                    },
+                                                            },
+                                                        )
+                                                    }
+                                                }}
+                                                placeholder={t(
+                                                    "settings.aiProvider.apiKeyPlaceholder",
+                                                )}
+                                                autoComplete="off"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label
+                                                htmlFor="ai-base-url"
+                                                className="flex items-center gap-1.5"
+                                            >
+                                                {t(
+                                                    "settings.aiProvider.baseUrlLabel",
+                                                )}
+                                                {session?.user &&
+                                                    (baseUrl ? (
+                                                        <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                                    ) : cloudBaseUrl ? (
+                                                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                    ) : null)}
+                                            </Label>
+                                            <Input
+                                                id="ai-base-url"
+                                                value={baseUrl}
+                                                onChange={(e) => {
+                                                    setBaseUrl(e.target.value)
+                                                    localStorage.setItem(
+                                                        STORAGE_AI_BASE_URL_KEY,
+                                                        e.target.value,
+                                                    )
+                                                }}
+                                                placeholder={
+                                                    provider === "anthropic"
+                                                        ? "https://api.anthropic.com/v1"
+                                                        : provider ===
+                                                            "siliconflow"
+                                                          ? "https://api.siliconflow.com/v1"
+                                                          : t(
+                                                                "settings.aiProvider.baseUrlPlaceholder",
+                                                            )
+                                                }
+                                            />
+                                        </div>
+                                        {session?.user && provider && (
+                                            <Button
+                                                variant={
+                                                    syncSuccess
+                                                        ? "outline"
+                                                        : "default"
+                                                }
+                                                size="sm"
+                                                className="w-full"
+                                                disabled={
+                                                    upsertConfigMutation.isPending ||
+                                                    syncSuccess
+                                                }
+                                                onClick={() => {
                                                     upsertConfigMutation.mutate(
                                                         {
                                                             provider:
                                                                 provider as any,
                                                             apiKey:
-                                                                value ||
+                                                                apiKey ||
                                                                 undefined,
                                                             baseUrl:
                                                                 baseUrl ||
@@ -623,275 +814,558 @@ export function SettingsDialog({
                                                         },
                                                         {
                                                             onSuccess: () => {
-                                                                setCloudApiKeyPreview(
-                                                                    undefined,
+                                                                console.log(
+                                                                    "[settings] Synced to cloud:",
+                                                                    provider,
+                                                                )
+                                                                setSyncSuccess(
+                                                                    true,
+                                                                )
+                                                                setTimeout(
+                                                                    () => {
+                                                                        setSyncSuccess(
+                                                                            false,
+                                                                        )
+                                                                    },
+                                                                    2000,
+                                                                )
+                                                            },
+                                                        },
+                                                    )
+                                                }}
+                                            >
+                                                {syncSuccess ? (
+                                                    <>
+                                                        <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                        {t(
+                                                            "settings.aiProvider.synced",
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Cloud className="h-4 w-4 mr-2" />
+                                                        {upsertConfigMutation.isPending
+                                                            ? t(
+                                                                  "settings.aiProvider.syncing",
+                                                              )
+                                                            : t(
+                                                                  "settings.aiProvider.syncToCloud",
+                                                              )}
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
+                                        {session?.user &&
+                                            provider &&
+                                            (cloudApiKeyPreview ||
+                                                cloudBaseUrl ||
+                                                cloudModelId) && (
+                                                <Button
+                                                    variant={
+                                                        restoreSuccess
+                                                            ? "outline"
+                                                            : "outline"
+                                                    }
+                                                    size="sm"
+                                                    className="w-full"
+                                                    disabled={
+                                                        isRestoring ||
+                                                        restoreSuccess
+                                                    }
+                                                    onClick={async () => {
+                                                        setIsRestoring(true)
+                                                        try {
+                                                            const cloudConfig =
+                                                                await utils.providerConfig.get.fetch(
+                                                                    {
+                                                                        provider:
+                                                                            provider as any,
+                                                                    },
+                                                                )
+                                                            if (cloudConfig) {
+                                                                // Restore from cloud
+                                                                if (
+                                                                    cloudConfig.baseUrl
+                                                                ) {
+                                                                    setBaseUrl(
+                                                                        cloudConfig.baseUrl,
+                                                                    )
+                                                                    localStorage.setItem(
+                                                                        STORAGE_AI_BASE_URL_KEY,
+                                                                        cloudConfig.baseUrl,
+                                                                    )
+                                                                }
+                                                                if (
+                                                                    cloudConfig.modelId
+                                                                ) {
+                                                                    setModelId(
+                                                                        cloudConfig.modelId,
+                                                                    )
+                                                                    localStorage.setItem(
+                                                                        STORAGE_AI_MODEL_KEY,
+                                                                        cloudConfig.modelId,
+                                                                    )
+                                                                }
+                                                                // Note: API Key cannot be restored (encrypted)
+
+                                                                console.log(
+                                                                    "[settings] Restored from cloud:",
+                                                                    provider,
+                                                                )
+                                                                setRestoreSuccess(
+                                                                    true,
+                                                                )
+                                                                setTimeout(
+                                                                    () => {
+                                                                        setRestoreSuccess(
+                                                                            false,
+                                                                        )
+                                                                    },
+                                                                    2000,
+                                                                )
+                                                            } else {
+                                                                console.warn(
+                                                                    "[settings] No cloud config found",
+                                                                )
+                                                            }
+                                                        } catch (error) {
+                                                            console.error(
+                                                                "Failed to restore from cloud:",
+                                                                error,
+                                                            )
+                                                        } finally {
+                                                            setIsRestoring(
+                                                                false,
+                                                            )
+                                                        }
+                                                    }}
+                                                >
+                                                    {restoreSuccess ? (
+                                                        <>
+                                                            <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                            {t(
+                                                                "settings.aiProvider.restored",
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <HardDrive className="h-4 w-4 mr-2" />
+                                                            {isRestoring
+                                                                ? t(
+                                                                      "settings.aiProvider.restoring",
+                                                                  )
+                                                                : t(
+                                                                      "settings.aiProvider.restoreFromCloud",
+                                                                  )}
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            )}
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full"
+                                            onClick={() => {
+                                                // Clear local storage
+                                                localStorage.removeItem(
+                                                    STORAGE_AI_PROVIDER_KEY,
+                                                )
+                                                localStorage.removeItem(
+                                                    STORAGE_AI_BASE_URL_KEY,
+                                                )
+                                                localStorage.removeItem(
+                                                    STORAGE_AI_API_KEY_KEY,
+                                                )
+                                                localStorage.removeItem(
+                                                    STORAGE_AI_MODEL_KEY,
+                                                )
+                                                setProvider("")
+                                                setBaseUrl("")
+                                                setApiKey("")
+                                                setModelId("")
+                                                setCloudApiKeyPreview(undefined)
+                                                setCloudBaseUrl(undefined)
+                                                setCloudModelId(undefined)
+
+                                                // Delete from cloud if logged in
+                                                if (session?.user && provider) {
+                                                    deleteConfigMutation.mutate(
+                                                        {
+                                                            provider:
+                                                                provider as any,
+                                                        },
+                                                        {
+                                                            onSuccess: () => {
+                                                                console.log(
+                                                                    "[settings] Cloud config cleared for provider:",
+                                                                    provider,
+                                                                )
+                                                            },
+                                                            onError: (
+                                                                error,
+                                                            ) => {
+                                                                console.error(
+                                                                    "[settings] Failed to clear cloud config:",
+                                                                    error,
                                                                 )
                                                             },
                                                         },
                                                     )
                                                 }
                                             }}
-                                            placeholder={t(
-                                                "settings.aiProvider.apiKeyPlaceholder",
-                                            )}
-                                            autoComplete="off"
-                                        />
-                                        {session?.user && (
-                                            <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
-                                                {apiKey ? (
-                                                    <>
-                                                        <HardDrive className="h-3 w-3" />
-                                                        Using local API key
-                                                    </>
-                                                ) : cloudApiKeyPreview ? (
-                                                    <>
-                                                        <Cloud className="h-3 w-3" />
-                                                        Using cloud saved key:{" "}
-                                                        {cloudApiKeyPreview}
-                                                    </>
-                                                ) : null}
-                                            </p>
-                                        )}
-                                        <p className="text-[0.8rem] text-muted-foreground">
-                                            {t(
-                                                "settings.aiProvider.overrides",
-                                                {
-                                                    env:
-                                                        provider === "openai"
-                                                            ? "OPENAI_API_KEY"
-                                                            : provider ===
-                                                                "anthropic"
-                                                              ? "ANTHROPIC_API_KEY"
-                                                              : provider ===
-                                                                  "google"
-                                                                ? "GOOGLE_GENERATIVE_AI_API_KEY"
-                                                                : provider ===
-                                                                    "azure"
-                                                                  ? "AZURE_API_KEY"
-                                                                  : provider ===
-                                                                      "openrouter"
-                                                                    ? "OPENROUTER_API_KEY"
-                                                                    : provider ===
-                                                                        "deepseek"
-                                                                      ? "DEEPSEEK_API_KEY"
-                                                                      : provider ===
-                                                                          "siliconflow"
-                                                                        ? "SILICONFLOW_API_KEY"
-                                                                        : "server API key",
-                                                },
-                                            )}
-                                        </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="ai-base-url">
-                                            {t(
-                                                "settings.aiProvider.baseUrlLabel",
-                                            )}
-                                        </Label>
-                                        <Input
-                                            id="ai-base-url"
-                                            value={baseUrl}
-                                            onChange={(e) => {
-                                                setBaseUrl(e.target.value)
-                                                localStorage.setItem(
-                                                    STORAGE_AI_BASE_URL_KEY,
-                                                    e.target.value,
-                                                )
-                                            }}
-                                            placeholder={
-                                                provider === "anthropic"
-                                                    ? "https://api.anthropic.com/v1"
-                                                    : provider === "siliconflow"
-                                                      ? "https://api.siliconflow.com/v1"
-                                                      : t(
-                                                            "settings.aiProvider.baseUrlPlaceholder",
-                                                        )
-                                            }
-                                        />
-                                        {session?.user && (
-                                            <p className="text-[0.8rem] text-muted-foreground flex items-center gap-1">
-                                                {baseUrl ? (
-                                                    <>
-                                                        <HardDrive className="h-3 w-3" />
-                                                        Using local config
-                                                    </>
-                                                ) : cloudBaseUrl ? (
-                                                    <>
-                                                        <Cloud className="h-3 w-3" />
-                                                        Using cloud default:{" "}
-                                                        {cloudBaseUrl}
-                                                    </>
-                                                ) : null}
-                                            </p>
-                                        )}
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="w-full"
-                                        onClick={() => {
-                                            // Clear local storage
-                                            localStorage.removeItem(
-                                                STORAGE_AI_PROVIDER_KEY,
-                                            )
-                                            localStorage.removeItem(
-                                                STORAGE_AI_BASE_URL_KEY,
-                                            )
-                                            localStorage.removeItem(
-                                                STORAGE_AI_API_KEY_KEY,
-                                            )
-                                            localStorage.removeItem(
-                                                STORAGE_AI_MODEL_KEY,
-                                            )
-                                            setProvider("")
-                                            setBaseUrl("")
-                                            setApiKey("")
-                                            setModelId("")
-                                            setCloudApiKeyPreview(undefined)
-                                            setCloudBaseUrl(undefined)
-                                            setCloudModelId(undefined)
-
-                                            // Delete from cloud if logged in
-                                            if (session?.user && provider) {
-                                                deleteConfigMutation.mutate(
-                                                    {
-                                                        provider:
-                                                            provider as any,
-                                                    },
-                                                    {
-                                                        onSuccess: () => {
-                                                            console.log(
-                                                                "[settings] Cloud config cleared for provider:",
-                                                                provider,
-                                                            )
-                                                        },
-                                                        onError: (error) => {
-                                                            console.error(
-                                                                "[settings] Failed to clear cloud config:",
-                                                                error,
-                                                            )
-                                                        },
-                                                    },
-                                                )
-                                            }
-                                        }}
-                                    >
-                                        {t("settings.aiProvider.clear")}
-                                        {session?.user &&
-                                            deleteConfigMutation.isPending && (
-                                                <Cloud className="ml-2 h-3 w-3 animate-pulse" />
-                                            )}
-                                    </Button>
-                                </>
-                            )}
+                                        >
+                                            {t("settings.aiProvider.clear")}
+                                            {session?.user &&
+                                                deleteConfigMutation.isPending && (
+                                                    <Cloud className="ml-2 h-3 w-3 animate-pulse" />
+                                                )}
+                                        </Button>
+                                    </>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    </TabsContent>
 
-                    <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                            <Label htmlFor="theme-toggle">
-                                {t("settings.theme.label")}
-                            </Label>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                {t("settings.theme.note")}
-                            </p>
-                        </div>
-                        <Button
-                            id="theme-toggle"
-                            variant="outline"
-                            size="icon"
-                            onClick={onToggleDarkMode}
-                        >
-                            {darkMode ? (
-                                <Sun className="h-4 w-4" />
-                            ) : (
-                                <Moon className="h-4 w-4" />
-                            )}
-                        </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                            <Label htmlFor="language-select">
-                                {t("settings.language.label")}
-                            </Label>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                {t("settings.language.note")}
-                            </p>
-                        </div>
-                        <Select
-                            value={locale}
-                            onValueChange={(value) => setLocale(value as any)}
-                        >
-                            <SelectTrigger
-                                id="language-select"
-                                className="w-[140px]"
+                    <TabsContent
+                        value="interface"
+                        className="space-y-4 py-2 overflow-y-auto flex-1"
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="theme-toggle">
+                                    {t("settings.theme.label")}
+                                </Label>
+                                <p className="text-[0.8rem] text-muted-foreground">
+                                    {t("settings.theme.note")}
+                                </p>
+                            </div>
+                            <Button
+                                id="theme-toggle"
+                                variant="outline"
+                                size="icon"
+                                onClick={onToggleDarkMode}
                             >
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="en">
-                                    {t("settings.language.en")}
-                                </SelectItem>
-                                <SelectItem value="zh-CN">
-                                    {t("settings.language.zhCN")}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                                {darkMode ? (
+                                    <Sun className="h-4 w-4" />
+                                ) : (
+                                    <Moon className="h-4 w-4" />
+                                )}
+                            </Button>
+                        </div>
 
-                    <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                            <Label htmlFor="drawio-ui">
-                                {t("settings.drawioStyle.label")}
-                            </Label>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                {t("settings.drawioStyle.note", {
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="theme-color-select">
+                                    {t("settings.themeColor.label")}
+                                </Label>
+                                <p className="text-[0.8rem] text-muted-foreground">
+                                    {t("settings.themeColor.note")}
+                                </p>
+                            </div>
+                            <Select
+                                value={palette || "amber-minimal"}
+                                onValueChange={(value) =>
+                                    setPalette(value as any)
+                                }
+                            >
+                                <SelectTrigger
+                                    id="theme-color-select"
+                                    className="w-[180px]"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[300px]">
+                                    {tweakcnThemes.map((theme) => (
+                                        <SelectItem
+                                            key={theme.name}
+                                            value={theme.name}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Palette className="h-3.5 w-3.5" />
+                                                {theme.title}
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="language-select">
+                                    {t("settings.language.label")}
+                                </Label>
+                                <p className="text-[0.8rem] text-muted-foreground">
+                                    {t("settings.language.note")}
+                                </p>
+                            </div>
+                            <Select
+                                value={locale}
+                                onValueChange={(value) =>
+                                    setLocale(value as any)
+                                }
+                            >
+                                <SelectTrigger
+                                    id="language-select"
+                                    className="w-[140px]"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="en">
+                                        {t("settings.language.en")}
+                                    </SelectItem>
+                                    <SelectItem value="zh-CN">
+                                        {t("settings.language.zhCN")}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="drawio-ui">
+                                    {t("settings.drawioStyle.label")}
+                                </Label>
+                                <p className="text-[0.8rem] text-muted-foreground">
+                                    {t("settings.drawioStyle.note", {
+                                        style:
+                                            drawioUi === "min"
+                                                ? t(
+                                                      "settings.drawioStyle.minimal",
+                                                  )
+                                                : t(
+                                                      "settings.drawioStyle.sketch",
+                                                  ),
+                                    })}
+                                </p>
+                            </div>
+                            <Button
+                                id="drawio-ui"
+                                variant="outline"
+                                size="sm"
+                                onClick={onToggleDrawioUi}
+                            >
+                                {t("settings.drawioStyle.switchTo", {
                                     style:
                                         drawioUi === "min"
-                                            ? t("settings.drawioStyle.minimal")
-                                            : t("settings.drawioStyle.sketch"),
+                                            ? t("settings.drawioStyle.sketch")
+                                            : t("settings.drawioStyle.minimal"),
                                 })}
-                            </p>
+                            </Button>
                         </div>
-                        <Button
-                            id="drawio-ui"
-                            variant="outline"
-                            size="sm"
-                            onClick={onToggleDrawioUi}
-                        >
-                            {t("settings.drawioStyle.switchTo", {
-                                style:
-                                    drawioUi === "min"
-                                        ? t("settings.drawioStyle.sketch")
-                                        : t("settings.drawioStyle.minimal"),
-                            })}
-                        </Button>
-                    </div>
 
-                    <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                            <Label htmlFor="close-protection">
-                                {t("settings.closeProtection.label")}
-                            </Label>
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                {t("settings.closeProtection.note")}
-                            </p>
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="close-protection">
+                                    {t("settings.closeProtection.label")}
+                                </Label>
+                                <p className="text-[0.8rem] text-muted-foreground">
+                                    {t("settings.closeProtection.note")}
+                                </p>
+                            </div>
+                            <Switch
+                                id="close-protection"
+                                checked={closeProtection}
+                                onCheckedChange={(checked) => {
+                                    setCloseProtection(checked)
+                                    localStorage.setItem(
+                                        STORAGE_CLOSE_PROTECTION_KEY,
+                                        checked.toString(),
+                                    )
+                                    onCloseProtectionChange?.(checked)
+                                }}
+                            />
                         </div>
-                        <Switch
-                            id="close-protection"
-                            checked={closeProtection}
-                            onCheckedChange={(checked) => {
-                                setCloseProtection(checked)
-                                localStorage.setItem(
-                                    STORAGE_CLOSE_PROTECTION_KEY,
-                                    checked.toString(),
-                                )
-                                onCloseProtectionChange?.(checked)
-                            }}
-                        />
-                    </div>
-                </div>
+                    </TabsContent>
+
+                    <TabsContent
+                        value="about"
+                        className="space-y-6 py-2 overflow-y-auto flex-1"
+                    >
+                        {/* Project Info */}
+                        <div className="space-y-4">
+                            <div>
+                                <h3 className="text-lg font-semibold">
+                                    {t("about.title")}
+                                </h3>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    {t("about.version")} 0.4.0
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    {t("about.basedOn")}{" "}
+                                    <a
+                                        href="https://github.com/DayuanJiang/next-ai-draw-io"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline hover:text-foreground"
+                                    >
+                                        {t("about.originalProject")}
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* License Section */}
+                        <div className="space-y-3">
+                            <div className="flex items-start gap-2">
+                                <Scale className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                <div className="flex-1">
+                                    <h4 className="font-medium">
+                                        {t("about.license")}
+                                    </h4>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {t("about.licenseDescription")}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                        {t("about.copyright")}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                    className="h-8"
+                                >
+                                    <a
+                                        href="https://github.com/vmxmy/next-ai-draw-io/blob/main/LICENSE"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5"
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        {t("about.viewLicense")}
+                                    </a>
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                    className="h-8"
+                                >
+                                    <a
+                                        href="https://github.com/vmxmy/next-ai-draw-io/blob/main/NOTICE"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5"
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        {t("about.viewNotice")}
+                                    </a>
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                    className="h-8"
+                                >
+                                    <a
+                                        href="https://github.com/vmxmy/next-ai-draw-io/blob/main/docs/LICENSE_COMPLIANCE_AUDIT.md"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5"
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        {t("about.viewCompliance")}
+                                    </a>
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Third-Party Components */}
+                        <div className="space-y-3">
+                            <div className="flex items-start gap-2">
+                                <BookOpen className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                <div className="flex-1">
+                                    <h4 className="font-medium">
+                                        {t("about.thirdParty")}
+                                    </h4>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {t("about.thirdPartyDescription")}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 pl-7">
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.tweakcn")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.radixUI")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.shadcnUI")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.aiSDK")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.drawio")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.nextjs")}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Links */}
+                        <div className="space-y-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                asChild
+                                className="w-full justify-start"
+                            >
+                                <a
+                                    href="https://github.com/vmxmy/next-ai-draw-io"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2"
+                                >
+                                    <ExternalLink className="h-4 w-4" />
+                                    {t("about.repository")}
+                                </a>
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                asChild
+                                className="w-full justify-start"
+                            >
+                                <a
+                                    href="https://github.com/vmxmy/next-ai-draw-io#readme"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2"
+                                >
+                                    <BookOpen className="h-4 w-4" />
+                                    {t("about.documentation")}
+                                </a>
+                            </Button>
+                        </div>
+                    </TabsContent>
+                </Tabs>
             </DialogContent>
         </Dialog>
     )

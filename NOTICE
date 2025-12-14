@@ -1,0 +1,75 @@
+Next AI Draw.io
+Copyright 2024 Dayuan Jiang
+
+This project (https://github.com/vmxmy/next-ai-draw-io) is a derivative work
+based on the original Next AI Draw.io project by Dayuan Jiang.
+
+Original Project:
+  Repository: https://github.com/DayuanJiang/next-ai-draw-io
+  Author: Dayuan Jiang
+  License: Apache License 2.0
+
+This Repository:
+  Repository: https://github.com/vmxmy/next-ai-draw-io
+  Maintainer: vmxmy
+  License: Apache License 2.0 (same as original)
+
+This derivative work includes modifications and enhancements while maintaining
+the Apache License 2.0 terms of the original project. All modifications are
+licensed under Apache License 2.0.
+
+================================================================================
+
+This project includes third-party components and resources:
+
+1. Tweakcn Theme System
+   - Source: tweakcn (https://tweakcn.com/)
+   - License: MIT License
+   - Copyright: jnsahaj and contributors
+   - Files: styles/palettes.css, styles/design-tokens.css
+   - Description: Visual theme presets for shadcn/ui components
+   - Note: Themes were adapted from salary_system project
+
+2. Radix UI Primitives
+   - Source: https://github.com/radix-ui/primitives
+   - License: MIT License
+   - Copyright: 2022-present WorkOS
+   - Used in: UI components (@radix-ui/react-*)
+
+3. shadcn/ui Components
+   - Source: https://ui.shadcn.com/
+   - License: MIT License
+   - Copyright: shadcn
+   - Used in: components/ui/*
+
+4. AI SDK by Vercel
+   - Source: https://sdk.vercel.ai/
+   - License: Apache License 2.0
+   - Copyright: Vercel, Inc.
+   - Used in: @ai-sdk/* packages
+
+5. Next.js Framework
+   - Source: https://nextjs.org/
+   - License: MIT License
+   - Copyright: Vercel, Inc.
+
+6. Draw.io Integration
+   - Source: https://www.drawio.com/
+   - License: Apache License 2.0
+   - Copyright: JGraph Ltd
+
+================================================================================
+
+For a complete list of dependencies and their licenses, run:
+  npm list --production
+
+Dependencies use the following licenses (compatible with Apache 2.0):
+- MIT License
+- Apache License 2.0
+- ISC License
+- BSD-2-Clause
+- BSD-3-Clause
+
+Note: sharp-libvips (LGPL-3.0-or-later) is a dynamically linked native library
+used by Next.js for image optimization and does not impose copyleft restrictions
+on this Apache-licensed project.

@@ -3,16 +3,18 @@
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { PanelRightOpen } from "lucide-react"
-import { signIn, signOut, useSession } from "next-auth/react"
+import { useSession } from "next-auth/react"
 import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Toaster, toast } from "sonner"
+import { AuthDialog } from "@/components/auth-dialog"
 import { AutoRetryLimitToast } from "@/components/auto-retry-limit-toast"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessageDisplay } from "@/components/chat-message-display"
 import { SettingsDialog } from "@/components/settings-dialog"
+import { UserCenterDialog } from "@/components/user-center-dialog"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useI18n } from "@/contexts/i18n-context"
 import { classifyChatError } from "@/features/chat/ai/chat-error"
@@ -169,6 +171,8 @@ export default function ChatPanel({
 
     const [showHistory, setShowHistory] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+    const [showAuthDialog, setShowAuthDialog] = useState(false)
+    const [showUserCenterDialog, setShowUserCenterDialog] = useState(false)
     const [, setAccessCodeRequired] = useState(false)
     const [input, setInput] = useState("")
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
@@ -1221,9 +1225,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 authStatus={authStatus}
                 userImage={authSession?.user?.image}
                 signInLabel={t("auth.signIn")}
-                signOutLabel={t("auth.signOut")}
-                onSignIn={() => void signIn("github")}
-                onSignOut={() => void signOut()}
+                profileLabel={t("auth.profile")}
+                onSignIn={() => setShowAuthDialog(true)}
+                onProfileClick={() => setShowUserCenterDialog(true)}
                 showSync={authStatus === "authenticated"}
                 isOnline={isOnline}
                 syncInFlightCount={syncInFlightCount}
@@ -1307,6 +1311,17 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 onToggleDrawioUi={onToggleDrawioUi}
                 darkMode={darkMode}
                 onToggleDarkMode={onToggleDarkMode}
+            />
+
+            <AuthDialog
+                open={showAuthDialog}
+                onOpenChange={setShowAuthDialog}
+            />
+
+            <UserCenterDialog
+                open={showUserCenterDialog}
+                onOpenChange={setShowUserCenterDialog}
+                user={authSession?.user}
             />
         </div>
     )
