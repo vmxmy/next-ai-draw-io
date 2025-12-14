@@ -1192,6 +1192,17 @@ export function SettingsDialog({
                                 <p className="text-sm text-muted-foreground mt-1">
                                     {t("about.version")} 0.4.0
                                 </p>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    {t("about.basedOn")}{" "}
+                                    <a
+                                        href="https://github.com/DayuanJiang/next-ai-draw-io"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline hover:text-foreground"
+                                    >
+                                        {t("about.originalProject")}
+                                    </a>
+                                </p>
                             </div>
                         </div>
 
@@ -1220,7 +1231,7 @@ export function SettingsDialog({
                                     className="h-8"
                                 >
                                     <a
-                                        href="https://github.com/Dayuan99/next-ai-draw-io/blob/main/LICENSE"
+                                        href="https://github.com/DayuanJiang/next-ai-draw-io/blob/main/LICENSE"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1.5"
@@ -1236,7 +1247,7 @@ export function SettingsDialog({
                                     className="h-8"
                                 >
                                     <a
-                                        href="https://github.com/Dayuan99/next-ai-draw-io/blob/main/NOTICE"
+                                        href="https://github.com/DayuanJiang/next-ai-draw-io/blob/main/NOTICE"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1.5"
@@ -1252,7 +1263,7 @@ export function SettingsDialog({
                                     className="h-8"
                                 >
                                     <a
-                                        href="https://github.com/Dayuan99/next-ai-draw-io/blob/main/docs/LICENSE_COMPLIANCE_AUDIT.md"
+                                        href="https://github.com/DayuanJiang/next-ai-draw-io/blob/main/docs/LICENSE_COMPLIANCE_AUDIT.md"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1.5"
@@ -1327,7 +1338,7 @@ export function SettingsDialog({
                                 className="w-full justify-start"
                             >
                                 <a
-                                    href="https://github.com/Dayuan99/next-ai-draw-io"
+                                    href="https://github.com/DayuanJiang/next-ai-draw-io"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-2"
@@ -1343,7 +1354,7 @@ export function SettingsDialog({
                                 className="w-full justify-start"
                             >
                                 <a
-                                    href="https://github.com/Dayuan99/next-ai-draw-io#readme"
+                                    href="https://github.com/DayuanJiang/next-ai-draw-io#readme"
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="inline-flex items-center gap-2"

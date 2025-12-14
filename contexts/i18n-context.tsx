@@ -100,6 +100,8 @@ type I18nKey =
     | "about.copyright"
     | "about.repository"
     | "about.documentation"
+    | "about.basedOn"
+    | "about.originalProject"
     | "settings.theme.label"
     | "settings.theme.note"
     | "settings.themeColor.label"
@@ -377,6 +379,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "about.copyright": "Copyright 2024 Dayuan Jiang",
         "about.repository": "GitHub Repository",
         "about.documentation": "Documentation",
+        "about.basedOn": "Based on",
+        "about.originalProject": "Original project by Dayuan Jiang",
         "settings.theme.label": "Theme",
         "settings.theme.note":
             "Dark/Light mode for interface and DrawIO canvas.",
@@ -658,6 +662,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "about.copyright": "版权所有 © 2024 Dayuan Jiang",
         "about.repository": "GitHub 仓库",
         "about.documentation": "文档",
+        "about.basedOn": "基于",
+        "about.originalProject": "原始项目作者：Dayuan Jiang",
         "settings.theme.label": "主题",
         "settings.theme.note": "切换界面与 DrawIO 画布的明暗模式。",
         "settings.themeColor.label": "主题配色",

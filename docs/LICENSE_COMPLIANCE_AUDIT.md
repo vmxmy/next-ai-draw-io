@@ -1,6 +1,7 @@
 # Apache License 2.0 Compliance Audit Report
 
-**Project:** Next AI Draw.io
+**Project:** Next AI Draw.io (Derivative Work)
+**Original Project:** https://github.com/DayuanJiang/next-ai-draw-io
 **License:** Apache License 2.0
 **Audit Date:** 2025-12-14
 **Auditor:** Automated compliance review
@@ -9,7 +10,15 @@
 
 ## Executive Summary
 
-This audit evaluates the compliance of the Next AI Draw.io project with Apache License 2.0 requirements. The project is **generally compliant** with the license terms, with all critical requirements met and minor improvements implemented during this audit.
+This audit evaluates the compliance of the Next AI Draw.io project (a derivative work based on the original Next AI Draw.io project by Dayuan Jiang) with Apache License 2.0 requirements. The project is **generally compliant** with the license terms, with all critical requirements met and minor improvements implemented during this audit.
+
+### Derivative Work Declaration
+
+This project is a derivative work based on:
+- **Original Repository**: https://github.com/DayuanJiang/next-ai-draw-io
+- **Original Author**: Dayuan Jiang
+- **Original License**: Apache License 2.0
+- **Modifications**: Includes enhancements and customizations while maintaining Apache 2.0 compliance
 
 ### Compliance Status: ✅ COMPLIANT
 
@@ -178,11 +187,17 @@ The project name "Next AI Draw.io" and branding do not infringe on Apache Softwa
 Per Apache License 2.0 Section 4, redistribution requires:
 
 - [x] **4(a)** Provide copy of the License → LICENSE file present
-- [x] **4(b)** Mark modified files → Git history + adaptation notices
-- [x] **4(c)** Retain copyright notices → NOTICE file + file headers
-- [x] **4(d)** Include NOTICE file → Created and populated
+- [x] **4(b)** Mark modified files → Git history + adaptation notices + derivative work declaration
+- [x] **4(c)** Retain copyright notices → NOTICE file + file headers + original project attribution
+- [x] **4(d)** Include NOTICE file → Created and populated with original project information
 
-**Compliance:** All redistribution requirements met
+**Derivative Work Specific:**
+- [x] Original project clearly attributed in NOTICE file
+- [x] Original repository URL provided
+- [x] Derivative work status clearly declared
+- [x] All modifications tracked in Git history
+
+**Compliance:** All redistribution requirements met, including derivative work requirements
 
 ---
 
