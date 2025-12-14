@@ -1,12 +1,15 @@
 "use client"
 
 import {
+    BookOpen,
     Check,
     ChevronDown,
     Cloud,
+    ExternalLink,
     HardDrive,
     Moon,
     Palette,
+    Scale,
     Search,
     Sun,
 } from "lucide-react"
@@ -97,6 +100,8 @@ export function SettingsDialog({
     const [cloudBaseUrl, setCloudBaseUrl] = useState<string | undefined>()
     const [cloudModelId, setCloudModelId] = useState<string | undefined>()
     const [syncSuccess, setSyncSuccess] = useState(false)
+    const [restoreSuccess, setRestoreSuccess] = useState(false)
+    const [isRestoring, setIsRestoring] = useState(false)
 
     // Theme hook
     const { palette, setPalette } = useTheme()
@@ -160,8 +165,53 @@ export function SettingsDialog({
             setCloudApiKeyPreview(undefined)
             setCloudBaseUrl(undefined)
             setCloudModelId(undefined)
+
+            // Load cloud config if logged in and has provider
+            if (session?.user && localProvider && localProvider !== "default") {
+                ;(async () => {
+                    try {
+                        const cloudConfig =
+                            await utils.providerConfig.get.fetch({
+                                provider: localProvider as any,
+                            })
+                        if (cloudConfig) {
+                            // Save cloud config for source indicators
+                            if (cloudConfig.baseUrl) {
+                                setCloudBaseUrl(cloudConfig.baseUrl)
+                            }
+                            if (cloudConfig.modelId) {
+                                setCloudModelId(cloudConfig.modelId)
+                            }
+                            if (
+                                cloudConfig.hasApiKey &&
+                                cloudConfig.apiKeyPreview
+                            ) {
+                                setCloudApiKeyPreview(cloudConfig.apiKeyPreview)
+                            }
+
+                            // Auto-fill from cloud if local is empty
+                            if (!localBaseUrl && cloudConfig.baseUrl) {
+                                setBaseUrl(cloudConfig.baseUrl)
+                                localStorage.setItem(
+                                    STORAGE_AI_BASE_URL_KEY,
+                                    cloudConfig.baseUrl,
+                                )
+                            }
+                            if (!localModelId && cloudConfig.modelId) {
+                                setModelId(cloudConfig.modelId)
+                                localStorage.setItem(
+                                    STORAGE_AI_MODEL_KEY,
+                                    cloudConfig.modelId,
+                                )
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Failed to load cloud config:", error)
+                    }
+                })()
+            }
         }
-    }, [open])
+    }, [open, session, utils])
 
     useEffect(() => {
         if (!open) return
@@ -261,12 +311,15 @@ export function SettingsDialog({
                     defaultValue="model"
                     className="w-full flex-1 flex flex-col overflow-hidden"
                 >
-                    <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
+                    <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
                         <TabsTrigger value="model">
                             {t("settings.tabs.model")}
                         </TabsTrigger>
                         <TabsTrigger value="interface">
                             {t("settings.tabs.interface")}
+                        </TabsTrigger>
+                        <TabsTrigger value="about">
+                            {t("settings.tabs.about")}
                         </TabsTrigger>
                     </TabsList>
                     <TabsContent
@@ -802,6 +855,112 @@ export function SettingsDialog({
                                                 )}
                                             </Button>
                                         )}
+                                        {session?.user &&
+                                            provider &&
+                                            (cloudApiKeyPreview ||
+                                                cloudBaseUrl ||
+                                                cloudModelId) && (
+                                                <Button
+                                                    variant={
+                                                        restoreSuccess
+                                                            ? "outline"
+                                                            : "outline"
+                                                    }
+                                                    size="sm"
+                                                    className="w-full"
+                                                    disabled={
+                                                        isRestoring ||
+                                                        restoreSuccess
+                                                    }
+                                                    onClick={async () => {
+                                                        setIsRestoring(true)
+                                                        try {
+                                                            const cloudConfig =
+                                                                await utils.providerConfig.get.fetch(
+                                                                    {
+                                                                        provider:
+                                                                            provider as any,
+                                                                    },
+                                                                )
+                                                            if (cloudConfig) {
+                                                                // Restore from cloud
+                                                                if (
+                                                                    cloudConfig.baseUrl
+                                                                ) {
+                                                                    setBaseUrl(
+                                                                        cloudConfig.baseUrl,
+                                                                    )
+                                                                    localStorage.setItem(
+                                                                        STORAGE_AI_BASE_URL_KEY,
+                                                                        cloudConfig.baseUrl,
+                                                                    )
+                                                                }
+                                                                if (
+                                                                    cloudConfig.modelId
+                                                                ) {
+                                                                    setModelId(
+                                                                        cloudConfig.modelId,
+                                                                    )
+                                                                    localStorage.setItem(
+                                                                        STORAGE_AI_MODEL_KEY,
+                                                                        cloudConfig.modelId,
+                                                                    )
+                                                                }
+                                                                // Note: API Key cannot be restored (encrypted)
+
+                                                                console.log(
+                                                                    "[settings] Restored from cloud:",
+                                                                    provider,
+                                                                )
+                                                                setRestoreSuccess(
+                                                                    true,
+                                                                )
+                                                                setTimeout(
+                                                                    () => {
+                                                                        setRestoreSuccess(
+                                                                            false,
+                                                                        )
+                                                                    },
+                                                                    2000,
+                                                                )
+                                                            } else {
+                                                                console.warn(
+                                                                    "[settings] No cloud config found",
+                                                                )
+                                                            }
+                                                        } catch (error) {
+                                                            console.error(
+                                                                "Failed to restore from cloud:",
+                                                                error,
+                                                            )
+                                                        } finally {
+                                                            setIsRestoring(
+                                                                false,
+                                                            )
+                                                        }
+                                                    }}
+                                                >
+                                                    {restoreSuccess ? (
+                                                        <>
+                                                            <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                            {t(
+                                                                "settings.aiProvider.restored",
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <HardDrive className="h-4 w-4 mr-2" />
+                                                            {isRestoring
+                                                                ? t(
+                                                                      "settings.aiProvider.restoring",
+                                                                  )
+                                                                : t(
+                                                                      "settings.aiProvider.restoreFromCloud",
+                                                                  )}
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            )}
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -1017,6 +1176,182 @@ export function SettingsDialog({
                                     onCloseProtectionChange?.(checked)
                                 }}
                             />
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent
+                        value="about"
+                        className="space-y-6 py-2 overflow-y-auto flex-1"
+                    >
+                        {/* Project Info */}
+                        <div className="space-y-4">
+                            <div>
+                                <h3 className="text-lg font-semibold">
+                                    {t("about.title")}
+                                </h3>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                    {t("about.version")} 0.4.0
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* License Section */}
+                        <div className="space-y-3">
+                            <div className="flex items-start gap-2">
+                                <Scale className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                <div className="flex-1">
+                                    <h4 className="font-medium">
+                                        {t("about.license")}
+                                    </h4>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {t("about.licenseDescription")}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-2">
+                                        {t("about.copyright")}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                    className="h-8"
+                                >
+                                    <a
+                                        href="https://github.com/Dayuan99/next-ai-draw-io/blob/main/LICENSE"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5"
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        {t("about.viewLicense")}
+                                    </a>
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                    className="h-8"
+                                >
+                                    <a
+                                        href="https://github.com/Dayuan99/next-ai-draw-io/blob/main/NOTICE"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5"
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        {t("about.viewNotice")}
+                                    </a>
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                    className="h-8"
+                                >
+                                    <a
+                                        href="https://github.com/Dayuan99/next-ai-draw-io/blob/main/docs/LICENSE_COMPLIANCE_AUDIT.md"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5"
+                                    >
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                        {t("about.viewCompliance")}
+                                    </a>
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Third-Party Components */}
+                        <div className="space-y-3">
+                            <div className="flex items-start gap-2">
+                                <BookOpen className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                <div className="flex-1">
+                                    <h4 className="font-medium">
+                                        {t("about.thirdParty")}
+                                    </h4>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {t("about.thirdPartyDescription")}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 pl-7">
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.tweakcn")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.radixUI")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.shadcnUI")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.aiSDK")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.drawio")}</span>
+                                    </div>
+                                </div>
+                                <div className="text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                        <span>{t("about.nextjs")}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Links */}
+                        <div className="space-y-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                asChild
+                                className="w-full justify-start"
+                            >
+                                <a
+                                    href="https://github.com/Dayuan99/next-ai-draw-io"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2"
+                                >
+                                    <ExternalLink className="h-4 w-4" />
+                                    {t("about.repository")}
+                                </a>
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                asChild
+                                className="w-full justify-start"
+                            >
+                                <a
+                                    href="https://github.com/Dayuan99/next-ai-draw-io#readme"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2"
+                                >
+                                    <BookOpen className="h-4 w-4" />
+                                    {t("about.documentation")}
+                                </a>
+                            </Button>
                         </div>
                     </TabsContent>
                 </Tabs>

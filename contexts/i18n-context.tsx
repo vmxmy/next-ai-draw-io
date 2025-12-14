@@ -80,6 +80,26 @@ type I18nKey =
     | "settings.aiProvider.clear"
     | "settings.tabs.model"
     | "settings.tabs.interface"
+    | "settings.tabs.about"
+    | "about.title"
+    | "about.version"
+    | "about.license"
+    | "about.licenseDescription"
+    | "about.viewLicense"
+    | "about.viewNotice"
+    | "about.viewCompliance"
+    | "about.thirdParty"
+    | "about.thirdPartyDescription"
+    | "about.components"
+    | "about.tweakcn"
+    | "about.radixUI"
+    | "about.shadcnUI"
+    | "about.aiSDK"
+    | "about.drawio"
+    | "about.nextjs"
+    | "about.copyright"
+    | "about.repository"
+    | "about.documentation"
     | "settings.theme.label"
     | "settings.theme.note"
     | "settings.themeColor.label"
@@ -235,6 +255,10 @@ type I18nKey =
     | "settings.aiProvider.syncToCloud"
     | "settings.aiProvider.syncing"
     | "settings.aiProvider.synced"
+    | "settings.aiProvider.restoreFromCloud"
+    | "settings.aiProvider.restoring"
+    | "settings.aiProvider.restored"
+    | "settings.aiProvider.noCloudConfig"
     | "chat.header.sessionSwitcher"
     | "chat.header.newSessionTooltip"
     | "chat.tooltip.edit"
@@ -331,6 +355,28 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.clear": "Clear Settings",
         "settings.tabs.model": "Model",
         "settings.tabs.interface": "Interface",
+        "settings.tabs.about": "About",
+        "about.title": "About Next AI Draw.io",
+        "about.version": "Version",
+        "about.license": "License",
+        "about.licenseDescription":
+            "This project is licensed under the Apache License 2.0",
+        "about.viewLicense": "View LICENSE",
+        "about.viewNotice": "View NOTICE",
+        "about.viewCompliance": "View Compliance Audit",
+        "about.thirdParty": "Third-Party Components",
+        "about.thirdPartyDescription":
+            "This project uses the following open-source components:",
+        "about.components": "Components",
+        "about.tweakcn": "Tweakcn theme system (MIT License)",
+        "about.radixUI": "Radix UI primitives (MIT License)",
+        "about.shadcnUI": "shadcn/ui components (MIT License)",
+        "about.aiSDK": "AI SDK by Vercel (Apache 2.0)",
+        "about.drawio": "Draw.io integration (Apache 2.0)",
+        "about.nextjs": "Next.js framework (MIT License)",
+        "about.copyright": "Copyright 2024 Dayuan Jiang",
+        "about.repository": "GitHub Repository",
+        "about.documentation": "Documentation",
         "settings.theme.label": "Theme",
         "settings.theme.note":
             "Dark/Light mode for interface and DrawIO canvas.",
@@ -503,6 +549,10 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.syncToCloud": "Sync to Cloud",
         "settings.aiProvider.syncing": "Syncing...",
         "settings.aiProvider.synced": "Synced",
+        "settings.aiProvider.restoreFromCloud": "Restore from Cloud",
+        "settings.aiProvider.restoring": "Restoring...",
+        "settings.aiProvider.restored": "Restored",
+        "settings.aiProvider.noCloudConfig": "No cloud config found",
         "chat.header.sessionSwitcher": "Switch session",
         "chat.header.newSessionTooltip": "New session",
         "chat.tooltip.edit": "Edit message",
@@ -588,6 +638,26 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.clear": "清除设置",
         "settings.tabs.model": "模型配置",
         "settings.tabs.interface": "界面配置",
+        "settings.tabs.about": "关于",
+        "about.title": "关于 Next AI Draw.io",
+        "about.version": "版本",
+        "about.license": "许可证",
+        "about.licenseDescription": "本项目基于 Apache License 2.0 许可证开源",
+        "about.viewLicense": "查看 LICENSE",
+        "about.viewNotice": "查看 NOTICE",
+        "about.viewCompliance": "查看合规性审计报告",
+        "about.thirdParty": "第三方组件",
+        "about.thirdPartyDescription": "本项目使用了以下开源组件：",
+        "about.components": "组件列表",
+        "about.tweakcn": "Tweakcn 主题系统 (MIT 许可证)",
+        "about.radixUI": "Radix UI 组件库 (MIT 许可证)",
+        "about.shadcnUI": "shadcn/ui 组件 (MIT 许可证)",
+        "about.aiSDK": "Vercel AI SDK (Apache 2.0 许可证)",
+        "about.drawio": "Draw.io 集成 (Apache 2.0 许可证)",
+        "about.nextjs": "Next.js 框架 (MIT 许可证)",
+        "about.copyright": "版权所有 © 2024 Dayuan Jiang",
+        "about.repository": "GitHub 仓库",
+        "about.documentation": "文档",
         "settings.theme.label": "主题",
         "settings.theme.note": "切换界面与 DrawIO 画布的明暗模式。",
         "settings.themeColor.label": "主题配色",
@@ -750,6 +820,10 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.syncToCloud": "同步到云端",
         "settings.aiProvider.syncing": "同步中...",
         "settings.aiProvider.synced": "已同步",
+        "settings.aiProvider.restoreFromCloud": "从云端恢复",
+        "settings.aiProvider.restoring": "恢复中...",
+        "settings.aiProvider.restored": "已恢复",
+        "settings.aiProvider.noCloudConfig": "未找到云端配置",
         "chat.header.sessionSwitcher": "切换会话",
         "chat.header.newSessionTooltip": "新建会话",
         "chat.tooltip.edit": "编辑消息",
