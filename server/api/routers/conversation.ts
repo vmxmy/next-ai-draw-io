@@ -1,19 +1,21 @@
 import { z } from "zod"
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc"
 
-const conversationPayloadSchema = z.object({
+// 导出 schema 供客户端验证使用
+export const conversationPayloadSchema = z.object({
     messages: z.array(z.unknown()),
-    xml: z.string(),
+    xml: z.string().max(10_000_000), // 限制 XML 大小为 10MB
     snapshots: z.array(z.tuple([z.number(), z.string()])).optional(),
     diagramVersions: z
         .array(
             z.object({
                 id: z.string().min(1),
                 createdAt: z.number().int(),
-                xml: z.string(),
+                xml: z.string().max(10_000_000),
                 note: z.string().optional(),
             }),
         )
+        .max(100) // 限制最多 100 个版本
         .optional(),
     diagramVersionCursor: z.number().int().optional(),
     diagramVersionMarks: z
@@ -22,7 +24,7 @@ const conversationPayloadSchema = z.object({
     sessionId: z.string(),
 })
 
-const conversationMetaSchema = z.object({
+export const conversationMetaSchema = z.object({
     id: z.string().min(1),
     title: z.string().optional(),
     createdAt: z.number().int(),
@@ -33,7 +35,21 @@ const conversationMetaSchema = z.object({
 
 export const conversationRouter = createTRPCRouter({
     push: protectedProcedure
-        .input(z.object({ conversations: z.array(conversationMetaSchema) }))
+        .input(
+            z
+                .object({
+                    conversations: z
+                        .array(conversationMetaSchema)
+                        .max(50, "批量上传最多 50 个会话"),
+                })
+                .refine(
+                    (data) => {
+                        const totalSize = JSON.stringify(data).length
+                        return totalSize < 20_000_000 // 20MB 限制
+                    },
+                    { message: "请求数据过大，超过 20MB 限制" },
+                ),
+        )
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
             const now = new Date()
@@ -109,14 +125,31 @@ export const conversationRouter = createTRPCRouter({
     pull: protectedProcedure
         .input(
             z.object({
-                cursor: z.string().optional(),
-                limit: z.number().int().min(1).max(200).optional(),
+                cursor: z
+                    .string()
+                    .optional()
+                    .refine(
+                        (val) => {
+                            if (!val) return true
+                            try {
+                                const num = BigInt(val)
+                                return (
+                                    num >= 0n &&
+                                    num < BigInt("9007199254740991")
+                                ) // Number.MAX_SAFE_INTEGER
+                            } catch {
+                                return false
+                            }
+                        },
+                        { message: "无效的游标值" },
+                    ),
+                limit: z.number().int().min(1).max(100).optional(), // 降低到 100
             }),
         )
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
             const cursor = BigInt(input.cursor ?? "0")
-            const limit = input.limit ?? 200
+            const limit = input.limit ?? 100
 
             const events = await ctx.db.syncEvent.findMany({
                 where: {
@@ -137,7 +170,11 @@ export const conversationRouter = createTRPCRouter({
             )
 
             const conversations = await ctx.db.conversation.findMany({
-                where: { userId, id: { in: conversationIds } },
+                where: {
+                    userId,
+                    id: { in: conversationIds },
+                    // 不排除已删除的，因为需要同步删除状态
+                },
                 select: {
                     id: true,
                     title: true,
