@@ -3,11 +3,12 @@
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { PanelRightOpen } from "lucide-react"
-import { signIn, signOut, useSession } from "next-auth/react"
+import { signOut, useSession } from "next-auth/react"
 import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Toaster, toast } from "sonner"
+import { AuthDialog } from "@/components/auth-dialog"
 import { AutoRetryLimitToast } from "@/components/auto-retry-limit-toast"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
@@ -169,6 +170,7 @@ export default function ChatPanel({
 
     const [showHistory, setShowHistory] = useState(false)
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
+    const [showAuthDialog, setShowAuthDialog] = useState(false)
     const [, setAccessCodeRequired] = useState(false)
     const [input, setInput] = useState("")
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
@@ -1222,7 +1224,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 userImage={authSession?.user?.image}
                 signInLabel={t("auth.signIn")}
                 signOutLabel={t("auth.signOut")}
-                onSignIn={() => void signIn("github")}
+                onSignIn={() => setShowAuthDialog(true)}
                 onSignOut={() => void signOut()}
                 showSync={authStatus === "authenticated"}
                 isOnline={isOnline}
@@ -1307,6 +1309,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 onToggleDrawioUi={onToggleDrawioUi}
                 darkMode={darkMode}
                 onToggleDarkMode={onToggleDarkMode}
+            />
+
+            <AuthDialog
+                open={showAuthDialog}
+                onOpenChange={setShowAuthDialog}
             />
         </div>
     )

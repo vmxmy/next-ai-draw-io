@@ -1,7 +1,7 @@
 "use client"
 
+import { LogIn } from "lucide-react"
 import Image from "next/image"
-import { FaGithub } from "react-icons/fa"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 
 export function AuthButton({
@@ -48,7 +48,7 @@ export function AuthButton({
                     className="rounded-full"
                 />
             ) : (
-                <FaGithub className="h-4 w-4 text-muted-foreground" />
+                <LogIn className="h-4 w-4 text-muted-foreground" />
             )}
         </ButtonWithTooltip>
     )

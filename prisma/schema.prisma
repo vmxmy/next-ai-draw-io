@@ -15,6 +15,7 @@ model User {
   email         String?   @unique
   emailVerified DateTime?
   image         String?
+  phone         String?   @unique
   accounts      Account[]
   sessions      Session[]
 
@@ -141,4 +142,19 @@ model ProviderConfig {
   @@unique([userId, provider])
   @@index([userId])
   @@index([keyVersion])
+}
+
+// SMS 验证码（用于手机号登录）
+model SmsVerificationCode {
+  id           String   @id @default(cuid())
+  phone        String
+  purpose      String   // login_phone | register_phone
+  codeHash     String   // SHA-256 hash of the verification code
+  expiresAt    DateTime
+  verifiedAt   DateTime?
+  attemptCount Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([phone, purpose, createdAt])
+  @@index([expiresAt])
 }

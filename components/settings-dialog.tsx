@@ -31,8 +31,9 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/contexts/i18n-context"
-import { applyTheme, themes } from "@/lib/themes"
+import { useTheme } from "@/contexts/theme-context"
 import { api } from "@/lib/trpc/client"
+import { tweakcnThemes } from "@/lib/tweakcn-themes"
 
 interface ModelOption {
     id: string
@@ -56,7 +57,6 @@ export const STORAGE_AI_PROVIDER_KEY = "next-ai-draw-io-ai-provider"
 export const STORAGE_AI_BASE_URL_KEY = "next-ai-draw-io-ai-base-url"
 export const STORAGE_AI_API_KEY_KEY = "next-ai-draw-io-ai-api-key"
 export const STORAGE_AI_MODEL_KEY = "next-ai-draw-io-ai-model"
-export const STORAGE_THEME_COLOR_KEY = "next-ai-draw-io-theme-color"
 
 function getStoredAccessCodeRequired(): boolean | null {
     if (typeof window === "undefined") return null
@@ -95,10 +95,9 @@ export function SettingsDialog({
     >()
     const [cloudBaseUrl, setCloudBaseUrl] = useState<string | undefined>()
     const [cloudModelId, setCloudModelId] = useState<string | undefined>()
-    const [themeColor, setThemeColor] = useState(() => {
-        if (typeof window === "undefined") return "green"
-        return localStorage.getItem(STORAGE_THEME_COLOR_KEY) || "green"
-    })
+
+    // Theme hook
+    const { palette, setPalette } = useTheme()
 
     // TRPC mutations and utils
     const utils = api.useUtils()
@@ -209,19 +208,6 @@ export function SettingsDialog({
             controller.abort()
         }
     }, [apiKey, baseUrl, open, provider])
-
-    // Apply theme on initial load and when theme changes
-    useEffect(() => {
-        const mode = darkMode ? "dark" : "light"
-        applyTheme(themeColor, mode)
-    }, [themeColor, darkMode])
-
-    const handleThemeColorChange = (newTheme: string) => {
-        setThemeColor(newTheme)
-        localStorage.setItem(STORAGE_THEME_COLOR_KEY, newTheme)
-        const mode = darkMode ? "dark" : "light"
-        applyTheme(newTheme, mode)
-    }
 
     const handleSave = async () => {
         if (!accessCodeRequired) return
@@ -897,24 +883,26 @@ export function SettingsDialog({
                                 </p>
                             </div>
                             <Select
-                                value={themeColor}
-                                onValueChange={handleThemeColorChange}
+                                value={palette || "amber-minimal"}
+                                onValueChange={(value) =>
+                                    setPalette(value as any)
+                                }
                             >
                                 <SelectTrigger
                                     id="theme-color-select"
-                                    className="w-[140px]"
+                                    className="w-[180px]"
                                 >
                                     <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent>
-                                    {themes.map((theme) => (
+                                <SelectContent className="max-h-[300px]">
+                                    {tweakcnThemes.map((theme) => (
                                         <SelectItem
                                             key={theme.name}
                                             value={theme.name}
                                         >
                                             <div className="flex items-center gap-2">
                                                 <Palette className="h-3.5 w-3.5" />
-                                                {theme.label}
+                                                {theme.title}
                                             </div>
                                         </SelectItem>
                                     ))}
