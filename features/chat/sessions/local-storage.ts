@@ -10,6 +10,10 @@ import {
     STORAGE_CONVERSATIONS_KEY,
     STORAGE_CURRENT_CONVERSATION_ID_KEY,
 } from "@/features/chat/sessions/storage"
+import {
+    deoptimizePayload,
+    optimizePayload,
+} from "@/features/chat/sessions/storage-optimizer"
 
 const STORAGE_WARNING_THRESHOLD = 0.8 // 80%
 
@@ -120,7 +124,9 @@ export function readConversationPayloadFromStorage(
     try {
         const raw = localStorage.getItem(conversationStorageKey(userId, id))
         if (!raw) return null
-        return JSON.parse(raw) as ConversationPayload
+        const payload = JSON.parse(raw) as ConversationPayload
+        // 自动解压数据（向后兼容未压缩的数据）
+        return deoptimizePayload(payload)
     } catch {
         return null
     }
@@ -132,7 +138,9 @@ export function writeConversationPayloadToStorage(
     payload: ConversationPayload,
 ) {
     try {
-        const serialized = JSON.stringify(payload)
+        // 优化和压缩数据
+        const optimized = optimizePayload(payload)
+        const serialized = JSON.stringify(optimized)
 
         // 检查 quota（异步，不阻塞）
         if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
@@ -162,9 +170,11 @@ export function writeConversationPayloadToStorage(
                     duration: 3000,
                 })
                 try {
+                    // 重试时也使用优化后的数据
+                    const optimized = optimizePayload(payload)
                     localStorage.setItem(
                         conversationStorageKey(userId, id),
-                        JSON.stringify(payload),
+                        JSON.stringify(optimized),
                     )
                     return
                 } catch {
