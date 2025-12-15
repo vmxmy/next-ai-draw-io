@@ -16,14 +16,23 @@ model User {
   emailVerified DateTime?
   image         String?
   phone         String?   @unique
+
+  // 用户等级系统
+  tier          String    @default("free") // anonymous | free | pro | enterprise
+  tierExpiresAt DateTime? // 等级过期时间（用于试用期、付费到期等）
+
   accounts      Account[]
   sessions      Session[]
 
   conversations   Conversation[]
   providerConfigs ProviderConfig[]
+  quotaUsage      UserQuotaUsage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([tier])
+  @@index([tierExpiresAt])
 }
 
 model Account {
@@ -157,4 +166,38 @@ model SmsVerificationCode {
 
   @@index([phone, purpose, createdAt])
   @@index([expiresAt])
+}
+
+// 等级配置表（动态配额管理）
+model TierConfig {
+  tier              String   @id // anonymous | free | pro | enterprise
+  displayName       String   // 显示名称，如"免费版"
+  dailyRequestLimit Int      @default(0) // 每日请求数，0 表示无限
+  dailyTokenLimit   BigInt   @default(0) // 每日 Token 总数
+  tpmLimit          Int      @default(0) // 每分钟 Token 数（TPM）
+  enabled           Boolean  @default(true) // 是否启用该等级
+  sortOrder         Int      @default(0) // 排序权重
+  description       String?  // 等级描述（用于前端展示）
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
+}
+
+// 用户配额使用记录表（已认证用户）
+model UserQuotaUsage {
+  userId     String
+  bucketType String // day-requests | day-tokens | minute-tokens
+  bucketKey  String // 时间桶键：如 "2025-12-15" 或分钟戳
+  count      BigInt @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, bucketType, bucketKey])
+  @@index([bucketType, bucketKey])
+  @@index([userId, updatedAt])
 }

@@ -119,7 +119,9 @@ export function useConversationSync({
 
     const buildPushConversationInput = useCallback(
         (id: string, opts?: { deleted?: boolean }) => {
-            const metas = readConversationMetasFromStorage()
+            const metas = readConversationMetasFromStorage(
+                userId || "anonymous",
+            )
             const meta = metas.find((m) => m.id === id)
             const now = Date.now()
             const createdAt = meta?.createdAt ?? now
@@ -127,7 +129,7 @@ export function useConversationSync({
 
             const payload = opts?.deleted
                 ? undefined
-                : readConversationPayloadFromStorage(id)
+                : readConversationPayloadFromStorage(userId || "anonymous", id)
 
             return {
                 id,
@@ -138,7 +140,7 @@ export function useConversationSync({
                 payload: payload ?? undefined,
             }
         },
-        [],
+        [userId],
     )
 
     const pushConversationNow = useCallback(
@@ -200,10 +202,12 @@ export function useConversationSync({
         (remote: Array<any>) => {
             if (!Array.isArray(remote) || remote.length === 0) return
 
+            const userIdOrAnonymous = userId || "anonymous"
             let shouldReloadCurrent = false
             let currentRemoved = false
 
-            const localMetas = readConversationMetasFromStorage()
+            const localMetas =
+                readConversationMetasFromStorage(userIdOrAnonymous)
             const metaById = new Map(localMetas.map((m) => [m.id, m]))
 
             for (const rc of remote) {
@@ -212,7 +216,7 @@ export function useConversationSync({
 
                 if (rc?.deleted) {
                     metaById.delete(id)
-                    removeConversationPayloadFromStorage(id)
+                    removeConversationPayloadFromStorage(userIdOrAnonymous, id)
                     if (id === currentConversationId) currentRemoved = true
                     continue
                 }
@@ -225,7 +229,7 @@ export function useConversationSync({
 
                 try {
                     localStorage.setItem(
-                        conversationStorageKey(id),
+                        conversationStorageKey(userIdOrAnonymous, id),
                         JSON.stringify(rc?.payload ?? {}),
                     )
                 } catch {
@@ -245,13 +249,16 @@ export function useConversationSync({
             const nextMetas = Array.from(metaById.values()).sort(
                 (a, b) => b.updatedAt - a.updatedAt,
             )
-            writeConversationMetasToStorage(nextMetas)
+            writeConversationMetasToStorage(userIdOrAnonymous, nextMetas)
             setConversations(nextMetas)
 
             if (currentRemoved) {
                 const nextId = nextMetas[0]?.id || ""
                 if (nextId) {
-                    writeCurrentConversationIdToStorage(nextId)
+                    writeCurrentConversationIdToStorage(
+                        userIdOrAnonymous,
+                        nextId,
+                    )
                     setCurrentConversationId(nextId)
                     return
                 }
@@ -264,12 +271,16 @@ export function useConversationSync({
                     snapshots: [],
                     sessionId: createSessionId(),
                 }
-                writeConversationPayloadToStorage(newId, payload)
+                writeConversationPayloadToStorage(
+                    userIdOrAnonymous,
+                    newId,
+                    payload,
+                )
                 const metas: ConversationMeta[] = [
                     { id: newId, createdAt: now, updatedAt: now },
                 ]
-                writeConversationMetasToStorage(metas)
-                writeCurrentConversationIdToStorage(newId)
+                writeConversationMetasToStorage(userIdOrAnonymous, metas)
+                writeCurrentConversationIdToStorage(userIdOrAnonymous, newId)
                 setConversations(metas)
                 setCurrentConversationId(newId)
                 queuePushConversation(newId, { immediate: true })
@@ -353,14 +364,18 @@ export function useConversationSync({
 
             // 先拉取远端，再推送本地：
             // - pull 使用的是「事件游标」增量同步；
-            // - 如果先 push，会把游标推进到“最新事件”，导致新设备从 0 开始的首次同步反而拉不到历史远端会话。
-            // KISS：首次启动时多做一次 pull，换取“必能看到云端历史”的确定性。
+            // - 如果先 push，会把游标推进到"最新事件"，导致新设备从 0 开始的首次同步反而拉不到历史远端会话。
+            // KISS：首次启动时多做一次 pull，换取"必能看到云端历史"的确定性。
             await pullOnceRef.current?.()
 
-            const metas = readConversationMetasFromStorage()
+            const userIdOrAnonymous = userId || "anonymous"
+            const metas = readConversationMetasFromStorage(userIdOrAnonymous)
             const toPush = metas
                 .map((m) => {
-                    const payload = readConversationPayloadFromStorage(m.id)
+                    const payload = readConversationPayloadFromStorage(
+                        userIdOrAnonymous,
+                        m.id,
+                    )
                     if (!payload) return null
                     return {
                         id: m.id,

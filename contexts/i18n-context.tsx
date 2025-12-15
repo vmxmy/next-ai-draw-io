@@ -250,6 +250,17 @@ type I18nKey =
     | "userCenter.phone"
     | "userCenter.signOut"
     | "userCenter.signingOut"
+    | "userCenter.tabs.basic"
+    | "userCenter.tabs.tier"
+    | "userCenter.tier.current"
+    | "userCenter.tier.expiresIn"
+    | "userCenter.tier.quotaUsage"
+    | "userCenter.tier.dailyRequests"
+    | "userCenter.tier.dailyTokens"
+    | "userCenter.tier.tpmUsage"
+    | "userCenter.tier.unlimited"
+    | "userCenter.tier.upgradePrompt"
+    | "userCenter.tier.upgradeDescription"
     | "settings.aiProvider.modelsLoading"
     | "settings.aiProvider.modelsCount"
     | "settings.aiProvider.modelIdSelectPlaceholder"
@@ -546,6 +557,18 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "userCenter.phone": "Phone",
         "userCenter.signOut": "Sign Out",
         "userCenter.signingOut": "Signing out...",
+        "userCenter.tabs.basic": "Basic Info",
+        "userCenter.tabs.tier": "User Tier",
+        "userCenter.tier.current": "Current Tier",
+        "userCenter.tier.expiresIn": "Expires",
+        "userCenter.tier.quotaUsage": "Quota Usage",
+        "userCenter.tier.dailyRequests": "Daily Requests",
+        "userCenter.tier.dailyTokens": "Daily Tokens",
+        "userCenter.tier.tpmUsage": "Tokens/Minute",
+        "userCenter.tier.unlimited": "Unlimited",
+        "userCenter.tier.upgradePrompt": "Upgrade to Pro for Higher Limits",
+        "userCenter.tier.upgradeDescription":
+            "Enjoy higher quotas and priority support with Pro tier.",
         "settings.aiProvider.modelsLoading": "Loading models…",
         "settings.aiProvider.modelsCount": "{count} models",
         "settings.aiProvider.modelIdSelectPlaceholder": "Select a model",
@@ -819,6 +842,18 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "userCenter.phone": "手机",
         "userCenter.signOut": "退出登录",
         "userCenter.signingOut": "退出中...",
+        "userCenter.tabs.basic": "基础信息",
+        "userCenter.tabs.tier": "用户等级",
+        "userCenter.tier.current": "当前等级",
+        "userCenter.tier.expiresIn": "过期时间",
+        "userCenter.tier.quotaUsage": "配额使用情况",
+        "userCenter.tier.dailyRequests": "每日请求数",
+        "userCenter.tier.dailyTokens": "每日 Token 数",
+        "userCenter.tier.tpmUsage": "每分钟 Token 数",
+        "userCenter.tier.unlimited": "无限制",
+        "userCenter.tier.upgradePrompt": "升级到专业版以获得更高限额",
+        "userCenter.tier.upgradeDescription":
+            "专业版用户享受更高配额和优先支持。",
         "settings.aiProvider.modelsLoading": "正在加载模型列表…",
         "settings.aiProvider.modelsCount": "共 {count} 个模型",
         "settings.aiProvider.modelIdSelectPlaceholder": "选择一个模型",

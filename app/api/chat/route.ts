@@ -7,6 +7,7 @@ import {
     stepCountIs,
     streamText,
 } from "ai"
+import { getServerSession } from "next-auth/next"
 import { z } from "zod"
 import {
     getAIModel,
@@ -31,11 +32,12 @@ import {
 } from "@/lib/tool-descriptions"
 import { analyzeDiagramXml } from "@/lib/xml-analyzer"
 import { buildDiagramSummary } from "@/lib/xml-summary"
+import { authOptions } from "@/server/auth"
 import {
-    AnonymousIpRateLimitError,
-    enforceAnonymousIpRateLimit,
-    recordAnonymousIpTokenUsage,
-} from "@/server/ip-rate-limit"
+    enforceQuotaLimit,
+    QuotaExceededError,
+    recordTokenUsage,
+} from "@/server/quota-enforcement"
 
 export const maxDuration = 120
 
@@ -516,7 +518,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
 
     // Get user IP for Langfuse tracking
     const forwardedFor = req.headers.get("x-forwarded-for")
-    const userId = forwardedFor?.split(",")[0]?.trim() || "anonymous"
+    const userIpForTracking = forwardedFor?.split(",")[0]?.trim() || "anonymous"
 
     // Validate sessionId for Langfuse (must be string, max 200 chars)
     const validSessionId =
@@ -545,7 +547,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
     setTraceInput({
         input: userInputText,
         sessionId: validSessionId,
-        userId: userId,
+        userId: userIpForTracking,
     })
 
     // === FILE VALIDATION START ===
@@ -575,10 +577,15 @@ async function handleChatRequest(req: Request): Promise<Response> {
     // Read and sanitize client AI provider overrides from headers (BYOK)
     const clientOverrides = sanitizeClientOverrides(req.headers)
 
-    // 匿名（按 IP）限额：仅当未使用 BYOK（客户端自带 API Key）时生效
-    const rateLimitContext = await enforceAnonymousIpRateLimit({
+    // 获取用户 session（如果已登录）
+    const session = await getServerSession(authOptions)
+    const userId = session?.user?.id
+
+    // 配额限额检查：统一处理匿名和已认证用户，BYOK 用户绕过
+    const quotaContext = await enforceQuotaLimit({
         headers: req.headers,
-        bypass: !!(clientOverrides.provider && clientOverrides.apiKey),
+        userId,
+        bypassBYOK: !!(clientOverrides.provider && clientOverrides.apiKey),
     })
 
     // Get AI model with optional client overrides
@@ -860,9 +867,9 @@ ${lastMessageText}
 
             const totalTokens =
                 (usage?.inputTokens || 0) + (usage?.outputTokens || 0)
-            if (rateLimitContext?.ipHash && totalTokens > 0) {
-                void recordAnonymousIpTokenUsage({
-                    ipHash: rateLimitContext.ipHash,
+            if (totalTokens > 0) {
+                void recordTokenUsage({
+                    context: quotaContext,
                     tokens: totalTokens,
                 })
             }
@@ -1000,7 +1007,7 @@ function handleError(error: unknown): Response {
 
     const isDev = process.env.NODE_ENV === "development"
 
-    if (error instanceof AnonymousIpRateLimitError) {
+    if (error instanceof QuotaExceededError) {
         return Response.json({ error: error.message }, { status: 429 })
     }
 

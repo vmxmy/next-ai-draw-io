@@ -1,9 +1,11 @@
 "use client"
 
-import { useCallback, useMemo } from "react"
+import { useSession } from "next-auth/react"
+import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { QuotaLimitToast } from "@/components/quota-limit-toast"
 import { STORAGE_KEYS } from "@/lib/storage"
+import { api } from "@/lib/trpc/client"
 
 export interface QuotaConfig {
     dailyRequestLimit: number
@@ -17,16 +19,23 @@ export interface QuotaCheckResult {
     used: number
 }
 
+export interface QuotaUsage {
+    dailyRequests: number
+    dailyTokens: number
+    minuteTokens: number
+}
+
 /**
  * Hook for managing request/token quotas and rate limiting.
- * Handles three types of limits:
- * - Daily request limit
- * - Daily token limit
- * - Tokens per minute (TPM) rate limit
  *
- * Users with their own API key bypass all limits.
+ * 新版本（基于服务端数据驱动）：
+ * - 登录用户：从 tRPC 获取实时配额和使用情况
+ * - 匿名用户：从 /api/config 获取配额配置
+ * - 所有用户：BYOK（自带 API Key）绕过所有限额
+ *
+ * 注意：服务端已经强制执行限额，前端检查主要用于快速反馈
  */
-export function useQuotaManager(config: QuotaConfig): {
+export function useQuotaManager(fallbackConfig?: QuotaConfig): {
     hasOwnApiKey: () => boolean
     checkDailyLimit: () => QuotaCheckResult
     checkTokenLimit: () => QuotaCheckResult
@@ -37,8 +46,69 @@ export function useQuotaManager(config: QuotaConfig): {
     showQuotaLimitToast: () => void
     showTokenLimitToast: (used: number) => void
     showTPMLimitToast: () => void
+    tier?: string
+    config: QuotaConfig | null
+    usage: QuotaUsage
 } {
-    const { dailyRequestLimit, dailyTokenLimit, tpmLimit } = config
+    const { data: session } = useSession()
+    const [config, setConfig] = useState<QuotaConfig | null>(
+        fallbackConfig || null,
+    )
+    const [usage, setUsage] = useState<QuotaUsage>({
+        dailyRequests: 0,
+        dailyTokens: 0,
+        minuteTokens: 0,
+    })
+
+    // 登录用户：从 tRPC 获取等级配置
+    const { data: tierData } = api.tierConfig.getUserTier.useQuery(undefined, {
+        enabled: !!session?.user,
+        refetchInterval: 60_000, // 每分钟刷新
+    })
+
+    // 登录用户：从 tRPC 获取配额使用情况
+    const { data: usageData, refetch: refetchUsage } =
+        api.tierConfig.getUserQuotaUsage.useQuery(undefined, {
+            enabled: !!session?.user,
+            refetchInterval: 10_000, // 每 10 秒刷新
+        })
+
+    // 匿名用户：从 /api/config 获取配额配置
+    useEffect(() => {
+        if (session?.user) return // 登录用户跳过
+
+        fetch("/api/config")
+            .then((res) => res.json())
+            .then((data) => {
+                setConfig({
+                    dailyRequestLimit: data.dailyRequestLimit || 0,
+                    dailyTokenLimit: data.dailyTokenLimit || 0,
+                    tpmLimit: data.tpmLimit || 0,
+                })
+            })
+            .catch(() => {
+                if (fallbackConfig) {
+                    setConfig(fallbackConfig)
+                }
+            })
+    }, [session, fallbackConfig])
+
+    // 登录用户：从 tRPC 数据更新 config 和 usage
+    useEffect(() => {
+        if (tierData?.config) {
+            setConfig({
+                dailyRequestLimit: tierData.config.dailyRequestLimit,
+                dailyTokenLimit: Number(tierData.config.dailyTokenLimit),
+                tpmLimit: tierData.config.tpmLimit,
+            })
+        }
+    }, [tierData])
+
+    useEffect(() => {
+        if (usageData) {
+            setUsage(usageData)
+        }
+    }, [usageData])
 
     // Check if user has their own API key configured (bypass limits)
     const hasOwnApiKey = useCallback((): boolean => {
@@ -47,132 +117,72 @@ export function useQuotaManager(config: QuotaConfig): {
         return !!(provider && apiKey)
     }, [])
 
-    // Generic helper: Parse count from localStorage with NaN guard
-    const parseStorageCount = (key: string): number => {
-        const count = parseInt(localStorage.getItem(key) || "0", 10)
-        return Number.isNaN(count) ? 0 : count
-    }
-
-    // Generic helper: Create quota checker factory
-    const createQuotaChecker = useCallback(
-        (
-            getTimeKey: () => string,
-            timeStorageKey: string,
-            countStorageKey: string,
-            limit: number,
-        ) => {
-            return (): QuotaCheckResult => {
-                if (hasOwnApiKey())
-                    return { allowed: true, remaining: -1, used: 0 }
-                if (limit <= 0) return { allowed: true, remaining: -1, used: 0 }
-
-                const currentTime = getTimeKey()
-                const storedTime = localStorage.getItem(timeStorageKey)
-                let count = parseStorageCount(countStorageKey)
-
-                if (storedTime !== currentTime) {
-                    count = 0
-                    localStorage.setItem(timeStorageKey, currentTime)
-                    localStorage.setItem(countStorageKey, "0")
-                }
-
-                return {
-                    allowed: count < limit,
-                    remaining: limit - count,
-                    used: count,
-                }
-            }
-        },
-        [hasOwnApiKey],
-    )
-
-    // Generic helper: Create quota incrementer factory
-    const createQuotaIncrementer = useCallback(
-        (
-            getTimeKey: () => string,
-            timeStorageKey: string,
-            countStorageKey: string,
-            validateInput: boolean = false,
-        ) => {
-            return (tokens: number = 1): void => {
-                if (validateInput && (!Number.isFinite(tokens) || tokens <= 0))
-                    return
-
-                const currentTime = getTimeKey()
-                const storedTime = localStorage.getItem(timeStorageKey)
-                let count = parseStorageCount(countStorageKey)
-
-                if (storedTime !== currentTime) {
-                    count = 0
-                    localStorage.setItem(timeStorageKey, currentTime)
-                }
-
-                localStorage.setItem(countStorageKey, String(count + tokens))
-            }
-        },
-        [],
-    )
-
     // Check daily request limit
-    const checkDailyLimit = useMemo(
-        () =>
-            createQuotaChecker(
-                () => new Date().toDateString(),
-                STORAGE_KEYS.requestDate,
-                STORAGE_KEYS.requestCount,
-                dailyRequestLimit,
-            ),
-        [createQuotaChecker, dailyRequestLimit],
-    )
+    const checkDailyLimit = useCallback((): QuotaCheckResult => {
+        if (hasOwnApiKey()) return { allowed: true, remaining: -1, used: 0 }
+        if (!config || config.dailyRequestLimit <= 0)
+            return { allowed: true, remaining: -1, used: 0 }
 
-    // Increment request count
-    const incrementRequestCount = useMemo(
-        () =>
-            createQuotaIncrementer(
-                () => new Date().toDateString(),
-                STORAGE_KEYS.requestDate,
-                STORAGE_KEYS.requestCount,
-                false,
-            ),
-        [createQuotaIncrementer],
-    )
+        return {
+            allowed: usage.dailyRequests < config.dailyRequestLimit,
+            remaining: config.dailyRequestLimit - usage.dailyRequests,
+            used: usage.dailyRequests,
+        }
+    }, [config, usage.dailyRequests, hasOwnApiKey])
+
+    // Increment request count (乐观更新)
+    const incrementRequestCount = useCallback(() => {
+        setUsage((prev) => ({
+            ...prev,
+            dailyRequests: prev.dailyRequests + 1,
+        }))
+        // 触发后台刷新
+        setTimeout(() => {
+            void refetchUsage()
+        }, 1000)
+    }, [refetchUsage])
 
     // Show quota limit toast (request-based)
     const showQuotaLimitToast = useCallback(() => {
         toast.custom(
             (t) => (
                 <QuotaLimitToast
-                    used={dailyRequestLimit}
-                    limit={dailyRequestLimit}
+                    used={usage.dailyRequests}
+                    limit={config?.dailyRequestLimit || 0}
                     onDismiss={() => toast.dismiss(t)}
                 />
             ),
             { duration: 15000 },
         )
-    }, [dailyRequestLimit])
+    }, [usage.dailyRequests, config])
 
     // Check daily token limit
-    const checkTokenLimit = useMemo(
-        () =>
-            createQuotaChecker(
-                () => new Date().toDateString(),
-                STORAGE_KEYS.tokenDate,
-                STORAGE_KEYS.tokenCount,
-                dailyTokenLimit,
-            ),
-        [createQuotaChecker, dailyTokenLimit],
-    )
+    const checkTokenLimit = useCallback((): QuotaCheckResult => {
+        if (hasOwnApiKey()) return { allowed: true, remaining: -1, used: 0 }
+        if (!config || config.dailyTokenLimit <= 0)
+            return { allowed: true, remaining: -1, used: 0 }
 
-    // Increment token count
-    const incrementTokenCount = useMemo(
-        () =>
-            createQuotaIncrementer(
-                () => new Date().toDateString(),
-                STORAGE_KEYS.tokenDate,
-                STORAGE_KEYS.tokenCount,
-                true, // Validate input tokens
-            ),
-        [createQuotaIncrementer],
+        return {
+            allowed: usage.dailyTokens < config.dailyTokenLimit,
+            remaining: config.dailyTokenLimit - usage.dailyTokens,
+            used: usage.dailyTokens,
+        }
+    }, [config, usage.dailyTokens, hasOwnApiKey])
+
+    // Increment token count (乐观更新)
+    const incrementTokenCount = useCallback(
+        (tokens: number) => {
+            if (!Number.isFinite(tokens) || tokens <= 0) return
+
+            setUsage((prev) => ({
+                ...prev,
+                dailyTokens: prev.dailyTokens + tokens,
+            }))
+            setTimeout(() => {
+                void refetchUsage()
+            }, 1000)
+        },
+        [refetchUsage],
     )
 
     // Show token limit toast
@@ -183,79 +193,75 @@ export function useQuotaManager(config: QuotaConfig): {
                     <QuotaLimitToast
                         type="token"
                         used={used}
-                        limit={dailyTokenLimit}
+                        limit={config?.dailyTokenLimit || 0}
                         onDismiss={() => toast.dismiss(t)}
                     />
                 ),
                 { duration: 15000 },
             )
         },
-        [dailyTokenLimit],
+        [config],
     )
 
     // Check TPM (tokens per minute) limit
-    const checkTPMLimit = useMemo(
-        () =>
-            createQuotaChecker(
-                () => Math.floor(Date.now() / 60000).toString(),
-                STORAGE_KEYS.tpmMinute,
-                STORAGE_KEYS.tpmCount,
-                tpmLimit,
-            ),
-        [createQuotaChecker, tpmLimit],
-    )
+    const checkTPMLimit = useCallback((): QuotaCheckResult => {
+        if (hasOwnApiKey()) return { allowed: true, remaining: -1, used: 0 }
+        if (!config || config.tpmLimit <= 0)
+            return { allowed: true, remaining: -1, used: 0 }
 
-    // Increment TPM count
-    const incrementTPMCount = useMemo(
-        () =>
-            createQuotaIncrementer(
-                () => Math.floor(Date.now() / 60000).toString(),
-                STORAGE_KEYS.tpmMinute,
-                STORAGE_KEYS.tpmCount,
-                true, // Validate input tokens
-            ),
-        [createQuotaIncrementer],
+        return {
+            allowed: usage.minuteTokens < config.tpmLimit,
+            remaining: config.tpmLimit - usage.minuteTokens,
+            used: usage.minuteTokens,
+        }
+    }, [config, usage.minuteTokens, hasOwnApiKey])
+
+    // Increment TPM count (乐观更新)
+    const incrementTPMCount = useCallback(
+        (tokens: number) => {
+            if (!Number.isFinite(tokens) || tokens <= 0) return
+
+            setUsage((prev) => ({
+                ...prev,
+                minuteTokens: prev.minuteTokens + tokens,
+            }))
+            setTimeout(() => {
+                void refetchUsage()
+            }, 1000)
+        },
+        [refetchUsage],
     )
 
     // Show TPM limit toast
     const showTPMLimitToast = useCallback(() => {
-        const limitDisplay =
-            tpmLimit >= 1000 ? `${tpmLimit / 1000}k` : String(tpmLimit)
+        const limit = config?.tpmLimit || 0
+        const limitDisplay = limit >= 1000 ? `${limit / 1000}k` : String(limit)
         toast.error(
             `Rate limit reached (${limitDisplay} tokens/min). Please wait 60 seconds before sending another request.`,
             { duration: 8000 },
         )
-    }, [tpmLimit])
+    }, [config])
 
-    return useMemo(
-        () => ({
-            // Check functions
-            hasOwnApiKey,
-            checkDailyLimit,
-            checkTokenLimit,
-            checkTPMLimit,
+    return {
+        // Check functions
+        hasOwnApiKey,
+        checkDailyLimit,
+        checkTokenLimit,
+        checkTPMLimit,
 
-            // Increment functions
-            incrementRequestCount,
-            incrementTokenCount,
-            incrementTPMCount,
+        // Increment functions
+        incrementRequestCount,
+        incrementTokenCount,
+        incrementTPMCount,
 
-            // Toast functions
-            showQuotaLimitToast,
-            showTokenLimitToast,
-            showTPMLimitToast,
-        }),
-        [
-            checkDailyLimit,
-            checkTPMLimit,
-            checkTokenLimit,
-            hasOwnApiKey,
-            incrementRequestCount,
-            incrementTPMCount,
-            incrementTokenCount,
-            showQuotaLimitToast,
-            showTPMLimitToast,
-            showTokenLimitToast,
-        ],
-    )
+        // Toast functions
+        showQuotaLimitToast,
+        showTokenLimitToast,
+        showTPMLimitToast,
+
+        // 暴露额外信息
+        tier: tierData?.tier,
+        config,
+        usage,
+    }
 }

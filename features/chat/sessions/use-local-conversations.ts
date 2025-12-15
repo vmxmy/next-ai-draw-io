@@ -33,6 +33,7 @@ type QueuePushConversation = (
 ) => void
 
 export function useLocalConversations({
+    userId,
     locale,
     t,
     isDrawioReady,
@@ -51,6 +52,7 @@ export function useLocalConversations({
     queuePushConversation,
     stopCurrentRequest,
 }: {
+    userId: string
     locale: string
     t: (key: any) => string
     isDrawioReady: boolean
@@ -72,7 +74,7 @@ export function useLocalConversations({
     const [conversations, setConversations] = useState<ConversationMeta[]>([])
     const [currentConversationId, setCurrentConversationId] = useState(() => {
         if (typeof window === "undefined") return ""
-        return readCurrentConversationIdFromStorage()
+        return readCurrentConversationIdFromStorage(userId)
     })
     const [sessionId, setSessionId] = useState(() => createSessionId())
     const [hasRestored, setHasRestored] = useState(false)
@@ -118,7 +120,9 @@ export function useLocalConversations({
     const loadConversation = useCallback(
         (id: string) => {
             try {
-                const raw = localStorage.getItem(conversationStorageKey(id))
+                const raw = localStorage.getItem(
+                    conversationStorageKey(userId, id),
+                )
                 const payload: ConversationPayload = raw
                     ? JSON.parse(raw)
                     : {
@@ -231,6 +235,7 @@ export function useLocalConversations({
             onDisplayChart,
             processedToolCallsRef,
             setMessages,
+            userId,
         ],
     )
 
@@ -239,7 +244,10 @@ export function useLocalConversations({
             if (!currentConversationId) return
             try {
                 const existing =
-                    readConversationPayloadFromStorage(currentConversationId) ||
+                    readConversationPayloadFromStorage(
+                        userId,
+                        currentConversationId,
+                    ) ||
                     ({
                         messages: [],
                         xml: "",
@@ -271,7 +279,11 @@ export function useLocalConversations({
                         overrides.sessionId ?? existing.sessionId ?? sessionId,
                 }
 
-                writeConversationPayloadToStorage(currentConversationId, merged)
+                writeConversationPayloadToStorage(
+                    userId,
+                    currentConversationId,
+                    merged,
+                )
 
                 setConversations((prev) => {
                     const now = Date.now()
@@ -295,7 +307,7 @@ export function useLocalConversations({
                             title: deriveConversationTitle(merged.messages),
                         })
                     }
-                    writeConversationMetasToStorage(next)
+                    writeConversationMetasToStorage(userId, next)
                     return next
                 })
 
@@ -309,6 +321,7 @@ export function useLocalConversations({
             deriveConversationTitle,
             queuePushConversation,
             sessionId,
+            userId,
         ],
     )
 
@@ -590,7 +603,7 @@ export function useLocalConversations({
                 stopCurrentRequest?.()
                 flushPersistCurrentConversation()
 
-                writeConversationPayloadToStorage(id, payload)
+                writeConversationPayloadToStorage(userId, id, payload)
                 const nextMetas = [
                     {
                         id,
@@ -599,8 +612,8 @@ export function useLocalConversations({
                     } satisfies ConversationMeta,
                     ...conversations,
                 ]
-                writeConversationMetasToStorage(nextMetas)
-                writeCurrentConversationIdToStorage(id)
+                writeConversationMetasToStorage(userId, nextMetas)
+                writeCurrentConversationIdToStorage(userId, id)
 
                 setMessages([])
                 if (!keepDiagram) {
@@ -646,7 +659,7 @@ export function useLocalConversations({
             try {
                 stopCurrentRequest?.()
                 flushPersistCurrentConversation()
-                writeCurrentConversationIdToStorage(id)
+                writeCurrentConversationIdToStorage(userId, id)
                 setCurrentConversationId(id)
             } catch (error) {
                 console.error("Failed to select conversation:", error)
@@ -658,6 +671,7 @@ export function useLocalConversations({
             flushPersistCurrentConversation,
             stopCurrentRequest,
             t,
+            userId,
         ],
     )
 
@@ -667,16 +681,16 @@ export function useLocalConversations({
                 stopCurrentRequest?.()
                 flushPersistCurrentConversation()
                 queuePushConversation(id, { immediate: true, deleted: true })
-                removeConversationPayloadFromStorage(id)
+                removeConversationPayloadFromStorage(userId, id)
 
                 const nextMetas = conversations.filter((c) => c.id !== id)
-                writeConversationMetasToStorage(nextMetas)
+                writeConversationMetasToStorage(userId, nextMetas)
                 setConversations(nextMetas)
 
                 if (id === currentConversationId) {
                     const nextId = nextMetas[0]?.id
                     if (nextId) {
-                        writeCurrentConversationIdToStorage(nextId)
+                        writeCurrentConversationIdToStorage(userId, nextId)
                         setCurrentConversationId(nextId)
                     } else {
                         const newId = createConversationId()
@@ -690,7 +704,11 @@ export function useLocalConversations({
                             diagramVersionMarks: {},
                             sessionId: createSessionId(),
                         }
-                        writeConversationPayloadToStorage(newId, payload)
+                        writeConversationPayloadToStorage(
+                            userId,
+                            newId,
+                            payload,
+                        )
                         const metas = [
                             {
                                 id: newId,
@@ -698,8 +716,8 @@ export function useLocalConversations({
                                 updatedAt: now,
                             } satisfies ConversationMeta,
                         ]
-                        writeConversationMetasToStorage(metas)
-                        writeCurrentConversationIdToStorage(newId)
+                        writeConversationMetasToStorage(userId, metas)
+                        writeCurrentConversationIdToStorage(userId, newId)
                         setConversations(metas)
                         setCurrentConversationId(newId)
                     }
@@ -716,6 +734,7 @@ export function useLocalConversations({
             queuePushConversation,
             stopCurrentRequest,
             t,
+            userId,
         ],
     )
 
@@ -760,15 +779,23 @@ export function useLocalConversations({
         let xmlToLoad = pending
         if (!xmlToLoad && currentConversationId) {
             xmlToLoad =
-                readConversationPayloadFromStorage(currentConversationId)
-                    ?.xml || ""
+                readConversationPayloadFromStorage(
+                    userId,
+                    currentConversationId,
+                )?.xml || ""
         }
         if (xmlToLoad) {
             onDisplayChart(xmlToLoad, true)
             chartXMLRef.current = xmlToLoad
         }
         setTimeout(() => setCanSaveDiagram(true), 300)
-    }, [chartXMLRef, currentConversationId, isDrawioReady, onDisplayChart])
+    }, [
+        chartXMLRef,
+        currentConversationId,
+        isDrawioReady,
+        onDisplayChart,
+        userId,
+    ])
 
     useEffect(() => {
         if (!canSaveDiagram) return
@@ -796,11 +823,12 @@ export function useLocalConversations({
                     diagramVersionMarks: diagramVersionMarksRef.current,
                 }
                 writeConversationPayloadToStorage(
+                    userId,
                     currentConversationId,
                     payload,
                 )
 
-                const metas = readConversationMetasFromStorage()
+                const metas = readConversationMetasFromStorage(userId)
                 const now = Date.now()
                 const next = Array.isArray(metas)
                     ? metas.map((m) =>
@@ -817,7 +845,7 @@ export function useLocalConversations({
                               : m,
                       )
                     : []
-                writeConversationMetasToStorage(next)
+                writeConversationMetasToStorage(userId, next)
             } catch (error) {
                 console.error("Failed to persist state before unload:", error)
             }
@@ -832,11 +860,12 @@ export function useLocalConversations({
         deriveConversationTitle,
         messagesRef,
         sessionId,
+        userId,
     ])
 
     useEffect(() => {
         try {
-            let metas = readConversationMetasFromStorage()
+            let metas = readConversationMetasFromStorage(userId)
 
             const legacyMessages = localStorage.getItem(STORAGE_MESSAGES_KEY)
             const legacySnapshots = localStorage.getItem(
@@ -861,7 +890,7 @@ export function useLocalConversations({
                     diagramVersionMarks: {},
                     sessionId: legacySession || createSessionId(),
                 }
-                writeConversationPayloadToStorage(id, payload)
+                writeConversationPayloadToStorage(userId, id, payload)
                 metas = [
                     {
                         id,
@@ -870,8 +899,8 @@ export function useLocalConversations({
                         title: deriveConversationTitle(payload.messages),
                     },
                 ]
-                writeConversationMetasToStorage(metas)
-                writeCurrentConversationIdToStorage(id)
+                writeConversationMetasToStorage(userId, metas)
+                writeCurrentConversationIdToStorage(userId, id)
                 setCurrentConversationId(id)
 
                 localStorage.removeItem(STORAGE_MESSAGES_KEY)
@@ -883,9 +912,9 @@ export function useLocalConversations({
             if (metas.length === 0) {
                 const id = createConversationId()
                 metas = [{ id, createdAt: Date.now(), updatedAt: Date.now() }]
-                writeConversationMetasToStorage(metas)
-                writeCurrentConversationIdToStorage(id)
-                writeConversationPayloadToStorage(id, {
+                writeConversationMetasToStorage(userId, metas)
+                writeCurrentConversationIdToStorage(userId, id)
+                writeConversationPayloadToStorage(userId, id, {
                     messages: [],
                     xml: "",
                     snapshots: [],
@@ -897,7 +926,7 @@ export function useLocalConversations({
                 setCurrentConversationId(id)
             } else if (!currentConversationId) {
                 const id = metas[0].id
-                writeCurrentConversationIdToStorage(id)
+                writeCurrentConversationIdToStorage(userId, id)
                 setCurrentConversationId(id)
             }
 
@@ -908,7 +937,7 @@ export function useLocalConversations({
             setHasRestored(true)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [])
+    }, [userId])
 
     return {
         conversations,

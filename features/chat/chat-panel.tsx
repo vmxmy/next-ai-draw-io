@@ -748,6 +748,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         getPreviousDiagramXmlBeforeMessage,
         truncateDiagramVersionsAfterMessage,
     } = useLocalConversations({
+        userId: authSession?.user?.id || "anonymous",
         locale,
         t,
         isDrawioReady,

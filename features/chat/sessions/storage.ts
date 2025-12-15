@@ -6,13 +6,22 @@ export const STORAGE_MESSAGES_KEY = "next-ai-draw-io-messages"
 export const STORAGE_XML_SNAPSHOTS_KEY = "next-ai-draw-io-xml-snapshots"
 export const STORAGE_SESSION_ID_KEY = "next-ai-draw-io-session-id"
 
-// Multi-session keys
-export const STORAGE_CONVERSATIONS_KEY = "next-ai-draw-io-conversations"
-export const STORAGE_CURRENT_CONVERSATION_ID_KEY =
-    "next-ai-draw-io-current-conversation-id"
+// Multi-session keys (user-scoped)
+const STORAGE_CONVERSATIONS_PREFIX = "next-ai-draw-io-conversations:"
+const STORAGE_CURRENT_CONVERSATION_ID_PREFIX =
+    "next-ai-draw-io-current-conversation-id:"
+const STORAGE_CONVERSATION_PREFIX = "next-ai-draw-io-conversation:"
 
-export const conversationStorageKey = (id: string) =>
-    `next-ai-draw-io-conversation:${id}`
+export const STORAGE_CONVERSATIONS_KEY = (userId: string) =>
+    `${STORAGE_CONVERSATIONS_PREFIX}${userId || "anonymous"}`
+
+export const STORAGE_CURRENT_CONVERSATION_ID_KEY = (userId: string) =>
+    `${STORAGE_CURRENT_CONVERSATION_ID_PREFIX}${userId || "anonymous"}`
+
+export const conversationStorageKey = (
+    userId: string,
+    conversationId: string,
+) => `${STORAGE_CONVERSATION_PREFIX}${userId || "anonymous"}:${conversationId}`
 
 // 云端同步（登录态）游标
 const STORAGE_SYNC_CURSOR_PREFIX = "next-ai-draw-io-sync-cursor:"

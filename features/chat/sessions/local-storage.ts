@@ -13,21 +13,24 @@ import {
 
 const STORAGE_WARNING_THRESHOLD = 0.8 // 80%
 
-export function cleanOldestConversations(count: number): number {
+export function cleanOldestConversations(
+    userId: string,
+    count: number,
+): number {
     try {
-        const metas = readConversationMetasFromStorage()
+        const metas = readConversationMetasFromStorage(userId)
         if (metas.length <= 1) return 0
 
         const sorted = [...metas].sort((a, b) => a.updatedAt - b.updatedAt)
         const toRemove = sorted.slice(0, Math.min(count, metas.length - 1))
 
         toRemove.forEach((meta) => {
-            removeConversationPayloadFromStorage(meta.id)
+            removeConversationPayloadFromStorage(userId, meta.id)
         })
 
         const remaining = metas.filter((m) => !toRemove.includes(m))
         localStorage.setItem(
-            STORAGE_CONVERSATIONS_KEY,
+            STORAGE_CONVERSATIONS_KEY(userId),
             JSON.stringify(remaining),
         )
 
@@ -37,9 +40,11 @@ export function cleanOldestConversations(count: number): number {
     }
 }
 
-export function readConversationMetasFromStorage(): ConversationMeta[] {
+export function readConversationMetasFromStorage(
+    userId: string,
+): ConversationMeta[] {
     try {
-        const raw = localStorage.getItem(STORAGE_CONVERSATIONS_KEY)
+        const raw = localStorage.getItem(STORAGE_CONVERSATIONS_KEY(userId))
         const metas = raw ? (JSON.parse(raw) as unknown) : []
         return Array.isArray(metas) ? (metas as ConversationMeta[]) : []
     } catch {
@@ -47,17 +52,23 @@ export function readConversationMetasFromStorage(): ConversationMeta[] {
     }
 }
 
-export function writeConversationMetasToStorage(metas: ConversationMeta[]) {
+export function writeConversationMetasToStorage(
+    userId: string,
+    metas: ConversationMeta[],
+) {
     try {
-        localStorage.setItem(STORAGE_CONVERSATIONS_KEY, JSON.stringify(metas))
+        localStorage.setItem(
+            STORAGE_CONVERSATIONS_KEY(userId),
+            JSON.stringify(metas),
+        )
     } catch (error: any) {
         if (error?.name === "QuotaExceededError") {
-            const removed = cleanOldestConversations(3)
+            const removed = cleanOldestConversations(userId, 3)
             if (removed > 0) {
                 toast.warning(`存储空间不足，已自动清理 ${removed} 个旧会话`)
                 try {
                     localStorage.setItem(
-                        STORAGE_CONVERSATIONS_KEY,
+                        STORAGE_CONVERSATIONS_KEY(userId),
                         JSON.stringify(metas),
                     )
                 } catch {
@@ -71,27 +82,34 @@ export function writeConversationMetasToStorage(metas: ConversationMeta[]) {
     }
 }
 
-export function readCurrentConversationIdFromStorage(): string {
+export function readCurrentConversationIdFromStorage(userId: string): string {
     try {
-        return localStorage.getItem(STORAGE_CURRENT_CONVERSATION_ID_KEY) || ""
+        return (
+            localStorage.getItem(STORAGE_CURRENT_CONVERSATION_ID_KEY(userId)) ||
+            ""
+        )
     } catch {
         return ""
     }
 }
 
-export function writeCurrentConversationIdToStorage(id: string) {
+export function writeCurrentConversationIdToStorage(
+    userId: string,
+    id: string,
+) {
     try {
-        localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY, id)
+        localStorage.setItem(STORAGE_CURRENT_CONVERSATION_ID_KEY(userId), id)
     } catch {
         // ignore
     }
 }
 
 export function readConversationPayloadFromStorage(
+    userId: string,
     id: string,
 ): ConversationPayload | null {
     try {
-        const raw = localStorage.getItem(conversationStorageKey(id))
+        const raw = localStorage.getItem(conversationStorageKey(userId, id))
         if (!raw) return null
         return JSON.parse(raw) as ConversationPayload
     } catch {
@@ -100,6 +118,7 @@ export function readConversationPayloadFromStorage(
 }
 
 export function writeConversationPayloadToStorage(
+    userId: string,
     id: string,
     payload: ConversationPayload,
 ) {
@@ -124,15 +143,15 @@ export function writeConversationPayloadToStorage(
                 })
         }
 
-        localStorage.setItem(conversationStorageKey(id), serialized)
+        localStorage.setItem(conversationStorageKey(userId, id), serialized)
     } catch (error: any) {
         if (error?.name === "QuotaExceededError") {
-            const removed = cleanOldestConversations(5)
+            const removed = cleanOldestConversations(userId, 5)
             if (removed > 0) {
                 toast.warning(`存储空间不足，已自动清理 ${removed} 个旧会话`)
                 try {
                     localStorage.setItem(
-                        conversationStorageKey(id),
+                        conversationStorageKey(userId, id),
                         JSON.stringify(payload),
                     )
                     return
@@ -146,9 +165,12 @@ export function writeConversationPayloadToStorage(
     }
 }
 
-export function removeConversationPayloadFromStorage(id: string) {
+export function removeConversationPayloadFromStorage(
+    userId: string,
+    id: string,
+) {
     try {
-        localStorage.removeItem(conversationStorageKey(id))
+        localStorage.removeItem(conversationStorageKey(userId, id))
     } catch {
         // ignore
     }

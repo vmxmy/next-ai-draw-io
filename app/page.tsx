@@ -1,5 +1,6 @@
 "use client"
 import { Download } from "lucide-react"
+import { useSession } from "next-auth/react"
 import { useEffect, useRef, useState } from "react"
 import { DrawIoEmbed } from "react-drawio"
 import type { ImperativePanelHandle } from "react-resizable-panels"
@@ -26,6 +27,8 @@ const drawioBaseUrl =
 
 export default function Home() {
     const { t } = useI18n()
+    const { data: authSession } = useSession()
+    const userId = authSession?.user?.id || "anonymous"
     const {
         drawioRef,
         handleDiagramExport,
@@ -82,15 +85,15 @@ export default function Home() {
 
     useEffect(() => {
         if (!showDrawioSaveDialog) return
-        const currentId = readCurrentConversationIdFromStorage()
+        const currentId = readCurrentConversationIdFromStorage(userId)
         if (!currentId) {
             setExportTitle("")
             return
         }
-        const metas = readConversationMetasFromStorage()
+        const metas = readConversationMetasFromStorage(userId)
         const meta = metas.find((m) => m.id === currentId)
         setExportTitle(meta?.title || "")
-    }, [showDrawioSaveDialog])
+    }, [showDrawioSaveDialog, userId])
 
     const toggleDarkMode = () => {
         const newValue = !darkMode
