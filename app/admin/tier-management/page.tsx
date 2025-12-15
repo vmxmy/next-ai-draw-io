@@ -1,7 +1,5 @@
 "use client"
 
-import { redirect } from "next/navigation"
-import { useSession } from "next-auth/react"
 import { useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -17,22 +15,24 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import { api } from "@/lib/trpc/client"
+import { usePermission } from "@/lib/use-permissions"
 
 export default function TierManagementPage() {
-    const { data: session, status } = useSession()
+    const hasReadPermission = usePermission("tiers:read")
+    const hasWritePermission = usePermission("tiers:write")
     const [editingTier, setEditingTier] = useState<string | null>(null)
 
     // 获取所有等级配置
     const { data: tiers, refetch } = api.tierConfig.adminList.useQuery(
         undefined,
         {
-            enabled: status === "authenticated",
+            enabled: hasReadPermission,
         },
     )
 
     // 获取用户等级统计
     const { data: stats } = api.tierConfig.adminGetStats.useQuery(undefined, {
-        enabled: status === "authenticated",
+        enabled: hasReadPermission,
     })
 
     // 更新等级配置 mutation
@@ -47,25 +47,19 @@ export default function TierManagementPage() {
         },
     })
 
-    // 仅允许管理员访问
-    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-        .split(",")
-        .map((e) => e.trim())
-        .filter(Boolean)
-
-    if (status === "loading") {
+    // 权限检查
+    if (!hasReadPermission) {
         return (
             <div className="flex min-h-screen items-center justify-center">
-                <div className="text-lg text-muted-foreground">加载中...</div>
+                <div className="text-center">
+                    <h1 className="text-4xl font-bold text-destructive">403</h1>
+                    <p className="mt-2 text-lg">访问被拒绝</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        您没有权限访问此页面
+                    </p>
+                </div>
             </div>
         )
-    }
-
-    if (
-        status === "unauthenticated" ||
-        !adminEmails.includes(session?.user?.email || "")
-    ) {
-        redirect("/")
     }
 
     const handleSave = (
@@ -299,7 +293,8 @@ export default function TierManagementPage() {
                                                             )
                                                         }}
                                                         disabled={
-                                                            updateMutation.isPending
+                                                            updateMutation.isPending ||
+                                                            !hasWritePermission
                                                         }
                                                     >
                                                         保存
@@ -322,6 +317,9 @@ export default function TierManagementPage() {
                                                         setEditingTier(
                                                             tier.tier,
                                                         )
+                                                    }
+                                                    disabled={
+                                                        !hasWritePermission
                                                     }
                                                 >
                                                     编辑
