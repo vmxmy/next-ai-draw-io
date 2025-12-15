@@ -1,6 +1,6 @@
 "use client"
 
-import { signOut } from "next-auth/react"
+import { signOut, useSession } from "next-auth/react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,18 +33,19 @@ export function UserCenterDialog({
     user,
 }: UserCenterDialogProps) {
     const { t, locale } = useI18n()
+    const { status } = useSession()
     const [isSigningOut, setIsSigningOut] = useState(false)
 
     // 获取用户等级信息
     const { data: tierData } = api.tierConfig.getUserTier.useQuery(undefined, {
-        enabled: !!user,
+        enabled: status === "authenticated",
     })
 
     // 获取配额使用情况
     const { data: usageData } = api.tierConfig.getUserQuotaUsage.useQuery(
         undefined,
         {
-            enabled: !!user,
+            enabled: status === "authenticated",
             refetchInterval: 10_000, // 每 10 秒刷新
         },
     )
