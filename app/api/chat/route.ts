@@ -269,7 +269,11 @@ function sanitizeGoogleToolCallingHistory(messages: any[]): any[] {
 
         if (msg.role === "tool") {
             const prev = stripped[stripped.length - 1]
+            // 孤儿 tool: 前面没有 tool-call，跳过
             if (!hasToolCall(prev)) {
+                console.warn(
+                    "[Google/Gemini] Skipping orphan tool response (no preceding tool-call)",
+                )
                 continue
             }
             stripped.push(msg)
@@ -278,7 +282,11 @@ function sanitizeGoogleToolCallingHistory(messages: any[]): any[] {
 
         if (hasToolCall(msg)) {
             const next = merged[i + 1]
+            // 孤儿 tool-call: 后面没有紧跟 tool 响应
             if (!next || next.role !== "tool") {
+                console.warn(
+                    "[Google/Gemini] Stripping tool-call from assistant message (no following tool response)",
+                )
                 const keptParts = Array.isArray(msg.content)
                     ? msg.content.filter((p: any) => p?.type !== "tool-call")
                     : msg.content
