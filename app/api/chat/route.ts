@@ -934,7 +934,7 @@ Notes:
 Use structured "ops" with mxCell id anchors. This is robust and avoids failures from attribute order / whitespace / self-closing tag differences.
 
 --- ops guidance ---
-- Always target by mxCell id.
+- Always target cells using the "id" field (NOT "cellId"!). Example: {"type": "updateCell", "id": "2", "style": "..."}
 - For simple line moves, change only the coordinates (e.g. setEdgePoints).
 - For text changes, use setCellValue (or updateCell) and ensure special chars are escaped (<, >, &, ").
 - HTML labels are supported by draw.io when the target cell style includes "html=1".
