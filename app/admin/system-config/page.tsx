@@ -1,11 +1,16 @@
 "use client"
 
-import { redirect } from "next/navigation"
-import { useSession } from "next-auth/react"
-import { useState } from "react"
+import { ChevronDown, Cloud, HardDrive, Search } from "lucide-react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -25,6 +30,7 @@ import {
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/trpc/client"
+import { usePermission } from "@/lib/use-permissions"
 
 const AI_PROVIDERS = [
     { value: "openrouter", label: "OpenRouter" },
@@ -32,37 +38,33 @@ const AI_PROVIDERS = [
     { value: "anthropic", label: "Anthropic (Claude)" },
     { value: "google", label: "Google (Gemini)" },
     { value: "deepseek", label: "DeepSeek" },
+    { value: "siliconflow", label: "SiliconFlow" },
     { value: "ollama", label: "Ollama (本地)" },
 ]
 
-const POPULAR_MODELS = {
-    openrouter: [
-        "qwen/qwen-2.5-coder-32b-instruct",
-        "deepseek/deepseek-chat",
-        "anthropic/claude-3.5-sonnet",
-        "openai/gpt-4o",
-        "google/gemini-2.0-flash-exp:free",
-    ],
-    openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"],
-    anthropic: [
-        "claude-3-5-sonnet-20241022",
-        "claude-3-opus-20240229",
-        "claude-3-sonnet-20240229",
-    ],
-    google: ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"],
-    deepseek: ["deepseek-chat", "deepseek-reasoner"],
+interface ModelOption {
+    id: string
+    label?: string
 }
 
 export default function SystemConfigPage() {
-    const { data: session, status } = useSession()
+    const hasReadPermission = usePermission("system:read")
+    const hasWritePermission = usePermission("system:write")
+
     const [editingKey, setEditingKey] = useState<string | null>(null)
     const [editValue, setEditValue] = useState<string>("")
+
+    // 模型选择相关状态
+    const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+    const [isLoadingModels, setIsLoadingModels] = useState(false)
+    const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+    const [modelSearchValue, setModelSearchValue] = useState("")
 
     // 获取 AI 类别的配置
     const { data: configs, refetch } = api.systemConfig.adminList.useQuery(
         { category: "ai" },
         {
-            enabled: status === "authenticated",
+            enabled: hasReadPermission,
         },
     )
 
@@ -79,25 +81,72 @@ export default function SystemConfigPage() {
         },
     })
 
-    // 权限检查
-    const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-        .split(",")
-        .map((e) => e.trim())
-        .filter(Boolean)
+    // 获取当前 provider 和 API key（用于加载模型）
+    const currentProvider =
+        configs?.find((c) => c.key === "ai.default.provider")?.value ||
+        "openrouter"
+    const currentApiKey =
+        configs?.find((c) => c.key === "ai.openrouter.apiKey")?.value || ""
+    const currentModel =
+        configs?.find((c) => c.key === "ai.default.model")?.value || ""
 
-    if (status === "loading") {
+    // 自动加载模型列表（参考 settings-dialog 实现）
+    useEffect(() => {
+        if (!currentProvider) {
+            setModelOptions([])
+            return
+        }
+
+        const controller = new AbortController()
+        const timeout = setTimeout(() => {
+            setIsLoadingModels(true)
+            fetch("/api/models", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    provider: currentProvider,
+                    apiKey: currentApiKey,
+                    baseUrl: "", // 可以从配置中获取
+                }),
+                signal: controller.signal,
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                    return res.json()
+                })
+                .then((data) => {
+                    const models = Array.isArray(data?.models)
+                        ? data.models
+                        : []
+                    setModelOptions(models)
+                })
+                .catch(() => {
+                    setModelOptions([])
+                })
+                .finally(() => {
+                    setIsLoadingModels(false)
+                })
+        }, 250)
+
+        return () => {
+            clearTimeout(timeout)
+            controller.abort()
+        }
+    }, [currentProvider, currentApiKey])
+
+    // 权限检查
+    if (!hasReadPermission) {
         return (
             <div className="flex min-h-screen items-center justify-center">
-                <div className="text-lg text-muted-foreground">加载中...</div>
+                <div className="text-center">
+                    <h1 className="text-4xl font-bold text-destructive">403</h1>
+                    <p className="mt-2 text-lg">访问被拒绝</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                        您没有权限访问此页面
+                    </p>
+                </div>
             </div>
         )
-    }
-
-    if (
-        status === "unauthenticated" ||
-        !adminEmails.includes(session?.user?.email || "")
-    ) {
-        redirect("/")
     }
 
     const handleEdit = (key: string, currentValue: any) => {
@@ -130,6 +179,10 @@ export default function SystemConfigPage() {
         setEditValue("")
     }
 
+    const handleQuickUpdate = (key: string, value: any) => {
+        updateMutation.mutate({ key, value })
+    }
+
     const getDisplayValue = (value: any) => {
         if (typeof value === "string") return value
         return JSON.stringify(value, null, 2)
@@ -145,38 +198,51 @@ export default function SystemConfigPage() {
         return labels[key] || key
     }
 
+    // 过滤模型选项
+    const filteredModelOptions = modelOptions.filter((m) => {
+        const query = modelSearchValue.trim().toLowerCase()
+        if (!query) return true
+        return (
+            String(m.id).toLowerCase().includes(query) ||
+            String(m.label || "")
+                .toLowerCase()
+                .includes(query)
+        )
+    })
+
     return (
-        <div className="container mx-auto p-8 max-w-7xl">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2">系统配置管理</h1>
-                <p className="text-muted-foreground">
+        <div className="space-y-6">
+            {/* Header */}
+            <div>
+                <h1 className="text-3xl font-bold">系统配置管理</h1>
+                <p className="text-muted-foreground mt-2">
                     管理 AI 模型、API 密钥等系统级配置，更改将立即生效（带 1
                     分钟缓存）
                 </p>
             </div>
 
             {/* AI 配置快捷面板 */}
-            <Card className="mb-6">
+            <Card>
                 <CardHeader>
                     <CardTitle>AI 模型快捷配置</CardTitle>
+                    <CardDescription>
+                        快速配置默认 AI 提供商和模型
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Provider 选择 */}
                         <div className="space-y-2">
                             <Label>AI Provider</Label>
                             <Select
-                                value={
-                                    configs?.find(
-                                        (c) => c.key === "ai.default.provider",
-                                    )?.value as string
-                                }
+                                value={String(currentProvider)}
                                 onValueChange={(value) => {
-                                    updateMutation.mutate({
-                                        key: "ai.default.provider",
+                                    handleQuickUpdate(
+                                        "ai.default.provider",
                                         value,
-                                    })
+                                    )
                                 }}
+                                disabled={!hasWritePermission}
                             >
                                 <SelectTrigger>
                                     <SelectValue placeholder="选择 Provider" />
@@ -194,47 +260,126 @@ export default function SystemConfigPage() {
                             </Select>
                         </div>
 
-                        {/* 模型选择 */}
+                        {/* 模型选择 - 参考 settings-dialog 实现 */}
                         <div className="space-y-2">
-                            <Label>默认模型</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    value={
-                                        configs?.find(
-                                            (c) => c.key === "ai.default.model",
-                                        )?.value as string
-                                    }
-                                    onChange={(_e) => {
-                                        // 实时更新输入框，但不保存
-                                    }}
-                                    placeholder="输入模型 ID"
-                                />
-                                <Select
-                                    onValueChange={(value) => {
-                                        updateMutation.mutate({
-                                            key: "ai.default.model",
-                                            value,
-                                        })
-                                    }}
-                                >
-                                    <SelectTrigger className="w-[200px]">
-                                        <SelectValue placeholder="常用模型" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {POPULAR_MODELS.openrouter.map(
-                                            (model) => (
-                                                <SelectItem
-                                                    key={model}
-                                                    value={model}
-                                                >
-                                                    {model.split("/")[1] ||
-                                                        model}
-                                                </SelectItem>
-                                            ),
-                                        )}
-                                    </SelectContent>
-                                </Select>
+                            <Label
+                                htmlFor="ai-model"
+                                className="flex items-center gap-1.5"
+                            >
+                                默认模型
+                                {currentModel && (
+                                    <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                )}
+                            </Label>
+                            <div className="relative">
+                                <div className="relative">
+                                    <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        id="ai-model"
+                                        value={
+                                            modelSearchValue ||
+                                            String(currentModel)
+                                        }
+                                        onChange={(e) => {
+                                            setModelSearchValue(e.target.value)
+                                            setIsModelMenuOpen(true)
+                                        }}
+                                        onFocus={() => {
+                                            setModelSearchValue(
+                                                String(currentModel),
+                                            )
+                                            setIsModelMenuOpen(true)
+                                        }}
+                                        onBlur={() => {
+                                            setTimeout(() => {
+                                                setIsModelMenuOpen(false)
+                                                setModelSearchValue("")
+                                            }, 150)
+                                        }}
+                                        placeholder={
+                                            currentProvider === "openai"
+                                                ? "e.g., gpt-4o"
+                                                : currentProvider ===
+                                                    "anthropic"
+                                                  ? "e.g., claude-3-5-sonnet-latest"
+                                                  : currentProvider === "google"
+                                                    ? "e.g., gemini-2.0-flash-exp"
+                                                    : currentProvider ===
+                                                        "deepseek"
+                                                      ? "e.g., deepseek-chat"
+                                                      : "输入或选择模型 ID"
+                                        }
+                                        className="pl-8 pr-9"
+                                        disabled={!hasWritePermission}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault()
+                                        }}
+                                        onClick={() =>
+                                            setIsModelMenuOpen((v) => !v)
+                                        }
+                                        disabled={!hasWritePermission}
+                                    >
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                </div>
+                                {isModelMenuOpen &&
+                                    filteredModelOptions.length > 0 && (
+                                        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
+                                            <div className="max-h-56 overflow-auto">
+                                                {filteredModelOptions
+                                                    .slice(0, 100)
+                                                    .map((m) => (
+                                                        <button
+                                                            key={m.id}
+                                                            type="button"
+                                                            className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                                                            onMouseDown={(
+                                                                e,
+                                                            ) => {
+                                                                e.preventDefault()
+                                                            }}
+                                                            onClick={() => {
+                                                                handleQuickUpdate(
+                                                                    "ai.default.model",
+                                                                    m.id,
+                                                                )
+                                                                setIsModelMenuOpen(
+                                                                    false,
+                                                                )
+                                                                setModelSearchValue(
+                                                                    "",
+                                                                )
+                                                            }}
+                                                        >
+                                                            <span className="truncate">
+                                                                {m.id}
+                                                            </span>
+                                                            {m.label ? (
+                                                                <span className="ml-2 max-w-[45%] truncate text-xs text-muted-foreground">
+                                                                    {m.label}
+                                                                </span>
+                                                            ) : null}
+                                                        </button>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    )}
                             </div>
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                {isLoadingModels
+                                    ? "加载模型列表中..."
+                                    : modelOptions.length > 0
+                                      ? `已加载 ${modelOptions.length} 个模型`
+                                      : currentApiKey
+                                        ? "无法加载模型列表"
+                                        : "配置 API Key 后可自动加载模型"}
+                            </p>
                         </div>
                     </div>
 
@@ -251,6 +396,7 @@ export default function SystemConfigPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>完整配置列表</CardTitle>
+                    <CardDescription>所有系统配置项的详细视图</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -355,6 +501,7 @@ export default function SystemConfigPage() {
                                                         config.value,
                                                     )
                                                 }
+                                                disabled={!hasWritePermission}
                                             >
                                                 编辑
                                             </Button>
@@ -374,7 +521,7 @@ export default function SystemConfigPage() {
             </Card>
 
             {/* 使用说明 */}
-            <Card className="mt-6">
+            <Card>
                 <CardHeader>
                     <CardTitle>使用说明</CardTitle>
                 </CardHeader>
@@ -405,10 +552,10 @@ export default function SystemConfigPage() {
                     </div>
                     <div>
                         <strong className="text-foreground">
-                            4. 备用模型列表：
+                            4. 自动加载模型：
                         </strong>
                         <p className="text-muted-foreground ml-4">
-                            格式为 JSON 数组，当主模型失败时自动切换
+                            配置 API Key 后，系统会自动从提供商加载可用模型列表
                         </p>
                     </div>
                 </CardContent>
