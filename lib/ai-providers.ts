@@ -1,12 +1,12 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock"
 import { createAnthropic } from "@ai-sdk/anthropic"
-import { azure, createAzure } from "@ai-sdk/azure"
-import { createDeepSeek, deepseek } from "@ai-sdk/deepseek"
-import { createGoogleGenerativeAI, google } from "@ai-sdk/google"
-import { createOpenAI, openai } from "@ai-sdk/openai"
+import { createAzure } from "@ai-sdk/azure"
+import { createDeepSeek } from "@ai-sdk/deepseek"
+import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createOpenAI } from "@ai-sdk/openai"
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
-import { createOllama, ollama } from "ollama-ai-provider-v2"
+import { createOllama } from "ollama-ai-provider-v2"
 
 export type ProviderName =
     | "bedrock"
@@ -509,8 +509,14 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
         }
     }
 
-    // Only validate server credentials if client isn't providing their own API key
-    if (!isClientOverride) {
+    // Skip credential validation if:
+    // 1. Client provides their own API key
+    // 2. Using custom baseURL (OpenAI-compatible endpoints can serve any model)
+    const hasApiKey = !!overrides?.apiKey
+    const hasCustomBaseUrl = !!overrides?.baseUrl
+    const skipValidation = hasApiKey || hasCustomBaseUrl
+
+    if (!skipValidation) {
         validateProviderCredentials(provider)
     }
 
@@ -550,27 +556,22 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
         case "openai": {
             const apiKey = overrides?.apiKey || process.env.OPENAI_API_KEY
             const baseURL = overrides?.baseUrl || process.env.OPENAI_BASE_URL
-            if (baseURL || overrides?.apiKey) {
-                const customOpenAI = createOpenAI({
-                    apiKey,
-                    ...(baseURL && { baseURL }),
-                })
-                model = customOpenAI.chat(modelId)
-            } else {
-                model = openai(modelId)
-            }
+            // Always use custom instance to support baseURL configuration
+            const customOpenAI = createOpenAI({
+                apiKey,
+                ...(baseURL && { baseURL }),
+            })
+            model = customOpenAI.chat(modelId)
             break
         }
 
         case "anthropic": {
             const apiKey = overrides?.apiKey || process.env.ANTHROPIC_API_KEY
-            const baseURL =
-                overrides?.baseUrl ||
-                process.env.ANTHROPIC_BASE_URL ||
-                "https://api.anthropic.com/v1"
+            const baseURL = overrides?.baseUrl || process.env.ANTHROPIC_BASE_URL
+            // Always use custom instance to support baseURL configuration
             const customProvider = createAnthropic({
                 apiKey,
-                baseURL,
+                ...(baseURL && { baseURL }),
                 headers: ANTHROPIC_BETA_HEADERS,
             })
             model = customProvider(modelId)
@@ -583,15 +584,12 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
             const apiKey =
                 overrides?.apiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY
             const baseURL = overrides?.baseUrl || process.env.GOOGLE_BASE_URL
-            if (baseURL || overrides?.apiKey) {
-                const customGoogle = createGoogleGenerativeAI({
-                    apiKey,
-                    ...(baseURL && { baseURL }),
-                })
-                model = customGoogle(modelId)
-            } else {
-                model = google(modelId)
-            }
+            // Always use custom instance to support baseURL configuration
+            const customGoogle = createGoogleGenerativeAI({
+                apiKey,
+                ...(baseURL && { baseURL }),
+            })
+            model = customGoogle(modelId)
             break
         }
 
@@ -601,30 +599,26 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
             const resourceName = process.env.AZURE_RESOURCE_NAME
             // Azure requires either baseURL or resourceName to construct the endpoint
             // resourceName constructs: https://{resourceName}.openai.azure.com/openai/v1{path}
-            if (baseURL || resourceName || overrides?.apiKey) {
-                const customAzure = createAzure({
-                    apiKey,
-                    // baseURL takes precedence over resourceName per SDK behavior
-                    ...(baseURL && { baseURL }),
-                    ...(!baseURL && resourceName && { resourceName }),
-                })
-                model = customAzure(modelId)
-            } else {
-                model = azure(modelId)
-            }
+            // Always use custom instance to support baseURL configuration
+            const customAzure = createAzure({
+                apiKey,
+                // baseURL takes precedence over resourceName per SDK behavior
+                ...(baseURL && { baseURL }),
+                ...(!baseURL && resourceName && { resourceName }),
+            })
+            model = customAzure(modelId)
             break
         }
 
-        case "ollama":
-            if (process.env.OLLAMA_BASE_URL) {
-                const customOllama = createOllama({
-                    baseURL: process.env.OLLAMA_BASE_URL,
-                })
-                model = customOllama(modelId)
-            } else {
-                model = ollama(modelId)
-            }
+        case "ollama": {
+            const baseURL = overrides?.baseUrl || process.env.OLLAMA_BASE_URL
+            // Always use custom instance to support baseURL configuration
+            const customOllama = createOllama({
+                ...(baseURL && { baseURL }),
+            })
+            model = customOllama(modelId)
             break
+        }
 
         case "openrouter": {
             const apiKey = overrides?.apiKey || process.env.OPENROUTER_API_KEY
@@ -651,15 +645,12 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
         case "deepseek": {
             const apiKey = overrides?.apiKey || process.env.DEEPSEEK_API_KEY
             const baseURL = overrides?.baseUrl || process.env.DEEPSEEK_BASE_URL
-            if (baseURL || overrides?.apiKey) {
-                const customDeepSeek = createDeepSeek({
-                    apiKey,
-                    ...(baseURL && { baseURL }),
-                })
-                model = customDeepSeek(modelId)
-            } else {
-                model = deepseek(modelId)
-            }
+            // Always use custom instance to support baseURL configuration
+            const customDeepSeek = createDeepSeek({
+                apiKey,
+                ...(baseURL && { baseURL }),
+            })
+            model = customDeepSeek(modelId)
             break
         }
 

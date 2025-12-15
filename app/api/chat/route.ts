@@ -597,7 +597,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
         provider: clientOverrides.provider || defaultConfig.provider,
         modelId: clientOverrides.modelId || defaultConfig.model,
         apiKey: clientOverrides.apiKey || defaultConfig.apiKey,
-        baseUrl: clientOverrides.baseUrl,
+        baseUrl: clientOverrides.baseUrl || defaultConfig.baseUrl,
     }
 
     // Get AI model with merged configuration

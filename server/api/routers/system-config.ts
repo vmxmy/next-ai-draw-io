@@ -64,16 +64,24 @@ export const systemConfigRouter = createTRPCRouter({
             z.object({
                 key: z.string(),
                 value: z.any(),
+                category: z.string().optional(),
                 description: z.string().optional(),
             }),
         )
         .mutation(async ({ ctx, input }) => {
             // TODO: 添加管理员权限检查
 
-            const result = await ctx.db.systemConfig.update({
+            // 使用 upsert 来支持创建或更新
+            const result = await ctx.db.systemConfig.upsert({
                 where: { key: input.key },
-                data: {
+                update: {
                     value: input.value,
+                    description: input.description,
+                },
+                create: {
+                    key: input.key,
+                    value: input.value,
+                    category: input.category || "ai", // 默认分类
                     description: input.description,
                 },
             })

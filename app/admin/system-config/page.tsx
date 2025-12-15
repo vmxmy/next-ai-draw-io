@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronDown, Cloud, HardDrive, Search } from "lucide-react"
+import { ChevronDown, HardDrive, Search } from "lucide-react"
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -60,6 +60,9 @@ export default function SystemConfigPage() {
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
     const [modelSearchValue, setModelSearchValue] = useState("")
 
+    // Base URL 本地编辑状态
+    const [baseUrlInput, setBaseUrlInput] = useState<string>("")
+
     // 获取 AI 类别的配置
     const { data: configs, refetch } = api.systemConfig.adminList.useQuery(
         { category: "ai" },
@@ -86,9 +89,18 @@ export default function SystemConfigPage() {
         configs?.find((c) => c.key === "ai.default.provider")?.value ||
         "openrouter"
     const currentApiKey =
-        configs?.find((c) => c.key === "ai.openrouter.apiKey")?.value || ""
+        configs?.find((c) => c.key === `ai.${currentProvider}.apiKey`)?.value ||
+        ""
+    const currentBaseUrl =
+        configs?.find((c) => c.key === `ai.${currentProvider}.baseUrl`)
+            ?.value || ""
     const currentModel =
         configs?.find((c) => c.key === "ai.default.model")?.value || ""
+
+    // 同步 base URL 到本地状态
+    useEffect(() => {
+        setBaseUrlInput(String(currentBaseUrl))
+    }, [currentBaseUrl])
 
     // 自动加载模型列表（参考 settings-dialog 实现）
     useEffect(() => {
@@ -106,7 +118,7 @@ export default function SystemConfigPage() {
                 body: JSON.stringify({
                     provider: currentProvider,
                     apiKey: currentApiKey,
-                    baseUrl: "", // 可以从配置中获取
+                    baseUrl: currentBaseUrl,
                 }),
                 signal: controller.signal,
             })
@@ -132,7 +144,7 @@ export default function SystemConfigPage() {
             clearTimeout(timeout)
             controller.abort()
         }
-    }, [currentProvider, currentApiKey])
+    }, [currentProvider, currentApiKey, currentBaseUrl])
 
     // 权限检查
     if (!hasReadPermission) {
@@ -171,6 +183,7 @@ export default function SystemConfigPage() {
         updateMutation.mutate({
             key,
             value: parsedValue,
+            category: "ai",
         })
     }
 
@@ -180,7 +193,7 @@ export default function SystemConfigPage() {
     }
 
     const handleQuickUpdate = (key: string, value: any) => {
-        updateMutation.mutate({ key, value })
+        updateMutation.mutate({ key, value, category: "ai" })
     }
 
     const getDisplayValue = (value: any) => {
@@ -193,6 +206,18 @@ export default function SystemConfigPage() {
             "ai.default.provider": "默认 AI Provider",
             "ai.default.model": "默认 AI 模型",
             "ai.openrouter.apiKey": "OpenRouter API Key",
+            "ai.openrouter.baseUrl": "OpenRouter Base URL",
+            "ai.openai.apiKey": "OpenAI API Key",
+            "ai.openai.baseUrl": "OpenAI Base URL",
+            "ai.anthropic.apiKey": "Anthropic API Key",
+            "ai.anthropic.baseUrl": "Anthropic Base URL",
+            "ai.google.apiKey": "Google API Key",
+            "ai.google.baseUrl": "Google Base URL",
+            "ai.deepseek.apiKey": "DeepSeek API Key",
+            "ai.deepseek.baseUrl": "DeepSeek Base URL",
+            "ai.siliconflow.apiKey": "SiliconFlow API Key",
+            "ai.siliconflow.baseUrl": "SiliconFlow Base URL",
+            "ai.ollama.baseUrl": "Ollama Base URL",
             "ai.fallback.models": "备用模型列表",
         }
         return labels[key] || key
@@ -260,6 +285,52 @@ export default function SystemConfigPage() {
                             </Select>
                         </div>
 
+                        {/* Base URL 配置 */}
+                        <div className="space-y-2">
+                            <Label htmlFor="base-url">Base URL（可选）</Label>
+                            <Input
+                                id="base-url"
+                                value={baseUrlInput}
+                                onChange={(e) => {
+                                    setBaseUrlInput(e.target.value)
+                                }}
+                                onBlur={(e) => {
+                                    const value = e.target.value.trim()
+                                    // 只有当值改变时才更新
+                                    if (value !== currentBaseUrl) {
+                                        handleQuickUpdate(
+                                            `ai.${currentProvider}.baseUrl`,
+                                            value,
+                                        )
+                                    }
+                                }}
+                                placeholder={
+                                    currentProvider === "openrouter"
+                                        ? "https://openrouter.ai/api/v1"
+                                        : currentProvider === "openai"
+                                          ? "https://api.openai.com/v1"
+                                          : currentProvider === "anthropic"
+                                            ? "https://api.anthropic.com"
+                                            : currentProvider === "google"
+                                              ? "https://generativelanguage.googleapis.com"
+                                              : currentProvider === "deepseek"
+                                                ? "https://api.deepseek.com"
+                                                : currentProvider ===
+                                                    "siliconflow"
+                                                  ? "https://api.siliconflow.cn/v1"
+                                                  : currentProvider === "ollama"
+                                                    ? "http://localhost:11434"
+                                                    : "留空使用默认地址"
+                                }
+                                disabled={!hasWritePermission}
+                            />
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                自定义 API 端点地址，留空则使用提供商默认地址
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
                         {/* 模型选择 - 参考 settings-dialog 实现 */}
                         <div className="space-y-2">
                             <Label

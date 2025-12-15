@@ -115,26 +115,40 @@ export async function POST(req: Request) {
     }
 
     try {
+        // Determine which baseURL to use (custom or default)
+        const effectiveBaseUrl = baseUrl
+
         switch (provider) {
             case "openai":
                 return Response.json({
                     models: await listModelsFromOpenAICompatible({
-                        baseUrl: baseUrl || "https://api.openai.com/v1",
+                        baseUrl:
+                            effectiveBaseUrl || "https://api.openai.com/v1",
                         apiKey,
                     }),
                 })
             case "deepseek":
+                return Response.json({
+                    models: await listModelsFromOpenAICompatible({
+                        baseUrl:
+                            effectiveBaseUrl || "https://api.deepseek.com/v1",
+                        apiKey,
+                    }),
+                })
             case "siliconflow":
                 return Response.json({
                     models: await listModelsFromOpenAICompatible({
-                        baseUrl: baseUrl || "https://api.siliconflow.com/v1",
+                        baseUrl:
+                            effectiveBaseUrl ||
+                            "https://api.siliconflow.com/v1",
                         apiKey,
                     }),
                 })
             case "openrouter":
                 return Response.json({
                     models: await listModelsFromOpenRouter({
-                        baseUrl: baseUrl || "https://openrouter.ai/api/v1",
+                        baseUrl:
+                            effectiveBaseUrl || "https://openrouter.ai/api/v1",
                         apiKey,
                     }),
                 })
@@ -142,8 +156,17 @@ export async function POST(req: Request) {
                 return Response.json({
                     models: await listModelsFromGoogle({
                         baseUrl:
-                            baseUrl ||
+                            effectiveBaseUrl ||
                             "https://generativelanguage.googleapis.com/v1beta",
+                        apiKey,
+                    }),
+                })
+            case "anthropic":
+                // Anthropic uses OpenAI-compatible /v1/models endpoint
+                return Response.json({
+                    models: await listModelsFromOpenAICompatible({
+                        baseUrl:
+                            effectiveBaseUrl || "https://api.anthropic.com/v1",
                         apiKey,
                     }),
                 })

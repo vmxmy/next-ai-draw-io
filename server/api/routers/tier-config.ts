@@ -1,40 +1,10 @@
-import { initTRPC, TRPCError } from "@trpc/server"
+import { TRPCError } from "@trpc/server"
 import { z } from "zod"
-import type { createTRPCContext } from "@/server/api/trpc"
+import { createPermissionProcedure } from "@/server/api/middleware/rbac"
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc"
 
 // 定义 Tier 枚举
 const tierEnum = z.enum(["anonymous", "free", "pro", "enterprise"])
-
-// 创建 tRPC 实例（用于自定义中间件）
-const t = initTRPC
-    .context<Awaited<ReturnType<typeof createTRPCContext>>>()
-    .create()
-
-// 管理员中间件（基于邮箱白名单）
-const requireAdmin = t.middleware(({ ctx, next }) => {
-    if (!ctx.session?.user?.id) {
-        throw new TRPCError({ code: "UNAUTHORIZED" })
-    }
-
-    const adminEmails = (process.env.ADMIN_EMAILS || "")
-        .split(",")
-        .map((e) => e.trim())
-        .filter(Boolean)
-
-    const userEmail = ctx.session.user.email || ""
-
-    if (!adminEmails.includes(userEmail)) {
-        throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Admin access required",
-        })
-    }
-
-    return next({ ctx: { session: ctx.session } })
-})
-
-const adminProcedure = protectedProcedure.use(requireAdmin)
 
 export const tierConfigRouter = createTRPCRouter({
     // 获取所有启用的等级配置（普通用户可见）
@@ -116,14 +86,16 @@ export const tierConfigRouter = createTRPCRouter({
     // === 管理员 API ===
 
     // 获取所有等级配置（包括已禁用）
-    adminList: adminProcedure.query(async ({ ctx }) => {
-        return ctx.db.tierConfig.findMany({
-            orderBy: { sortOrder: "asc" },
-        })
-    }),
+    adminList: createPermissionProcedure("tiers:read").query(
+        async ({ ctx }) => {
+            return ctx.db.tierConfig.findMany({
+                orderBy: { sortOrder: "asc" },
+            })
+        },
+    ),
 
     // 更新等级配置
-    adminUpdate: adminProcedure
+    adminUpdate: createPermissionProcedure("tiers:write")
         .input(
             z.object({
                 tier: tierEnum,
@@ -151,7 +123,7 @@ export const tierConfigRouter = createTRPCRouter({
         }),
 
     // 更新用户等级（用于后台手动调整用户等级）
-    adminSetUserTier: adminProcedure
+    adminSetUserTier: createPermissionProcedure("users:write")
         .input(
             z.object({
                 userId: z.string(),
@@ -170,11 +142,13 @@ export const tierConfigRouter = createTRPCRouter({
         }),
 
     // 获取所有用户的等级统计
-    adminGetStats: adminProcedure.query(async ({ ctx }) => {
-        const stats = await ctx.db.user.groupBy({
-            by: ["tier"],
-            _count: { tier: true },
-        })
-        return stats.map((s) => ({ tier: s.tier, count: s._count.tier }))
-    }),
+    adminGetStats: createPermissionProcedure("tiers:read").query(
+        async ({ ctx }) => {
+            const stats = await ctx.db.user.groupBy({
+                by: ["tier"],
+                _count: { tier: true },
+            })
+            return stats.map((s) => ({ tier: s.tier, count: s._count.tier }))
+        },
+    ),
 })
