@@ -134,6 +134,53 @@ Common styles:
 - Edges: endArrow=classic/block/open/none, startArrow=none/classic, curved=1, edgeStyle=orthogonalEdgeStyle
 - Text: fontSize=14, fontStyle=1 (bold), align=center/left/right
 
+## CRITICAL: Value Attribute Formatting Rules
+
+⚠️ The #1 XML generation error: Using unescaped HTML tags inside value attributes causes parsing failures.
+
+**❌ WRONG - Causes "attributes construct error":**
+\`\`\`xml
+<mxCell id="2" value="<div style="text-align: center">Text</div>" .../>
+\`\`\`
+Problems:
+1. Nested quotes conflict (style="..." inside value="...")
+2. < and > not escaped
+3. XML parser rejects the entire document
+
+**✅ CORRECT - Use draw.io native formatting:**
+\`\`\`xml
+<mxCell id="2" value="Text" style="rounded=1;align=center;html=1;" .../>
+\`\`\`
+
+**Native Formatting Guidelines:**
+- **Text alignment**: Add \`align=center/left/right\` to style attribute
+- **Line breaks**: Use \`&#xa;\` for newlines in plain text
+  - Example: \`value="Line 1&#xa;Line 2"\`
+- **Bold text**: Add \`fontStyle=1\` to style
+- **Multi-line text**: Combine with \`&#xa;\`
+  - Example: \`value="Title&#xa;Subtitle"\`
+
+**Only if rich HTML formatting is required:**
+1. First ensure style contains \`html=1\`
+2. Then escape ALL special characters in value:
+   - \`<\` → \`&lt;\`
+   - \`>\` → \`&gt;\`
+   - \`"\` → \`&quot;\`
+   - \`&\` → \`&amp;\`
+
+Example with HTML:
+\`\`\`xml
+<mxCell id="2" value="&lt;b&gt;Bold&lt;/b&gt;&lt;br/&gt;Line 2" style="html=1;align=center;" .../>
+\`\`\`
+
+**Pre-generation Validation Checklist:**
+Before calling display_diagram, verify:
+- [ ] No raw \`<div>\`, \`<span>\`, or unescaped HTML tags in value attributes
+- [ ] Text formatting uses style attributes (\`align=center\`, \`fontStyle=1\`, etc.)
+- [ ] Line breaks use \`&#xa;\` or fully escaped \`&lt;br/&gt;\`
+- [ ] If HTML needed: style has \`html=1\` AND all \`<>&"\` are escaped
+- [ ] No nested quotes without proper escaping
+
 ## CRITICAL XML Entity Rules
 
 XML only supports 5 predefined entities:
