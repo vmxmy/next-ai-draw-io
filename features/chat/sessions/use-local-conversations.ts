@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { ChatMessage } from "@/features/chat/ai/types"
+import { getCacheQuota } from "@/features/chat/sessions/cache-manager"
 import {
     readConversationMetasFromStorage,
     readConversationPayloadFromStorage,
@@ -105,6 +106,7 @@ export function useLocalConversations({
     const persistDebounceTimerRef = useRef<ReturnType<
         typeof setTimeout
     > | null>(null)
+    const loadingConversationRef = useRef<string | null>(null) // 正在加载的会话 ID
 
     // 统一的“对话驱动”图表线性历史：entries + cursor + messageIndex 书签
     const diagramVersionsRef = useRef<DiagramVersion[]>([])
@@ -258,6 +260,77 @@ export function useLocalConversations({
             setMessages,
             userId,
         ],
+    )
+
+    // 从云端按需加载会话（仅登录用户）
+    const loadConversationFromCloudIfNeeded = useCallback(
+        async (id: string) => {
+            // 匿名用户不支持云端加载
+            if (userId === "anonymous") return false
+
+            // 检查 localStorage 是否已有数据
+            try {
+                const raw = localStorage.getItem(
+                    conversationStorageKey(userId, id),
+                )
+                if (raw) {
+                    // 已有缓存，无需从云端加载
+                    return false
+                }
+            } catch {
+                // ignore
+            }
+
+            // 防止重复加载
+            if (loadingConversationRef.current === id) return false
+            loadingConversationRef.current = id
+
+            try {
+                // 从云端加载（使用 fetch 直接调用 tRPC）
+                const response = await fetch(
+                    `/api/trpc/conversation.getById?input=${encodeURIComponent(JSON.stringify({ id }))}`,
+                    {
+                        method: "GET",
+                        headers: { "Content-Type": "application/json" },
+                    },
+                )
+
+                if (!response.ok) {
+                    toast.error("会话加载失败")
+                    return false
+                }
+
+                const data = await response.json()
+                const result = data.result?.data
+
+                if (!result || !result.payload) {
+                    toast.error("会话数据不完整")
+                    return false
+                }
+
+                const payload = result.payload as any
+
+                // 缓存到 localStorage
+                try {
+                    writeConversationPayloadToStorage(userId, id, payload)
+                } catch (error) {
+                    // 缓存失败不影响使用
+                    console.warn("缓存会话失败:", error)
+                }
+
+                // 加载会话内容
+                loadConversation(id)
+
+                return true
+            } catch (error) {
+                console.error("从云端加载会话失败:", error)
+                toast.error("加载会话失败，请重试")
+                return false
+            } finally {
+                loadingConversationRef.current = null
+            }
+        },
+        [userId, loadConversation],
     )
 
     const persistCurrentConversation = useCallback(
@@ -614,7 +687,17 @@ export function useLocalConversations({
     }, [canRedo, diagramVersionCursor, restoreDiagramVersionIndex])
 
     const handleNewChat = useCallback(
-        (options?: { keepDiagram?: boolean }) => {
+        (options?: { keepDiagram?: boolean }): boolean => {
+            // 检查匿名用户配额限制
+            const isAnonymous = userId === "anonymous"
+            if (isAnonymous) {
+                const quota = getCacheQuota(false)
+                if (conversations.length >= quota) {
+                    // 超过限制，返回 false
+                    return false
+                }
+            }
+
             const keepDiagram = options?.keepDiagram === true
             const id = createConversationId()
             const now = Date.now()
@@ -664,9 +747,11 @@ export function useLocalConversations({
                     id: "startedFreshChat",
                     duration: 2000,
                 })
+                return true
             } catch (error) {
                 console.error("Failed to create new conversation:", error)
                 toast.warning(t("toast.storageUpdateFailed"))
+                return false
             }
         },
         [
@@ -968,6 +1053,20 @@ export function useLocalConversations({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userId])
+
+    // 监听会话切换，按需从云端加载
+    useEffect(() => {
+        if (!currentConversationId || !hasRestored) return
+        if (userId === "anonymous") return
+
+        // 异步检查并加载
+        void loadConversationFromCloudIfNeeded(currentConversationId)
+    }, [
+        currentConversationId,
+        hasRestored,
+        userId,
+        loadConversationFromCloudIfNeeded,
+    ])
 
     return {
         conversations,

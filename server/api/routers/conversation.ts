@@ -35,6 +35,88 @@ export const conversationMetaSchema = z.object({
 })
 
 export const conversationRouter = createTRPCRouter({
+    // 获取会话列表（只返回 meta，不含 payload）
+    listMetas: protectedProcedure
+        .input(
+            z.object({
+                limit: z.number().int().min(1).max(100).default(50),
+                offset: z.number().int().min(0).default(0),
+            }),
+        )
+        .query(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id
+
+            return withDbRetry(async () => {
+                const conversations = await ctx.db.conversation.findMany({
+                    where: {
+                        userId,
+                        deletedAt: null, // 只返回未删除的
+                    },
+                    select: {
+                        id: true,
+                        title: true,
+                        clientCreatedAt: true,
+                        clientUpdatedAt: true,
+                    },
+                    orderBy: {
+                        clientUpdatedAt: "desc",
+                    },
+                    take: input.limit,
+                    skip: input.offset,
+                })
+
+                return {
+                    conversations: conversations.map((c) => ({
+                        id: c.id,
+                        title: c.title ?? undefined,
+                        createdAt: c.clientCreatedAt.getTime(),
+                        updatedAt: c.clientUpdatedAt.getTime(),
+                    })),
+                }
+            })
+        }),
+
+    // 获取单个会话的完整数据
+    getById: protectedProcedure
+        .input(
+            z.object({
+                id: z.string().min(1),
+            }),
+        )
+        .query(async ({ ctx, input }) => {
+            const userId = ctx.session.user.id
+
+            return withDbRetry(async () => {
+                const conversation = await ctx.db.conversation.findUnique({
+                    where: {
+                        userId_id: {
+                            userId,
+                            id: input.id,
+                        },
+                    },
+                    select: {
+                        id: true,
+                        title: true,
+                        clientCreatedAt: true,
+                        clientUpdatedAt: true,
+                        data: true,
+                    },
+                })
+
+                if (!conversation) {
+                    throw new Error("Conversation not found")
+                }
+
+                return {
+                    id: conversation.id,
+                    title: conversation.title ?? undefined,
+                    createdAt: conversation.clientCreatedAt.getTime(),
+                    updatedAt: conversation.clientUpdatedAt.getTime(),
+                    payload: conversation.data,
+                }
+            })
+        }),
+
     push: protectedProcedure
         .input(
             z
@@ -150,6 +232,7 @@ export const conversationRouter = createTRPCRouter({
                         { message: "无效的游标值" },
                     ),
                 limit: z.number().int().min(1).max(100).optional(), // 降低到 100
+                includePayload: z.boolean().default(false), // 默认不包含 payload
             }),
         )
         .mutation(async ({ ctx, input }) => {
@@ -191,7 +274,7 @@ export const conversationRouter = createTRPCRouter({
                         clientCreatedAt: true,
                         clientUpdatedAt: true,
                         deletedAt: true,
-                        data: true,
+                        data: input.includePayload, // 仅在需要时包含 payload
                     },
                 })
 

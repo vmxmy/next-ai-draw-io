@@ -8,7 +8,7 @@ import {
 
 // 缓存配额限制
 const MAX_CACHED_CONVERSATIONS_LOGGED_IN = 20 // 登录用户最多缓存 20 个会话
-const MAX_CACHED_CONVERSATIONS_ANONYMOUS = 20 // 匿名用户最多缓存 20 个
+const MAX_CACHED_CONVERSATIONS_ANONYMOUS = 3 // 匿名用户最多 3 个会话
 const STALE_DAYS = 30 // 超过 30 天未更新的会话视为过期
 
 /**

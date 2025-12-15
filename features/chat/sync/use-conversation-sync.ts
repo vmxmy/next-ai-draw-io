@@ -22,7 +22,6 @@ import {
     createSessionId,
     syncCursorStorageKey,
 } from "@/features/chat/sessions/storage"
-import { deoptimizePayload } from "@/features/chat/sessions/storage-optimizer"
 import { api } from "@/lib/trpc/client"
 
 export function useConversationSync({
@@ -231,41 +230,40 @@ export function useConversationSync({
                     continue
                 }
 
-                // 使用 writeConversationPayloadToStorage 以支持压缩和自动清理
-                let payloadWriteSuccess = false
-                try {
-                    const payload = rc?.payload ?? {}
-                    writeConversationPayloadToStorage(
-                        userIdOrAnonymous,
-                        id,
-                        payload as ConversationPayload,
-                    )
-                    payloadWriteSuccess = true
-                } catch (error: any) {
-                    // 如果是 QuotaExceededError，writeConversationPayloadToStorage 已经尝试清理
-                    // 如果清理后还失败，这里跳过该会话
-                    if (error?.name === "QuotaExceededError") {
-                        console.warn(
-                            `无法恢复会话 ${id}：localStorage 空间不足`,
+                // 如果包含 payload，则缓存到 localStorage
+                // 如果不包含 payload（只同步 meta），则只更新列表
+                if (rc?.payload) {
+                    try {
+                        const payload = rc.payload as ConversationPayload
+                        writeConversationPayloadToStorage(
+                            userIdOrAnonymous,
+                            id,
+                            payload,
                         )
-                        // 不添加 meta，避免出现"空会话"
-                        continue
+                    } catch (error: any) {
+                        // payload 写入失败不影响 meta 更新
+                        // 下次用户打开时会从云端加载
+                        if (error?.name === "QuotaExceededError") {
+                            console.warn(
+                                `缓存会话 ${id} 失败：localStorage 空间不足，将从云端按需加载`,
+                            )
+                        } else {
+                            console.error(`缓存会话 ${id} 失败:`, error)
+                        }
                     }
-                    // 其他错误也跳过
-                    console.error(`写入会话 ${id} 失败:`, error)
-                    continue
                 }
 
-                // 只有 payload 成功写入后才添加 meta
-                if (payloadWriteSuccess) {
-                    metaById.set(id, {
-                        id,
-                        createdAt: Number(rc?.createdAt ?? Date.now()),
-                        updatedAt: remoteUpdatedAt || Date.now(),
-                        title: rc?.title,
-                    })
+                // 更新 meta（无论是否有 payload）
+                metaById.set(id, {
+                    id,
+                    createdAt: Number(rc?.createdAt ?? Date.now()),
+                    updatedAt: remoteUpdatedAt || Date.now(),
+                    title: rc?.title,
+                })
 
-                    if (id === currentConversationId) shouldReloadCurrent = true
+                // 如果是当前会话且包含 payload，重新加载
+                if (id === currentConversationId && rc?.payload) {
+                    shouldReloadCurrent = true
                 }
             }
 
@@ -336,6 +334,7 @@ export function useConversationSync({
             const res = await pullConversationsMutateAsyncRef.current({
                 cursor,
                 limit: 100,
+                includePayload: false, // 只同步 meta，不下载 payload
             })
             if (res?.cursor) setSyncCursor(res.cursor)
             if (Array.isArray(res?.conversations) && res.conversations.length) {

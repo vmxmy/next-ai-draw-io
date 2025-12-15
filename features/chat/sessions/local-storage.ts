@@ -10,10 +10,7 @@ import {
     STORAGE_CONVERSATIONS_KEY,
     STORAGE_CURRENT_CONVERSATION_ID_KEY,
 } from "@/features/chat/sessions/storage"
-import {
-    deoptimizePayload,
-    optimizePayload,
-} from "@/features/chat/sessions/storage-optimizer"
+import { optimizePayload } from "@/features/chat/sessions/storage-optimizer"
 
 const STORAGE_WARNING_THRESHOLD = 0.8 // 80%
 
@@ -125,8 +122,46 @@ export function readConversationPayloadFromStorage(
         const raw = localStorage.getItem(conversationStorageKey(userId, id))
         if (!raw) return null
         const payload = JSON.parse(raw) as ConversationPayload
-        // 自动解压数据（向后兼容未压缩的数据）
-        return deoptimizePayload(payload)
+
+        // 检测并清理旧的压缩数据
+        // 如果 XML 字段不是以 '<' 开头，说明可能是压缩数据，删除并返回 null
+        if (payload.xml && !payload.xml.trimStart().startsWith("<")) {
+            console.warn(
+                `检测到旧的压缩数据，正在清理会话 ${id}，将从云端重新加载`,
+            )
+            removeConversationPayloadFromStorage(userId, id)
+            return null
+        }
+
+        // 检查快照中的 XML
+        if (Array.isArray(payload.snapshots)) {
+            const hasCompressedSnapshot = payload.snapshots.some(
+                ([, xml]) => xml && !xml.trimStart().startsWith("<"),
+            )
+            if (hasCompressedSnapshot) {
+                console.warn(
+                    `检测到旧的压缩快照数据，正在清理会话 ${id}，将从云端重新加载`,
+                )
+                removeConversationPayloadFromStorage(userId, id)
+                return null
+            }
+        }
+
+        // 检查图表版本中的 XML
+        if (Array.isArray(payload.diagramVersions)) {
+            const hasCompressedVersion = payload.diagramVersions.some(
+                (ver) => ver.xml && !ver.xml.trimStart().startsWith("<"),
+            )
+            if (hasCompressedVersion) {
+                console.warn(
+                    `检测到旧的压缩版本数据，正在清理会话 ${id}，将从云端重新加载`,
+                )
+                removeConversationPayloadFromStorage(userId, id)
+                return null
+            }
+        }
+
+        return payload
     } catch {
         return null
     }
@@ -138,7 +173,7 @@ export function writeConversationPayloadToStorage(
     payload: ConversationPayload,
 ) {
     try {
-        // 优化和压缩数据
+        // 优化数据（限制大小）
         const optimized = optimizePayload(payload)
         const serialized = JSON.stringify(optimized)
 
