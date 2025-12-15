@@ -1,6 +1,7 @@
 "use client"
 
 import {
+    ChartNoAxesColumn,
     MessageSquarePlus,
     PanelRightClose,
     PanelRightOpen,
@@ -50,6 +51,8 @@ export function ChatHeader({
     deleteLabel,
     onSelectConversation,
     onDeleteConversation,
+    quotaTooltip,
+    onShowQuota,
 }: {
     isMobile: boolean
     isVisible: boolean
@@ -87,6 +90,8 @@ export function ChatHeader({
     deleteLabel: string
     onSelectConversation: (id: string) => void
     onDeleteConversation: (id: string) => void
+    quotaTooltip: string
+    onShowQuota: () => void
 }) {
     return (
         <header
@@ -151,6 +156,18 @@ export function ChatHeader({
                         className="hover:bg-accent"
                     >
                         <MessageSquarePlus
+                            className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
+                        />
+                    </ButtonWithTooltip>
+
+                    <ButtonWithTooltip
+                        tooltipContent={quotaTooltip}
+                        variant="ghost"
+                        size="icon"
+                        onClick={onShowQuota}
+                        className="hover:bg-accent"
+                    >
+                        <ChartNoAxesColumn
                             className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
                         />
                     </ButtonWithTooltip>

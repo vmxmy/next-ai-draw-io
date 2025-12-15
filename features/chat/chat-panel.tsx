@@ -13,6 +13,7 @@ import { AutoRetryLimitToast } from "@/components/auto-retry-limit-toast"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessageDisplay } from "@/components/chat-message-display"
+import { QuotaDialog } from "@/components/quota-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { UserCenterDialog } from "@/components/user-center-dialog"
 import { useDiagram } from "@/contexts/diagram-context"
@@ -173,6 +174,7 @@ export default function ChatPanel({
     const [showSettingsDialog, setShowSettingsDialog] = useState(false)
     const [showAuthDialog, setShowAuthDialog] = useState(false)
     const [showUserCenterDialog, setShowUserCenterDialog] = useState(false)
+    const [showQuotaDialog, setShowQuotaDialog] = useState(false)
     const [, setAccessCodeRequired] = useState(false)
     const [input, setInput] = useState("")
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
@@ -1250,6 +1252,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 deleteLabel={t("settings.sessions.delete")}
                 onSelectConversation={handleSelectConversation}
                 onDeleteConversation={handleDeleteConversation}
+                quotaTooltip={t("chat.header.quotaTooltip")}
+                onShowQuota={() => setShowQuotaDialog(true)}
             />
             {/* Messages */}
             <main className="flex-1 w-full overflow-hidden">
@@ -1323,6 +1327,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 open={showUserCenterDialog}
                 onOpenChange={setShowUserCenterDialog}
                 user={authSession?.user}
+            />
+
+            <QuotaDialog
+                open={showQuotaDialog}
+                onOpenChange={setShowQuotaDialog}
+                tier={quotaManager.tier}
+                config={quotaManager.config}
+                usage={quotaManager.usage}
             />
         </div>
     )

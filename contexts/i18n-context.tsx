@@ -170,6 +170,7 @@ type I18nKey =
     | "chat.header.about"
     | "chat.header.noticeTooltip"
     | "chat.header.newChatTooltip"
+    | "chat.header.quotaTooltip"
     | "chat.header.settingsTooltip"
     | "chat.header.hideTooltip"
     | "chat.header.showTooltip"
@@ -472,6 +473,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.header.noticeTooltip":
             "Due to high usage, I have changed the model to minimax-m2 and added some usage limits. See About page for details.",
         "chat.header.newChatTooltip": "Start fresh chat",
+        "chat.header.quotaTooltip": "View quota usage",
         "chat.header.settingsTooltip": "Settings",
         "chat.header.hideTooltip": "Hide chat panel (Ctrl+B)",
         "chat.header.showTooltip": "Show chat panel (Ctrl+B)",
@@ -762,6 +764,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.header.noticeTooltip":
             "由于使用量较高，我将默认模型切换为 minimax-m2 并加入使用限制，详见 About 页面。",
         "chat.header.newChatTooltip": "新建对话",
+        "chat.header.quotaTooltip": "查看配额使用情况",
         "chat.header.settingsTooltip": "设置",
         "chat.header.hideTooltip": "隐藏聊天面板（Ctrl+B）",
         "chat.header.showTooltip": "显示聊天面板（Ctrl+B）",

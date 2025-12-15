@@ -20,6 +20,7 @@ model User {
   // 用户等级系统
   tier          String    @default("free") // anonymous | free | pro | enterprise
   tierExpiresAt DateTime? // 等级过期时间（用于试用期、付费到期等）
+  status        String    @default("active") // active | suspended | deleted
 
   accounts      Account[]
   sessions      Session[]
@@ -27,12 +28,15 @@ model User {
   conversations   Conversation[]
   providerConfigs ProviderConfig[]
   quotaUsage      UserQuotaUsage[]
+  roles           UserRole[]
+  auditLogs       AuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([tier])
   @@index([tierExpiresAt])
+  @@index([status])
 }
 
 model Account {
@@ -200,4 +204,97 @@ model UserQuotaUsage {
   @@id([userId, bucketType, bucketKey])
   @@index([bucketType, bucketKey])
   @@index([userId, updatedAt])
+}
+
+// ============ RBAC 权限系统 ============
+
+// 角色表
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // superAdmin | admin | moderator | viewer
+  displayName String
+  description String?
+
+  permissions Permission[]
+  users       UserRole[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([name])
+}
+
+// 权限表
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique // users:read, users:write, tiers:write
+  resource    String   // users, tiers, quotas, logs
+  action      String   // read, write, delete
+  description String?
+
+  roles Role[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([resource, action])
+}
+
+// 用户角色关联表
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+// 审计日志表
+model AuditLog {
+  id           String  @id @default(cuid())
+  userId       String
+  action       String  // user:update, tier:update, quota:reset
+  resourceType String  // user, tier_config, quota
+  resourceId   String
+
+  // 变更详情
+  beforeValue    Json?
+  afterValue     Json?
+  changesSummary String?
+
+  // 请求上下文
+  ipAddress String?
+  userAgent String?
+
+  // 结果
+  status       String  // success, failed
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([resourceType, resourceId])
+}
+
+// 系统配置表
+model SystemConfig {
+  key         String @id
+  value       Json
+  category    String // general, ai, notification
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
 }
