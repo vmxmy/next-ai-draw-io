@@ -50,7 +50,7 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
     config: QuotaConfig | null
     usage: QuotaUsage
 } {
-    const { data: session, status } = useSession()
+    const { status } = useSession()
     const [config, setConfig] = useState<QuotaConfig | null>(
         fallbackConfig || null,
     )
@@ -73,24 +73,44 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
             refetchInterval: 10_000, // 每 10 秒刷新
         })
 
-    // 匿名用户：从 /api/config 获取配额配置
+    // 匿名用户：从 /api/quota/anonymous 获取配额配置和使用情况
     useEffect(() => {
         if (status !== "unauthenticated") return // 只在确认未登录时执行
 
-        fetch("/api/config")
-            .then((res) => res.json())
-            .then((data) => {
-                setConfig({
-                    dailyRequestLimit: data.dailyRequestLimit || 0,
-                    dailyTokenLimit: data.dailyTokenLimit || 0,
-                    tpmLimit: data.tpmLimit || 0,
+        const fetchAnonymousQuota = () => {
+            fetch("/api/quota/anonymous")
+                .then((res) => res.json())
+                .then((data) => {
+                    if (data.config) {
+                        setConfig({
+                            dailyRequestLimit:
+                                data.config.dailyRequestLimit || 0,
+                            dailyTokenLimit: data.config.dailyTokenLimit || 0,
+                            tpmLimit: data.config.tpmLimit || 0,
+                        })
+                    }
+                    if (data.usage) {
+                        setUsage({
+                            dailyRequests: data.usage.dailyRequests || 0,
+                            dailyTokens: data.usage.dailyTokens || 0,
+                            minuteTokens: data.usage.minuteTokens || 0,
+                        })
+                    }
                 })
-            })
-            .catch(() => {
-                if (fallbackConfig) {
-                    setConfig(fallbackConfig)
-                }
-            })
+                .catch(() => {
+                    if (fallbackConfig) {
+                        setConfig(fallbackConfig)
+                    }
+                })
+        }
+
+        // 立即执行一次
+        fetchAnonymousQuota()
+
+        // 每 10 秒刷新一次
+        const interval = setInterval(fetchAnonymousQuota, 10_000)
+
+        return () => clearInterval(interval)
     }, [status])
 
     // 登录用户：从 tRPC 数据更新 config 和 usage
