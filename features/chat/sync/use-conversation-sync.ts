@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import {
+    cleanOldestConversations,
     readConversationMetasFromStorage,
     readConversationPayloadFromStorage,
     removeConversationPayloadFromStorage,
@@ -227,23 +228,42 @@ export function useConversationSync({
                     continue
                 }
 
+                // 使用 writeConversationPayloadToStorage 以支持压缩和自动清理
+                let payloadWriteSuccess = false
                 try {
-                    localStorage.setItem(
-                        conversationStorageKey(userIdOrAnonymous, id),
-                        JSON.stringify(rc?.payload ?? {}),
+                    const payload = rc?.payload ?? {}
+                    writeConversationPayloadToStorage(
+                        userIdOrAnonymous,
+                        id,
+                        payload as ConversationPayload,
                     )
-                } catch {
-                    // ignore
+                    payloadWriteSuccess = true
+                } catch (error: any) {
+                    // 如果是 QuotaExceededError，writeConversationPayloadToStorage 已经尝试清理
+                    // 如果清理后还失败，这里跳过该会话
+                    if (error?.name === "QuotaExceededError") {
+                        console.warn(
+                            `无法恢复会话 ${id}：localStorage 空间不足`,
+                        )
+                        // 不添加 meta，避免出现"空会话"
+                        continue
+                    }
+                    // 其他错误也跳过
+                    console.error(`写入会话 ${id} 失败:`, error)
+                    continue
                 }
 
-                metaById.set(id, {
-                    id,
-                    createdAt: Number(rc?.createdAt ?? Date.now()),
-                    updatedAt: remoteUpdatedAt || Date.now(),
-                    title: rc?.title,
-                })
+                // 只有 payload 成功写入后才添加 meta
+                if (payloadWriteSuccess) {
+                    metaById.set(id, {
+                        id,
+                        createdAt: Number(rc?.createdAt ?? Date.now()),
+                        updatedAt: remoteUpdatedAt || Date.now(),
+                        title: rc?.title,
+                    })
 
-                if (id === currentConversationId) shouldReloadCurrent = true
+                    if (id === currentConversationId) shouldReloadCurrent = true
+                }
             }
 
             const nextMetas = Array.from(metaById.values()).sort(
