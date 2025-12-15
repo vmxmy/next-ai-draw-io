@@ -94,8 +94,13 @@ export function useCloudConversations({
             },
         )
 
+    // 按 updatedAt 降序排序，确保最近更新的会话显示在前面
+    // 虽然服务端已排序，但前端也排序作为防御性措施
     const conversations: ConversationMeta[] = useMemo(
-        () => conversationsData?.conversations || [],
+        () =>
+            (conversationsData?.conversations || []).sort(
+                (a, b) => b.updatedAt - a.updatedAt,
+            ),
         [conversationsData],
     )
 

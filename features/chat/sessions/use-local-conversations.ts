@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { ChatMessage } from "@/features/chat/ai/types"
 import {
@@ -1067,8 +1067,14 @@ export function useLocalConversations({
         loadConversationFromCloudIfNeeded,
     ])
 
+    // 按 updatedAt 降序排序，确保最近更新的会话显示在前面
+    const sortedConversations = useMemo(
+        () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
+        [conversations],
+    )
+
     return {
-        conversations,
+        conversations: sortedConversations,
         setConversations,
         currentConversationId,
         setCurrentConversationId,
