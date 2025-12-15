@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
+import { smartCacheCleanup } from "@/features/chat/sessions/cache-manager"
 import {
     cleanOldestConversations,
     readConversationMetasFromStorage,
@@ -426,6 +428,32 @@ export function useConversationSync({
 
             if (!cancelled) {
                 await pullOnceRef.current?.()
+            }
+
+            // 登录后执行智能缓存清理
+            if (!cancelled && userId) {
+                try {
+                    const cleanupResult = smartCacheCleanup(userId, true)
+                    if (cleanupResult.totalRemoved > 0) {
+                        const messages = []
+                        if (cleanupResult.staleRemoved > 0) {
+                            messages.push(
+                                `${cleanupResult.staleRemoved} 个过期会话`,
+                            )
+                        }
+                        if (cleanupResult.quotaRemoved > 0) {
+                            messages.push(
+                                `${cleanupResult.quotaRemoved} 个旧会话（超出缓存配额）`,
+                            )
+                        }
+                        toast.info(`已清理本地缓存：${messages.join("、")}`, {
+                            id: "cache-cleanup",
+                            duration: 3000,
+                        })
+                    }
+                } catch (error) {
+                    console.error("缓存清理失败:", error)
+                }
             }
         }
 
