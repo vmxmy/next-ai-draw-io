@@ -833,6 +833,19 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         [isAuthenticated, isOnline, _handleDeleteConversation],
     )
 
+    // 删除最旧的会话（用于会话数量限制）
+    const handleDeleteOldestConversation = useCallback(() => {
+        const oldest = [...conversations].sort(
+            (a, b) => a.updatedAt - b.updatedAt,
+        )[0]
+        if (oldest) {
+            handleDeleteConversation(oldest.id)
+            // handleDeleteConversation 内部已处理：
+            // - 如果没有剩余会话，会自动创建新会话
+            // - 如果有剩余会话，会切换到第一个
+        }
+    }, [conversations, handleDeleteConversation])
+
     useEffect(() => {
         currentConversationIdRef.current = currentConversationId
     }, [currentConversationId])
@@ -1399,17 +1412,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             <ConversationLimitDialog
                 open={showConversationLimitDialog}
                 onOpenChange={setShowConversationLimitDialog}
-                onDeleteOldest={() => {
-                    // 删除最旧的会话
-                    const oldest = conversations.sort(
-                        (a, b) => a.updatedAt - b.updatedAt,
-                    )[0]
-                    if (oldest) {
-                        handleDeleteConversation(oldest.id)
-                        // 创建新会话
-                        handleNewChat()
-                    }
-                }}
+                onDeleteOldest={handleDeleteOldestConversation}
                 onRegister={() => {
                     setShowAuthDialog(true)
                 }}
