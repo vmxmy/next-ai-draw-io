@@ -33,27 +33,33 @@ export function decompressXML(compressed: string): string {
 }
 
 /**
- * 检测字符串是否被压缩（简单启发式检测）
- */
-function isCompressed(str: string): boolean {
-    if (!str) return false
-    // 尝试解压，如果能成功解压且结果不同，说明是压缩的
-    try {
-        const decompressed = LZString.decompressFromUTF16(str)
-        return decompressed !== null && decompressed !== str
-    } catch {
-        return false
-    }
-}
-
-/**
- * 智能解压：如果已压缩则解压，否则返回原值
+ * 智能解压：尝试解压，如果失败或结果无效则返回原值
+ *
+ * 逻辑：
+ * 1. 如果字符串以 '<' 开头（明显是 XML），直接返回（未压缩）
+ * 2. 尝试解压，如果成功且结果有效，返回解压结果
+ * 3. 否则返回原值
  */
 export function smartDecompress(str: string): string {
     if (!str) return str
-    if (isCompressed(str)) {
-        return decompressXML(str)
+
+    // 快速检测：如果以 '<' 开头，很可能是未压缩的 XML
+    if (str.trimStart().startsWith("<")) {
+        return str
     }
+
+    // 尝试解压
+    try {
+        const decompressed = LZString.decompressFromUTF16(str)
+        // 如果解压成功且结果非空且不同于原值，说明确实是压缩数据
+        if (decompressed && decompressed.length > 0 && decompressed !== str) {
+            return decompressed
+        }
+    } catch {
+        // 解压失败，返回原值
+    }
+
+    // 解压失败或结果无效，返回原值
     return str
 }
 

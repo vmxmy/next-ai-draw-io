@@ -22,6 +22,7 @@ import {
     createSessionId,
     syncCursorStorageKey,
 } from "@/features/chat/sessions/storage"
+import { deoptimizePayload } from "@/features/chat/sessions/storage-optimizer"
 import { api } from "@/lib/trpc/client"
 
 export function useConversationSync({
