@@ -65,17 +65,26 @@ export function writeConversationMetasToStorage(
         if (error?.name === "QuotaExceededError") {
             const removed = cleanOldestConversations(userId, 3)
             if (removed > 0) {
-                toast.warning(`存储空间不足，已自动清理 ${removed} 个旧会话`)
+                toast.warning(`存储空间不足，已自动清理 ${removed} 个旧会话`, {
+                    id: "storage-quota-metas",
+                    duration: 3000,
+                })
                 try {
                     localStorage.setItem(
                         STORAGE_CONVERSATIONS_KEY(userId),
                         JSON.stringify(metas),
                     )
                 } catch {
-                    toast.error("存储空间已满，无法保存会话元数据")
+                    toast.error("存储空间已满，无法保存会话元数据", {
+                        id: "storage-full-metas",
+                        duration: 5000,
+                    })
                 }
             } else {
-                toast.error("存储空间已满，无法保存会话")
+                toast.error("存储空间已满，无法保存会话", {
+                    id: "storage-full-metas",
+                    duration: 5000,
+                })
             }
         }
         throw error
@@ -148,7 +157,10 @@ export function writeConversationPayloadToStorage(
         if (error?.name === "QuotaExceededError") {
             const removed = cleanOldestConversations(userId, 5)
             if (removed > 0) {
-                toast.warning(`存储空间不足，已自动清理 ${removed} 个旧会话`)
+                toast.warning(`存储空间不足，已自动清理 ${removed} 个旧会话`, {
+                    id: "storage-quota-payload",
+                    duration: 3000,
+                })
                 try {
                     localStorage.setItem(
                         conversationStorageKey(userId, id),
@@ -159,7 +171,10 @@ export function writeConversationPayloadToStorage(
                     // 清理后仍然失败
                 }
             }
-            toast.error("存储空间已满，无法保存会话数据")
+            toast.error("存储空间已满，无法保存会话数据", {
+                id: "storage-full-payload",
+                duration: 5000,
+            })
         }
         throw error
     }
