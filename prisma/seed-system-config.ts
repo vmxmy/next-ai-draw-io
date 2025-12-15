@@ -55,6 +55,19 @@ async function main() {
         },
     })
 
+    // 聊天文件持久化配置
+    await prisma.systemConfig.upsert({
+        where: { key: "chat.persistUploadedFiles" },
+        update: {},
+        create: {
+            key: "chat.persistUploadedFiles",
+            value: { enabled: false },
+            category: "general",
+            description:
+                "是否将用户上传的文件（图片 base64）保存到数据库。关闭可节省约 48% 存储空间",
+        },
+    })
+
     console.log("✅ SystemConfig 初始化完成")
 
     // 验证数据

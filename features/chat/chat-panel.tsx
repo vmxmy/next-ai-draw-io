@@ -181,6 +181,7 @@ export default function ChatPanel({
     const [dailyTokenLimit, setDailyTokenLimit] = useState(0)
     const [tpmLimit, setTpmLimit] = useState(0)
     const [disableImageUpload, setDisableImageUpload] = useState(false)
+    const [persistUploadedFiles, setPersistUploadedFiles] = useState(false)
 
     // Check config on mount
     useEffect(() => {
@@ -191,8 +192,12 @@ export default function ChatPanel({
                 setDailyRequestLimit(data.dailyRequestLimit || 0)
                 setDailyTokenLimit(data.dailyTokenLimit || 0)
                 setTpmLimit(data.tpmLimit || 0)
+                setPersistUploadedFiles(data.persistUploadedFiles ?? false)
             })
-            .catch(() => setAccessCodeRequired(false))
+            .catch(() => {
+                setAccessCodeRequired(false)
+                setPersistUploadedFiles(false)
+            })
     }, [])
 
     // Quota management using extracted hook
@@ -768,6 +773,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         resetFiles,
         queuePushConversation,
         stopCurrentRequest,
+        persistUploadedFiles,
     })
 
     const {

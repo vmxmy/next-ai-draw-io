@@ -32,6 +32,25 @@ type QueuePushConversation = (
     opts?: { immediate?: boolean; deleted?: boolean },
 ) => void
 
+/**
+ * 移除消息中的文件 parts（type: "file"），保留文本和其他 parts
+ * @param messages 原始消息数组
+ * @returns 移除文件后的新消息数组
+ */
+function stripFilePartsFromMessages(messages: ChatMessage[]): ChatMessage[] {
+    return messages.map((msg) => {
+        const parts = (msg as any)?.parts
+        if (!Array.isArray(parts)) return msg
+
+        const keptParts = parts.filter((p: any) => p?.type !== "file")
+
+        // 如果没有移除任何 parts，返回原消息（避免不必要的对象创建）
+        if (keptParts.length === parts.length) return msg
+
+        return { ...msg, parts: keptParts }
+    })
+}
+
 export function useLocalConversations({
     userId,
     locale,
@@ -51,6 +70,7 @@ export function useLocalConversations({
     resetFiles,
     queuePushConversation,
     stopCurrentRequest,
+    persistUploadedFiles,
 }: {
     userId: string
     locale: string
@@ -70,6 +90,7 @@ export function useLocalConversations({
     resetFiles: () => void
     queuePushConversation: QueuePushConversation
     stopCurrentRequest?: () => void
+    persistUploadedFiles: boolean
 }) {
     const [conversations, setConversations] = useState<ConversationMeta[]>([])
     const [currentConversationId, setCurrentConversationId] = useState(() => {
@@ -258,9 +279,17 @@ export function useLocalConversations({
                         sessionId,
                     } satisfies ConversationPayload)
 
+                // 获取要保存的消息（可能来自 overrides 或 existing）
+                let messagesToSave =
+                    overrides.messages ?? existing.messages ?? ([] as any)
+
+                // 如果不保存文件，移除 file parts
+                if (!persistUploadedFiles) {
+                    messagesToSave = stripFilePartsFromMessages(messagesToSave)
+                }
+
                 const merged: ConversationPayload = {
-                    messages:
-                        overrides.messages ?? existing.messages ?? ([] as any),
+                    messages: messagesToSave,
                     xml: overrides.xml ?? existing.xml ?? "",
                     snapshots: overrides.snapshots ?? existing.snapshots ?? [],
                     diagramVersions:
@@ -322,6 +351,7 @@ export function useLocalConversations({
             queuePushConversation,
             sessionId,
             userId,
+            persistUploadedFiles,
         ],
     )
 

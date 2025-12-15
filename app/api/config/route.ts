@@ -14,10 +14,19 @@ export async function GET() {
         )
     }
 
+    // 读取文件持久化配置
+    const persistFilesConfig = await db.systemConfig.findUnique({
+        where: { key: "chat.persistUploadedFiles" },
+    })
+
+    const persistUploadedFiles =
+        (persistFilesConfig?.value as { enabled?: boolean })?.enabled ?? false
+
     return NextResponse.json({
         accessCodeRequired: !!process.env.ACCESS_CODE_LIST,
         dailyRequestLimit: anonymousConfig.dailyRequestLimit,
         dailyTokenLimit: Number(anonymousConfig.dailyTokenLimit),
         tpmLimit: anonymousConfig.tpmLimit,
+        persistUploadedFiles,
     })
 }
