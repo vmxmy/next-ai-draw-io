@@ -91,7 +91,7 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
                     setConfig(fallbackConfig)
                 }
             })
-    }, [session, fallbackConfig])
+    }, [session])
 
     // 登录用户：从 tRPC 数据更新 config 和 usage
     useEffect(() => {
