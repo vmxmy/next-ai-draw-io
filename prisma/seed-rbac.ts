@@ -1,4 +1,9 @@
 import { PrismaClient } from "@prisma/client"
+import { config } from "dotenv"
+import { resolve } from "path"
+
+// Load .env.local file
+config({ path: resolve(__dirname, "../.env.local") })
 
 const db = new PrismaClient()
 

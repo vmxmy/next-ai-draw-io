@@ -132,6 +132,8 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
 
     // Check if user has their own API key configured (bypass limits)
     const hasOwnApiKey = useCallback((): boolean => {
+        // SSR safe: only access localStorage in browser
+        if (typeof window === "undefined") return false
         const provider = localStorage.getItem(STORAGE_KEYS.aiProvider)
         const apiKey = localStorage.getItem(STORAGE_KEYS.aiApiKey)
         return !!(provider && apiKey)
@@ -156,11 +158,13 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
             ...prev,
             dailyRequests: prev.dailyRequests + 1,
         }))
-        // 触发后台刷新
-        setTimeout(() => {
-            void refetchUsage()
-        }, 1000)
-    }, [refetchUsage])
+        // 只有登录用户才触发 tRPC 刷新（匿名用户依赖轮询）
+        if (status === "authenticated") {
+            setTimeout(() => {
+                void refetchUsage()
+            }, 1000)
+        }
+    }, [refetchUsage, status])
 
     // Show quota limit toast (request-based)
     const showQuotaLimitToast = useCallback(() => {
@@ -198,11 +202,14 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
                 ...prev,
                 dailyTokens: prev.dailyTokens + tokens,
             }))
-            setTimeout(() => {
-                void refetchUsage()
-            }, 1000)
+            // 只有登录用户才触发 tRPC 刷新（匿名用户依赖轮询）
+            if (status === "authenticated") {
+                setTimeout(() => {
+                    void refetchUsage()
+                }, 1000)
+            }
         },
-        [refetchUsage],
+        [refetchUsage, status],
     )
 
     // Show token limit toast
@@ -245,11 +252,14 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
                 ...prev,
                 minuteTokens: prev.minuteTokens + tokens,
             }))
-            setTimeout(() => {
-                void refetchUsage()
-            }, 1000)
+            // 只有登录用户才触发 tRPC 刷新（匿名用户依赖轮询）
+            if (status === "authenticated") {
+                setTimeout(() => {
+                    void refetchUsage()
+                }, 1000)
+            }
         },
-        [refetchUsage],
+        [refetchUsage, status],
     )
 
     // Show TPM limit toast

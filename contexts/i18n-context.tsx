@@ -13,7 +13,7 @@ export type Locale = "en" | "zh-CN"
 
 const STORAGE_LOCALE_KEY = "next-ai-draw-io-locale"
 
-type I18nKey =
+export type I18nKey =
     | "tool.generate"
     | "tool.edit"
     | "tool.analyze"
@@ -28,6 +28,11 @@ type I18nKey =
     | "toast.diagramInvalid"
     | "toast.diagramValidationFailed"
     | "toast.diagramProcessFailed"
+    | "toast.xmlError.unclosedTag"
+    | "toast.xmlError.invalidTag"
+    | "toast.xmlError.entityReference"
+    | "toast.xmlError.unexpectedChar"
+    | "toast.xmlError.prematureEnd"
     | "toast.authFailed"
     | "toast.rateLimited"
     | "toast.quotaExceeded"
@@ -167,6 +172,8 @@ type I18nKey =
     | "quota.learnMore"
     | "quota.selfHost"
     | "quota.sponsor"
+    | "quota.byok.title"
+    | "quota.byok.description"
     | "chat.header.about"
     | "chat.header.noticeTooltip"
     | "chat.header.newChatTooltip"
@@ -308,6 +315,16 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "Diagram validation failed. Please try regenerating.",
         "toast.diagramProcessFailed":
             "Failed to process diagram. Please try regenerating.",
+        "toast.xmlError.unclosedTag":
+            "XML error: Unclosed tag detected. Please try regenerating.",
+        "toast.xmlError.invalidTag":
+            "XML error: Invalid tag structure. Please try regenerating.",
+        "toast.xmlError.entityReference":
+            "XML error: Invalid entity reference. Please try regenerating.",
+        "toast.xmlError.unexpectedChar":
+            "XML error: Unexpected character found. Please try regenerating.",
+        "toast.xmlError.prematureEnd":
+            "XML error: Document ended prematurely. Please try regenerating.",
         "toast.authFailed": "Authentication failed. Please check your API key.",
         "toast.rateLimited": "Too many requests. Please try again later.",
         "toast.quotaExceeded":
@@ -469,6 +486,9 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "quota.learnMore": "Learn more →",
         "quota.selfHost": "Self-host",
         "quota.sponsor": "Sponsor",
+        "quota.byok.title": "Using Your Own API Key",
+        "quota.byok.description":
+            "You are using your own API key, so quota limits do not apply. Your usage is only limited by your provider's rate limits.",
         "chat.header.about": "About",
         "chat.header.noticeTooltip":
             "Due to high usage, I have changed the model to minimax-m2 and added some usage limits. See About page for details.",
@@ -610,6 +630,15 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "toast.diagramInvalid": "AI 生成的 XML 无效，请尝试重新生成。",
         "toast.diagramValidationFailed": "图表校验失败，请尝试重新生成。",
         "toast.diagramProcessFailed": "图表处理失败，请尝试重新生成。",
+        "toast.xmlError.unclosedTag":
+            "XML 错误：检测到未闭合的标签，请尝试重新生成。",
+        "toast.xmlError.invalidTag": "XML 错误：标签结构无效，请尝试重新生成。",
+        "toast.xmlError.entityReference":
+            "XML 错误：实体引用无效，请尝试重新生成。",
+        "toast.xmlError.unexpectedChar":
+            "XML 错误：发现意外字符，请尝试重新生成。",
+        "toast.xmlError.prematureEnd":
+            "XML 错误：文档过早结束，请尝试重新生成。",
         "toast.authFailed": "鉴权失败，请检查并更新 API Key。",
         "toast.rateLimited": "请求过于频繁，请稍后重试。",
         "toast.quotaExceeded": "额度不足或余额不足，请检查计费/余额设置。",
@@ -760,6 +789,9 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "quota.learnMore": "了解更多 →",
         "quota.selfHost": "自行部署",
         "quota.sponsor": "赞助",
+        "quota.byok.title": "正在使用您自己的 API Key",
+        "quota.byok.description":
+            "您正在使用自己的 API Key，因此不受平台配额限制。您的使用仅受提供商的速率限制约束。",
         "chat.header.about": "关于",
         "chat.header.noticeTooltip":
             "由于使用量较高，我将默认模型切换为 minimax-m2 并加入使用限制，详见 About 页面。",

@@ -25,6 +25,7 @@ interface QuotaDialogProps {
         dailyTokens: number
         minuteTokens: number
     }
+    hasOwnApiKey?: boolean
 }
 
 export function QuotaDialog({
@@ -33,6 +34,7 @@ export function QuotaDialog({
     tier,
     config,
     usage,
+    hasOwnApiKey = false,
 }: QuotaDialogProps) {
     const { t } = useI18n()
 
@@ -70,6 +72,39 @@ export function QuotaDialog({
                             : t("userCenter.description")}
                     </DialogDescription>
                 </DialogHeader>
+
+                {/* BYOK Notice */}
+                {hasOwnApiKey && (
+                    <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 mt-0.5">
+                                <svg
+                                    className="h-5 w-5 text-green-600 dark:text-green-400"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    role="img"
+                                    aria-label="Success"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                </svg>
+                            </div>
+                            <div className="flex-1 space-y-1">
+                                <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                                    {t("quota.byok.title")}
+                                </p>
+                                <p className="text-xs text-green-700 dark:text-green-300">
+                                    {t("quota.byok.description")}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="space-y-6 py-4">
                     {/* Daily Requests */}

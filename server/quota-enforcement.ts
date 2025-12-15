@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto"
 import { db } from "@/server/db"
+import { withDbRetry } from "@/server/db-retry"
 
 type RateLimitBucketType = "day-requests" | "day-tokens" | "minute-tokens"
 
@@ -61,10 +62,12 @@ async function getUserQuotaLimits(userId?: string): Promise<{
 }> {
     // 登录用户：从数据库获取用户等级
     if (userId) {
-        const user = await db.user.findUnique({
-            where: { id: userId },
-            select: { tier: true, tierExpiresAt: true },
-        })
+        const user = await withDbRetry(() =>
+            db.user.findUnique({
+                where: { id: userId },
+                select: { tier: true, tierExpiresAt: true },
+            }),
+        )
 
         // 检查等级是否过期（如有设置）
         let effectiveTier = user?.tier || "free"
@@ -72,9 +75,11 @@ async function getUserQuotaLimits(userId?: string): Promise<{
             effectiveTier = "free" // 过期后降级为 free
         }
 
-        const tierConfig = await db.tierConfig.findUnique({
-            where: { tier: effectiveTier },
-        })
+        const tierConfig = await withDbRetry(() =>
+            db.tierConfig.findUnique({
+                where: { tier: effectiveTier },
+            }),
+        )
 
         if (!tierConfig) {
             throw new Error(
@@ -97,9 +102,11 @@ async function getUserQuotaLimits(userId?: string): Promise<{
     }
 
     // 匿名用户：使用 anonymous 等级配置
-    const anonymousConfig = await db.tierConfig.findUnique({
-        where: { tier: "anonymous" },
-    })
+    const anonymousConfig = await withDbRetry(() =>
+        db.tierConfig.findUnique({
+            where: { tier: "anonymous" },
+        }),
+    )
 
     if (!anonymousConfig) {
         throw new Error("Anonymous tier configuration not found")
@@ -133,23 +140,33 @@ async function readQuotaCount({
     bucketType: RateLimitBucketType
     bucketKey: string
 }): Promise<bigint> {
-    if (userId) {
-        const row = await db.userQuotaUsage.findUnique({
-            where: {
-                userId_bucketType_bucketKey: { userId, bucketType, bucketKey },
-            },
-            select: { count: true },
-        })
-        return row?.count ?? 0n
-    } else {
-        const row = await db.anonymousRateLimit.findUnique({
-            where: {
-                ipHash_bucketType_bucketKey: { ipHash, bucketType, bucketKey },
-            },
-            select: { count: true },
-        })
-        return row?.count ?? 0n
-    }
+    return withDbRetry(async () => {
+        if (userId) {
+            const row = await db.userQuotaUsage.findUnique({
+                where: {
+                    userId_bucketType_bucketKey: {
+                        userId,
+                        bucketType,
+                        bucketKey,
+                    },
+                },
+                select: { count: true },
+            })
+            return row?.count ?? 0n
+        } else {
+            const row = await db.anonymousRateLimit.findUnique({
+                where: {
+                    ipHash_bucketType_bucketKey: {
+                        ipHash,
+                        bucketType,
+                        bucketKey,
+                    },
+                },
+                select: { count: true },
+            })
+            return row?.count ?? 0n
+        }
+    })
 }
 
 /**
@@ -170,23 +187,33 @@ async function incrementQuotaCount({
 }) {
     if (delta <= 0n) return
 
-    if (userId) {
-        await db.userQuotaUsage.upsert({
-            where: {
-                userId_bucketType_bucketKey: { userId, bucketType, bucketKey },
-            },
-            create: { userId, bucketType, bucketKey, count: delta },
-            update: { count: { increment: delta } },
-        })
-    } else {
-        await db.anonymousRateLimit.upsert({
-            where: {
-                ipHash_bucketType_bucketKey: { ipHash, bucketType, bucketKey },
-            },
-            create: { ipHash, bucketType, bucketKey, count: delta },
-            update: { count: { increment: delta } },
-        })
-    }
+    return withDbRetry(async () => {
+        if (userId) {
+            await db.userQuotaUsage.upsert({
+                where: {
+                    userId_bucketType_bucketKey: {
+                        userId,
+                        bucketType,
+                        bucketKey,
+                    },
+                },
+                create: { userId, bucketType, bucketKey, count: delta },
+                update: { count: { increment: delta } },
+            })
+        } else {
+            await db.anonymousRateLimit.upsert({
+                where: {
+                    ipHash_bucketType_bucketKey: {
+                        ipHash,
+                        bucketType,
+                        bucketKey,
+                    },
+                },
+                create: { ipHash, bucketType, bucketKey, count: delta },
+                update: { count: { increment: delta } },
+            })
+        }
+    })
 }
 
 /**

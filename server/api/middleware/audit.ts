@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client"
 import { initTRPC } from "@trpc/server"
 import type { createTRPCContext } from "@/server/api/trpc"
 
@@ -7,12 +8,12 @@ const t = initTRPC
     .create()
 
 /**
- * 从 rawInput 中提取 resourceId
+ * 从 input 中提取 resourceId
  */
-function extractResourceId(rawInput: unknown): string {
-    if (!rawInput || typeof rawInput !== "object") return "unknown"
+function extractResourceId(input: unknown): string {
+    if (!input || typeof input !== "object") return "unknown"
 
-    const input = rawInput as Record<string, unknown>
+    const obj = input as Record<string, unknown>
 
     // 尝试常见的 ID 字段
     const idFields = [
@@ -26,12 +27,12 @@ function extractResourceId(rawInput: unknown): string {
     ]
 
     for (const field of idFields) {
-        if (input[field]) return String(input[field])
+        if (obj[field]) return String(obj[field])
     }
 
     // 如果有多个 ID（批量操作）
-    if (Array.isArray(input.userIds)) {
-        return `bulk:${input.userIds.length} users`
+    if (Array.isArray(obj.userIds)) {
+        return `bulk:${obj.userIds.length} users`
     }
 
     return "unknown"
@@ -43,26 +44,17 @@ function extractResourceId(rawInput: unknown): string {
  * @param resourceType 资源类型，例如 "user"
  */
 export function withAudit(action: string, resourceType: string) {
-    return t.middleware(async ({ ctx, next, rawInput }) => {
-        const startTime = Date.now()
-        let status = "success"
-        let errorMessage: string | null = null
-        let result: unknown
+    return t.middleware(async ({ ctx, next, input }) => {
+        const _startTime = Date.now()
+        const _status = "success"
+        const _errorMessage: string | null = null
 
         try {
-            result = await next()
-            return result
-        } catch (error) {
-            status = "failed"
-            errorMessage =
-                error instanceof Error ? error.message : "Unknown error"
-            throw error
-        } finally {
-            // 仅为认证用户记录审计日志
-            if (ctx.session?.user?.id) {
-                const resourceId = extractResourceId(rawInput)
+            const result = await next()
 
-                // 异步记录审计日志，不阻塞响应
+            // 记录成功的审计日志
+            if (ctx.session?.user?.id) {
+                const resourceId = extractResourceId(input)
                 void ctx.db.auditLog
                     .create({
                         data: {
@@ -70,23 +62,56 @@ export function withAudit(action: string, resourceType: string) {
                             action,
                             resourceType,
                             resourceId,
-                            beforeValue: null, // 后续优化：获取变更前的值
-                            afterValue: null, // 后续优化：记录结果
+                            beforeValue: Prisma.JsonNull,
+                            afterValue: Prisma.JsonNull,
                             changesSummary: `${action} on ${resourceType}:${resourceId}`,
-                            ipAddress: null, // 后续优化：从 headers 获取
-                            userAgent: null, // 后续优化：从 headers 获取
-                            status,
-                            errorMessage,
+                            ipAddress: null,
+                            userAgent: null,
+                            status: "success",
+                            errorMessage: null,
                         },
                     })
                     .catch((err) => {
-                        // 审计日志失败不应影响业务逻辑
                         console.error(
                             "[audit] Failed to create audit log:",
                             err,
                         )
                     })
             }
+
+            return result
+        } catch (error) {
+            // 记录失败的审计日志
+            if (ctx.session?.user?.id) {
+                const resourceId = extractResourceId(input)
+                const errorMsg =
+                    error instanceof Error ? error.message : "Unknown error"
+
+                void ctx.db.auditLog
+                    .create({
+                        data: {
+                            userId: ctx.session.user.id,
+                            action,
+                            resourceType,
+                            resourceId,
+                            beforeValue: Prisma.JsonNull,
+                            afterValue: Prisma.JsonNull,
+                            changesSummary: `${action} on ${resourceType}:${resourceId}`,
+                            ipAddress: null,
+                            userAgent: null,
+                            status: "failed",
+                            errorMessage: errorMsg,
+                        },
+                    })
+                    .catch((err) => {
+                        console.error(
+                            "[audit] Failed to create audit log:",
+                            err,
+                        )
+                    })
+            }
+
+            throw error
         }
     })
 }

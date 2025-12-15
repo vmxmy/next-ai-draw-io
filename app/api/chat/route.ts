@@ -588,9 +588,21 @@ async function handleChatRequest(req: Request): Promise<Response> {
         bypassBYOK: !!(clientOverrides.provider && clientOverrides.apiKey),
     })
 
-    // Get AI model with optional client overrides
+    // 获取系统默认 AI 配置（数据库优先，fallback 到环境变量）
+    const { getDefaultAIConfig } = await import("@/server/system-config")
+    const defaultConfig = await getDefaultAIConfig()
+
+    // 合并配置：客户端覆盖 > 数据库配置 > 环境变量
+    const finalOverrides = {
+        provider: clientOverrides.provider || defaultConfig.provider,
+        modelId: clientOverrides.modelId || defaultConfig.model,
+        apiKey: clientOverrides.apiKey || defaultConfig.apiKey,
+        baseUrl: clientOverrides.baseUrl,
+    }
+
+    // Get AI model with merged configuration
     const { model, providerOptions, headers, modelId } =
-        getAIModel(clientOverrides)
+        getAIModel(finalOverrides)
 
     // Check if model supports prompt caching
     const shouldCache = supportsPromptCaching(modelId)

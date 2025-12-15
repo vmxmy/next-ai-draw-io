@@ -30,7 +30,7 @@ import {
     ReasoningTrigger,
 } from "@/components/ai-elements/reasoning"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { useI18n } from "@/contexts/i18n-context"
+import { type I18nKey, useI18n } from "@/contexts/i18n-context"
 import {
     convertToLegalXml,
     replaceNodes,
@@ -102,6 +102,70 @@ function EditDiffDisplay({ edits }: { edits: EditPair[] }) {
 }
 
 import { useDiagram } from "@/contexts/diagram-context"
+
+// XML error type detection
+type XmlErrorType =
+    | "unclosed-tag"
+    | "invalid-tag"
+    | "entity-reference"
+    | "unexpected-char"
+    | "premature-end"
+    | "generic"
+
+function extractXmlErrorType(errorText: string): XmlErrorType {
+    const lowerError = errorText.toLowerCase()
+
+    if (lowerError.includes("unclosed") || lowerError.includes("not closed")) {
+        return "unclosed-tag"
+    }
+    if (
+        lowerError.includes("invalid tag") ||
+        lowerError.includes("illegal tag")
+    ) {
+        return "invalid-tag"
+    }
+    if (
+        lowerError.includes("entity") ||
+        lowerError.includes("reference") ||
+        lowerError.includes("&")
+    ) {
+        return "entity-reference"
+    }
+    if (
+        lowerError.includes("unexpected") ||
+        lowerError.includes("illegal character")
+    ) {
+        return "unexpected-char"
+    }
+    if (
+        lowerError.includes("premature") ||
+        lowerError.includes("end of document")
+    ) {
+        return "premature-end"
+    }
+
+    return "generic"
+}
+
+function getXmlErrorMessage(
+    errorType: XmlErrorType,
+    t: (key: I18nKey, vars?: Record<string, string | number>) => string,
+): string {
+    switch (errorType) {
+        case "unclosed-tag":
+            return t("toast.xmlError.unclosedTag")
+        case "invalid-tag":
+            return t("toast.xmlError.invalidTag")
+        case "entity-reference":
+            return t("toast.xmlError.entityReference")
+        case "unexpected-char":
+            return t("toast.xmlError.unexpectedChar")
+        case "premature-end":
+            return t("toast.xmlError.prematureEnd")
+        default:
+            return t("toast.diagramInvalid")
+    }
+}
 
 // Helper to split text content into regular text and file sections (PDF or text files)
 interface TextSection {
@@ -359,13 +423,32 @@ export function ChatMessageDisplay({
                     // 流式 tool input 阶段 XML 可能是不完整的中间态，属于预期情况，避免刷屏报错。
                     // 仅在最终输出（showToast=true）时才提示为异常。
                     if (showToast) {
-                        console.error(
-                            "[ChatMessageDisplay] Malformed XML detected - skipping update",
-                        )
-                    }
-                    // Only show toast if this is the final XML (not during streaming)
-                    if (showToast) {
-                        toast.error(t("toast.diagramInvalid"))
+                        // Extract detailed error information
+                        const errorText = parseError.textContent || ""
+                        const errorType = extractXmlErrorType(errorText)
+
+                        // Log detailed error info in development
+                        if (process.env.NODE_ENV === "development") {
+                            console.group(
+                                "[ChatMessageDisplay] XML Parse Error",
+                            )
+                            console.error("Error type:", errorType)
+                            console.error("Error details:", errorText)
+                            console.error(
+                                "Invalid XML (first 500 chars):",
+                                convertedXml.slice(0, 500),
+                            )
+                            console.groupEnd()
+                        } else {
+                            console.error(
+                                "[ChatMessageDisplay] Malformed XML detected:",
+                                errorType,
+                            )
+                        }
+
+                        // Show specific error message based on error type
+                        const errorMessage = getXmlErrorMessage(errorType, t)
+                        toast.error(errorMessage)
                     }
                     return // Skip this update
                 }

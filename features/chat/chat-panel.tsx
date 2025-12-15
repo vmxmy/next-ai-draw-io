@@ -1335,6 +1335,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 tier={quotaManager.tier}
                 config={quotaManager.config}
                 usage={quotaManager.usage}
+                hasOwnApiKey={quotaManager.hasOwnApiKey()}
             />
         </div>
     )
