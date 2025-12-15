@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc"
+import { withDbRetry } from "@/server/db-retry"
 
 // 导出 schema 供客户端验证使用
 export const conversationPayloadSchema = z.object({
@@ -54,72 +55,77 @@ export const conversationRouter = createTRPCRouter({
             const userId = ctx.session.user.id
             const now = new Date()
 
-            const upserts = input.conversations.map((c) => {
-                const clientCreatedAt = new Date(c.createdAt)
-                const clientUpdatedAt = new Date(c.updatedAt)
-                const deletedAt = c.deleted ? now : null
+            return withDbRetry(async () => {
+                const upserts = input.conversations.map((c) => {
+                    const clientCreatedAt = new Date(c.createdAt)
+                    const clientUpdatedAt = new Date(c.updatedAt)
+                    const deletedAt = c.deleted ? now : null
 
-                return ctx.db.conversation.upsert({
-                    where: {
-                        userId_id: { userId, id: c.id },
-                    },
-                    create: {
-                        userId,
-                        id: c.id,
-                        title: c.title,
-                        clientCreatedAt,
-                        clientUpdatedAt,
-                        data: (c.payload ?? {}) as unknown as object,
-                        deletedAt,
-                    },
-                    update: {
-                        userId,
-                        title: c.title,
-                        clientCreatedAt,
-                        clientUpdatedAt,
-                        ...(c.deleted
-                            ? {}
-                            : { data: (c.payload ?? {}) as unknown as object }),
-                        deletedAt,
-                    },
+                    return ctx.db.conversation.upsert({
+                        where: {
+                            userId_id: { userId, id: c.id },
+                        },
+                        create: {
+                            userId,
+                            id: c.id,
+                            title: c.title,
+                            clientCreatedAt,
+                            clientUpdatedAt,
+                            data: (c.payload ?? {}) as unknown as object,
+                            deletedAt,
+                        },
+                        update: {
+                            userId,
+                            title: c.title,
+                            clientCreatedAt,
+                            clientUpdatedAt,
+                            ...(c.deleted
+                                ? {}
+                                : {
+                                      data: (c.payload ??
+                                          {}) as unknown as object,
+                                  }),
+                            deletedAt,
+                        },
+                        select: { id: true },
+                    })
+                })
+
+                const typeByConversationId = new Map(
+                    input.conversations.map((c) => [
+                        c.id,
+                        c.deleted ? "delete" : "upsert",
+                    ]),
+                )
+
+                const results = await ctx.db.$transaction([
+                    ...upserts,
+                    ctx.db.syncEvent.createMany({
+                        data: input.conversations.map((c) => ({
+                            userId,
+                            conversationId: c.id,
+                            type: typeByConversationId.get(c.id) ?? "upsert",
+                        })),
+                    }),
+                ])
+
+                const upserted = results.slice(
+                    0,
+                    input.conversations.length,
+                ) as Array<{ id: string }>
+
+                const lastEvent = await ctx.db.syncEvent.findFirst({
+                    where: { userId },
+                    orderBy: { id: "desc" },
                     select: { id: true },
                 })
+
+                return {
+                    ok: true,
+                    pushedIds: upserted.map((r) => r.id),
+                    cursor: lastEvent?.id.toString() ?? "0",
+                }
             })
-
-            const typeByConversationId = new Map(
-                input.conversations.map((c) => [
-                    c.id,
-                    c.deleted ? "delete" : "upsert",
-                ]),
-            )
-
-            const results = await ctx.db.$transaction([
-                ...upserts,
-                ctx.db.syncEvent.createMany({
-                    data: input.conversations.map((c) => ({
-                        userId,
-                        conversationId: c.id,
-                        type: typeByConversationId.get(c.id) ?? "upsert",
-                    })),
-                }),
-            ])
-
-            const upserted = results.slice(
-                0,
-                input.conversations.length,
-            ) as Array<{ id: string }>
-
-            const lastEvent = await ctx.db.syncEvent.findFirst({
-                where: { userId },
-                orderBy: { id: "desc" },
-                select: { id: true },
-            })
-
-            return {
-                ok: true,
-                pushedIds: upserted.map((r) => r.id),
-                cursor: lastEvent?.id.toString() ?? "0",
-            }
         }),
 
     pull: protectedProcedure
@@ -151,52 +157,57 @@ export const conversationRouter = createTRPCRouter({
             const cursor = BigInt(input.cursor ?? "0")
             const limit = input.limit ?? 100
 
-            const events = await ctx.db.syncEvent.findMany({
-                where: {
-                    userId,
-                    id: { gt: cursor },
-                },
-                orderBy: { id: "asc" },
-                take: limit,
-                select: { id: true, conversationId: true, type: true },
+            return withDbRetry(async () => {
+                const events = await ctx.db.syncEvent.findMany({
+                    where: {
+                        userId,
+                        id: { gt: cursor },
+                    },
+                    orderBy: { id: "asc" },
+                    take: limit,
+                    select: { id: true, conversationId: true, type: true },
+                })
+
+                if (events.length === 0) {
+                    return {
+                        cursor: cursor.toString(),
+                        conversations: [] as any[],
+                    }
+                }
+
+                const conversationIds = Array.from(
+                    new Set(events.map((e) => e.conversationId)),
+                )
+
+                const conversations = await ctx.db.conversation.findMany({
+                    where: {
+                        userId,
+                        id: { in: conversationIds },
+                        // 不排除已删除的，因为需要同步删除状态
+                    },
+                    select: {
+                        id: true,
+                        title: true,
+                        clientCreatedAt: true,
+                        clientUpdatedAt: true,
+                        deletedAt: true,
+                        data: true,
+                    },
+                })
+
+                const last = events[events.length - 1]?.id ?? cursor
+
+                return {
+                    cursor: last.toString(),
+                    conversations: conversations.map((c) => ({
+                        id: c.id,
+                        title: c.title ?? undefined,
+                        createdAt: c.clientCreatedAt.getTime(),
+                        updatedAt: c.clientUpdatedAt.getTime(),
+                        deleted: !!c.deletedAt,
+                        payload: c.data,
+                    })),
+                }
             })
-
-            if (events.length === 0) {
-                return { cursor: cursor.toString(), conversations: [] as any[] }
-            }
-
-            const conversationIds = Array.from(
-                new Set(events.map((e) => e.conversationId)),
-            )
-
-            const conversations = await ctx.db.conversation.findMany({
-                where: {
-                    userId,
-                    id: { in: conversationIds },
-                    // 不排除已删除的，因为需要同步删除状态
-                },
-                select: {
-                    id: true,
-                    title: true,
-                    clientCreatedAt: true,
-                    clientUpdatedAt: true,
-                    deletedAt: true,
-                    data: true,
-                },
-            })
-
-            const last = events[events.length - 1]?.id ?? cursor
-
-            return {
-                cursor: last.toString(),
-                conversations: conversations.map((c) => ({
-                    id: c.id,
-                    title: c.title ?? undefined,
-                    createdAt: c.clientCreatedAt.getTime(),
-                    updatedAt: c.clientUpdatedAt.getTime(),
-                    deleted: !!c.deletedAt,
-                    payload: c.data,
-                })),
-            }
         }),
 })
