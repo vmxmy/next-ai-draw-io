@@ -69,14 +69,7 @@ export const authOptions: NextAuthOptions = {
                         return null
                     }
 
-                    const user = await db.user.findUnique({
-                        where: { phone: normalizedPhone },
-                    })
-
-                    if (!user) {
-                        return null
-                    }
-
+                    // 验证验证码
                     const verifyResult = await verifySmsCode(
                         normalizedPhone,
                         code,
@@ -85,6 +78,21 @@ export const authOptions: NextAuthOptions = {
 
                     if (!verifyResult.ok) {
                         return null
+                    }
+
+                    // 查找或创建用户（自动注册）
+                    let user = await db.user.findUnique({
+                        where: { phone: normalizedPhone },
+                    })
+
+                    if (!user) {
+                        // 用户不存在，自动创建
+                        user = await db.user.create({
+                            data: {
+                                phone: normalizedPhone,
+                                name: `用户${normalizedPhone.slice(-4)}`,
+                            },
+                        })
                     }
 
                     return {

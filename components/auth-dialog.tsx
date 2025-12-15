@@ -4,6 +4,7 @@ import { signIn } from "next-auth/react"
 import { useEffect, useState } from "react"
 import { FaGithub, FaGoogle } from "react-icons/fa"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
     Dialog,
     DialogContent,
@@ -28,16 +29,15 @@ interface AuthDialogProps {
 
 export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
     const { t } = useI18n()
-    const [mode, setMode] = useState<"oauth" | "phone">("oauth")
-    const [phoneMode, setPhoneMode] = useState<"login" | "register">("login")
+    const [mode, setMode] = useState<"oauth" | "phone">("phone")
     const [isLoading, setIsLoading] = useState<string | null>(null)
     const [phoneNumber, setPhoneNumber] = useState("")
     const [verificationCode, setVerificationCode] = useState("")
-    const [userName, setUserName] = useState("")
     const [phoneError, setPhoneError] = useState<string | null>(null)
     const [countdown, setCountdown] = useState(0)
     const [isSendingCode, setIsSendingCode] = useState(false)
     const [codeMessage, setCodeMessage] = useState<string | null>(null)
+    const [agreedToTerms, setAgreedToTerms] = useState(false)
 
     useEffect(() => {
         if (!countdown) return
@@ -48,6 +48,10 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
     }, [countdown])
 
     const handleSignIn = async (provider: string) => {
+        if (!agreedToTerms) {
+            setPhoneError(t("auth.error.mustAgreeToTerms"))
+            return
+        }
         setIsLoading(provider)
         try {
             await signIn(provider, { callbackUrl: "/" })
@@ -73,12 +77,8 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
         setPhoneError(null)
         setCodeMessage(null)
         try {
-            const endpoint =
-                phoneMode === "register"
-                    ? "/api/auth/phone/register/send-code"
-                    : "/api/auth/phone/send-code"
-
-            const response = await fetch(endpoint, {
+            // 统一使用登录验证码 API（支持自动注册）
+            const response = await fetch("/api/auth/phone/send-code", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ phone }),
@@ -88,10 +88,6 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                 const code = result?.error ?? "UNKNOWN"
                 if (code === "INVALID_PHONE") {
                     setPhoneError(t("auth.error.invalidPhone"))
-                } else if (code === "USER_NOT_FOUND") {
-                    setPhoneError(t("auth.error.phoneNotRegistered"))
-                } else if (code === "PHONE_IN_USE") {
-                    setPhoneError(t("auth.error.phoneInUse"))
                 } else {
                     setPhoneError(t("auth.error.sendCodeFailed"))
                 }
@@ -116,8 +112,11 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
         e.preventDefault()
         const phone = phoneNumber.trim()
         const code = verificationCode.trim()
-        const name = userName.trim()
 
+        if (!agreedToTerms) {
+            setPhoneError(t("auth.error.mustAgreeToTerms"))
+            return
+        }
         if (!phone) {
             setPhoneError(t("auth.error.enterPhone"))
             return
@@ -135,68 +134,19 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
         setIsLoading("phone")
         setPhoneError(null)
         try {
-            if (phoneMode === "register") {
-                // 注册流程
-                const response = await fetch("/api/auth/phone/register", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        phone,
-                        code,
-                        name: name || undefined,
-                    }),
-                })
-                const result = await response.json().catch(() => null)
+            // 统一使用登录流程（支持自动注册）
+            const result = await signIn("phone", {
+                phone,
+                code,
+                redirect: false,
+                callbackUrl: "/",
+            })
 
-                if (!response.ok) {
-                    const errorCode = result?.error ?? "UNKNOWN"
-                    if (errorCode === "CODE_EXPIRED") {
-                        setPhoneError(t("auth.error.codeExpired"))
-                    } else if (errorCode === "CODE_INVALID") {
-                        setPhoneError(t("auth.error.codeInvalid"))
-                    } else if (errorCode === "CODE_USED") {
-                        setPhoneError(t("auth.error.codeUsed"))
-                    } else if (errorCode === "PHONE_IN_USE") {
-                        setPhoneError(t("auth.error.phoneInUse"))
-                    } else {
-                        setPhoneError(t("auth.error.registrationFailed"))
-                    }
-                    setIsLoading(null)
-                    return
-                }
-
-                // 注册成功，自动登录
-                const loginResult = await signIn("phone", {
-                    phone,
-                    code,
-                    redirect: false,
-                    callbackUrl: "/",
-                })
-
-                if (loginResult?.ok) {
-                    window.location.href = loginResult.url ?? "/"
-                } else {
-                    // 注册成功但自动登录失败，提示用户手动登录
-                    setCodeMessage(t("auth.phone.registrationSuccess"))
-                    setPhoneMode("login")
-                    setVerificationCode("")
-                    setIsLoading(null)
-                }
+            if (result?.ok) {
+                window.location.href = result.url ?? "/"
             } else {
-                // 登录流程
-                const result = await signIn("phone", {
-                    phone,
-                    code,
-                    redirect: false,
-                    callbackUrl: "/",
-                })
-
-                if (result?.ok) {
-                    window.location.href = result.url ?? "/"
-                } else {
-                    setPhoneError(t("auth.error.codeInvalid"))
-                    setIsLoading(null)
-                }
+                setPhoneError(t("auth.error.codeInvalid"))
+                setIsLoading(null)
             }
         } catch (error) {
             console.error("[auth][phone][submit]", error)
@@ -285,6 +235,49 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                             </div>
                         )}
 
+                        {/* Agreement checkbox */}
+                        <div className="flex items-start space-x-2">
+                            <Checkbox
+                                id="terms-oauth"
+                                checked={agreedToTerms}
+                                onCheckedChange={(checked) =>
+                                    setAgreedToTerms(checked === true)
+                                }
+                            />
+                            <label
+                                htmlFor="terms-oauth"
+                                className="text-sm text-muted-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                                {t("auth.dialog.byContining")}{" "}
+                                <a
+                                    href="/terms"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline hover:text-foreground transition-colors"
+                                >
+                                    {t("auth.dialog.terms")}
+                                </a>{" "}
+                                {t("auth.dialog.and")}{" "}
+                                <a
+                                    href="/privacy"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline hover:text-foreground transition-colors"
+                                >
+                                    {t("auth.dialog.privacy")}
+                                </a>
+                            </label>
+                        </div>
+
+                        {/* Error message for terms */}
+                        {phoneError && (
+                            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                                <p className="text-sm text-destructive text-center">
+                                    {phoneError}
+                                </p>
+                            </div>
+                        )}
+
                         {/* Sign in buttons */}
                         <div className="space-y-3">
                             <Button
@@ -337,80 +330,13 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                 </span>
                             </div>
                         </div>
-
-                        {/* Footer */}
-                        <div className="text-center text-sm text-muted-foreground">
-                            <p>
-                                {t("auth.dialog.byContining")}{" "}
-                                <a
-                                    href="/terms"
-                                    className="underline hover:text-foreground transition-colors"
-                                >
-                                    {t("auth.dialog.terms")}
-                                </a>{" "}
-                                {t("auth.dialog.and")}{" "}
-                                <a
-                                    href="/privacy"
-                                    className="underline hover:text-foreground transition-colors"
-                                >
-                                    {t("auth.dialog.privacy")}
-                                </a>
-                            </p>
-                        </div>
                     </TabsContent>
 
                     <TabsContent value="phone" className="space-y-4">
-                        {/* 登录/注册切换 */}
-                        <div className="flex items-center justify-center gap-2 text-sm">
-                            <button
-                                type="button"
-                                onClick={() => setPhoneMode("login")}
-                                className={`px-3 py-1 rounded-md transition-colors ${
-                                    phoneMode === "login"
-                                        ? "bg-primary text-primary-foreground"
-                                        : "text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                {t("auth.phone.signIn")}
-                            </button>
-                            <span className="text-muted-foreground">|</span>
-                            <button
-                                type="button"
-                                onClick={() => setPhoneMode("register")}
-                                className={`px-3 py-1 rounded-md transition-colors ${
-                                    phoneMode === "register"
-                                        ? "bg-primary text-primary-foreground"
-                                        : "text-muted-foreground hover:text-foreground"
-                                }`}
-                            >
-                                {t("auth.phone.signUp")}
-                            </button>
-                        </div>
-
                         <form
                             onSubmit={handlePhoneSubmit}
                             className="space-y-4"
                         >
-                            {phoneMode === "register" && (
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">
-                                        {t("auth.phone.name")}{" "}
-                                        <span className="text-muted-foreground text-xs">
-                                            {t("auth.phone.optional")}
-                                        </span>
-                                    </Label>
-                                    <Input
-                                        id="name"
-                                        type="text"
-                                        value={userName}
-                                        onChange={(e) =>
-                                            setUserName(e.target.value)
-                                        }
-                                        placeholder={t("auth.phone.yourName")}
-                                        autoComplete="name"
-                                    />
-                                </div>
-                            )}
                             <div className="space-y-2">
                                 <Label htmlFor="phone">
                                     {t("auth.phone.phoneNumber")}
@@ -473,40 +399,48 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                     {phoneError}
                                 </p>
                             )}
+                            <div className="flex items-start space-x-2">
+                                <Checkbox
+                                    id="terms-phone"
+                                    checked={agreedToTerms}
+                                    onCheckedChange={(checked) =>
+                                        setAgreedToTerms(checked === true)
+                                    }
+                                />
+                                <label
+                                    htmlFor="terms-phone"
+                                    className="text-sm text-muted-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                >
+                                    {t("auth.dialog.byContining")}{" "}
+                                    <a
+                                        href="/terms"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline hover:text-foreground transition-colors"
+                                    >
+                                        {t("auth.dialog.terms")}
+                                    </a>{" "}
+                                    {t("auth.dialog.and")}{" "}
+                                    <a
+                                        href="/privacy"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline hover:text-foreground transition-colors"
+                                    >
+                                        {t("auth.dialog.privacy")}
+                                    </a>
+                                </label>
+                            </div>
                             <Button
                                 type="submit"
                                 className="w-full h-12"
                                 disabled={isLoading === "phone"}
                             >
                                 {isLoading === "phone"
-                                    ? phoneMode === "register"
-                                        ? t("auth.phone.signingUp")
-                                        : t("auth.phone.signingIn")
-                                    : phoneMode === "register"
-                                      ? t("auth.phone.signUp")
-                                      : t("auth.phone.signIn")}
+                                    ? t("auth.phone.signingIn")
+                                    : t("auth.phone.signIn")}
                             </Button>
                         </form>
-
-                        {/* Footer */}
-                        <div className="text-center text-sm text-muted-foreground">
-                            <p>
-                                {t("auth.dialog.byContining")}{" "}
-                                <a
-                                    href="/terms"
-                                    className="underline hover:text-foreground transition-colors"
-                                >
-                                    {t("auth.dialog.terms")}
-                                </a>{" "}
-                                {t("auth.dialog.and")}{" "}
-                                <a
-                                    href="/privacy"
-                                    className="underline hover:text-foreground transition-colors"
-                                >
-                                    {t("auth.dialog.privacy")}
-                                </a>
-                            </p>
-                        </div>
                     </TabsContent>
                 </Tabs>
             </DialogContent>

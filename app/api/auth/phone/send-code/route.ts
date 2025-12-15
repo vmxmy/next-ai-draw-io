@@ -31,19 +31,7 @@ export async function POST(request: Request) {
             )
         }
 
-        // 检查用户是否存在（手机登录时需要已注册的用户）
-        const user = await db.user.findUnique({
-            where: { phone: normalized },
-            select: { id: true },
-        })
-
-        if (!user) {
-            return NextResponse.json(
-                { error: "USER_NOT_FOUND" },
-                { status: 404 },
-            )
-        }
-
+        // 统一发送验证码，不检查用户是否存在（支持自动注册）
         const { code, resendAvailableAt } = await sendPhoneLoginCode(normalized)
 
         return NextResponse.json({

@@ -291,6 +291,16 @@ export type I18nKey =
     | "files.reading"
     | "files.chars"
     | "files.previewAlt"
+    | "conversationLimit.title"
+    | "conversationLimit.description"
+    | "conversationLimit.message"
+    | "conversationLimit.options"
+    | "conversationLimit.option1"
+    | "conversationLimit.option2"
+    | "conversationLimit.deleteButton"
+    | "conversationLimit.registerButton"
+    | "auth.dialog.agreeToTerms"
+    | "auth.error.mustAgreeToTerms"
 
 const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
     en: {
@@ -613,6 +623,22 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "files.reading": "Reading...",
         "files.chars": "{count} chars",
         "files.previewAlt": "Full size preview of uploaded diagram or image",
+        "conversationLimit.title": "Conversation Limit Reached",
+        "conversationLimit.description":
+            "You've reached the maximum number of conversations for anonymous users.",
+        "conversationLimit.message":
+            "Anonymous users can only create up to 3 conversations. Please choose an option:",
+        "conversationLimit.options": "Your options:",
+        "conversationLimit.option1":
+            "Delete the oldest conversation to continue",
+        "conversationLimit.option2":
+            "Register an account to get 20 conversations and cloud sync",
+        "conversationLimit.deleteButton": "Delete oldest",
+        "conversationLimit.registerButton": "Register account",
+        "auth.dialog.agreeToTerms":
+            "I agree to the Terms of Service and Privacy Policy",
+        "auth.error.mustAgreeToTerms":
+            "You must agree to the Terms of Service and Privacy Policy to continue",
     },
     "zh-CN": {
         "tool.generate": "生成图表",
@@ -911,6 +937,18 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "files.reading": "读取中…",
         "files.chars": "{count} 字符",
         "files.previewAlt": "上传的图表或图片的全尺寸预览",
+        "conversationLimit.title": "会话数量已达上限",
+        "conversationLimit.description":
+            "您已达到匿名用户可创建的会话数量上限。",
+        "conversationLimit.message":
+            "匿名用户最多只能创建 3 个会话，请选择一个选项：",
+        "conversationLimit.options": "您的选择：",
+        "conversationLimit.option1": "删除最旧的会话以继续",
+        "conversationLimit.option2": "注册账户获得 20 个会话额度和云端同步",
+        "conversationLimit.deleteButton": "删除最旧会话",
+        "conversationLimit.registerButton": "注册账户",
+        "auth.dialog.agreeToTerms": "我同意服务条款和隐私政策",
+        "auth.error.mustAgreeToTerms": "您必须同意服务条款和隐私政策才能继续",
     },
 }
 
