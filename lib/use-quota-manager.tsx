@@ -50,7 +50,7 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
     config: QuotaConfig | null
     usage: QuotaUsage
 } {
-    const { data: session } = useSession()
+    const { data: session, status } = useSession()
     const [config, setConfig] = useState<QuotaConfig | null>(
         fallbackConfig || null,
     )
@@ -62,20 +62,20 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
 
     // 登录用户：从 tRPC 获取等级配置
     const { data: tierData } = api.tierConfig.getUserTier.useQuery(undefined, {
-        enabled: !!session?.user,
+        enabled: status === "authenticated",
         refetchInterval: 60_000, // 每分钟刷新
     })
 
     // 登录用户：从 tRPC 获取配额使用情况
     const { data: usageData, refetch: refetchUsage } =
         api.tierConfig.getUserQuotaUsage.useQuery(undefined, {
-            enabled: !!session?.user,
+            enabled: status === "authenticated",
             refetchInterval: 10_000, // 每 10 秒刷新
         })
 
     // 匿名用户：从 /api/config 获取配额配置
     useEffect(() => {
-        if (session?.user) return // 登录用户跳过
+        if (status !== "unauthenticated") return // 只在确认未登录时执行
 
         fetch("/api/config")
             .then((res) => res.json())
@@ -91,7 +91,7 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
                     setConfig(fallbackConfig)
                 }
             })
-    }, [session])
+    }, [status])
 
     // 登录用户：从 tRPC 数据更新 config 和 usage
     useEffect(() => {
