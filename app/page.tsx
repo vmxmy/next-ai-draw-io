@@ -1,7 +1,7 @@
 "use client"
 import { Download } from "lucide-react"
 import { useSession } from "next-auth/react"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { DrawIoEmbed } from "react-drawio"
 import type { ImperativePanelHandle } from "react-resizable-panels"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
@@ -115,7 +115,7 @@ export default function Home() {
         return () => window.removeEventListener("resize", checkMobile)
     }, [])
 
-    const toggleChatPanel = () => {
+    const toggleChatPanel = useCallback(() => {
         const panel = chatPanelRef.current
         if (panel) {
             if (panel.isCollapsed()) {
@@ -126,7 +126,7 @@ export default function Home() {
                 setIsChatVisible(false)
             }
         }
-    }
+    }, [])
 
     // Keyboard shortcut for toggling chat panel
     useEffect(() => {
@@ -139,7 +139,7 @@ export default function Home() {
 
         window.addEventListener("keydown", handleKeyDown)
         return () => window.removeEventListener("keydown", handleKeyDown)
-    }, [])
+    }, [toggleChatPanel])
 
     // Show confirmation dialog when user tries to leave the page
     useEffect(() => {

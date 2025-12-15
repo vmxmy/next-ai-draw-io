@@ -8,7 +8,27 @@ import superjson from "superjson"
 import { api } from "@/lib/trpc/client"
 
 export function TRPCReactProvider({ children }: { children: React.ReactNode }) {
-    const [queryClient] = useState(() => new QueryClient())
+    const [queryClient] = useState(
+        () =>
+            new QueryClient({
+                defaultOptions: {
+                    queries: {
+                        staleTime: 60 * 1000, // 1分钟缓存
+                        gcTime: 5 * 60 * 1000, // 5分钟垃圾回收
+                        refetchOnWindowFocus: true, // 窗口聚焦时重新验证
+                        refetchOnReconnect: true, // 网络重连时重新验证
+                        retry: 3, // 失败重试3次
+                        retryDelay: (attemptIndex) =>
+                            Math.min(1000 * 2 ** attemptIndex, 30000), // 指数退避
+                        networkMode: "online", // 强制在线模式（关键）
+                    },
+                    mutations: {
+                        networkMode: "online", // Mutation 也强制在线
+                        retry: 1, // Mutation 重试1次
+                    },
+                },
+            }),
+    )
     const [trpcClient] = useState(() =>
         api.createClient({
             links: [
@@ -26,10 +46,10 @@ export function TRPCReactProvider({ children }: { children: React.ReactNode }) {
     )
 
     return (
-        <api.Provider client={trpcClient} queryClient={queryClient}>
-            <QueryClientProvider client={queryClient}>
+        <QueryClientProvider client={queryClient}>
+            <api.Provider client={trpcClient} queryClient={queryClient}>
                 {children}
-            </QueryClientProvider>
-        </api.Provider>
+            </api.Provider>
+        </QueryClientProvider>
     )
 }

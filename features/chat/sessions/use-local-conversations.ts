@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import type { ChatMessage } from "@/features/chat/ai/types"
-import { getCacheQuota } from "@/features/chat/sessions/cache-manager"
 import {
     readConversationMetasFromStorage,
     readConversationPayloadFromStorage,
@@ -688,11 +687,11 @@ export function useLocalConversations({
 
     const handleNewChat = useCallback(
         (options?: { keepDiagram?: boolean }): boolean => {
-            // 检查匿名用户配额限制
+            // 检查匿名用户配额限制（硬编码为3个会话）
             const isAnonymous = userId === "anonymous"
             if (isAnonymous) {
-                const quota = getCacheQuota(false)
-                if (conversations.length >= quota) {
+                const ANONYMOUS_QUOTA = 3
+                if (conversations.length >= ANONYMOUS_QUOTA) {
                     // 超过限制，返回 false
                     return false
                 }

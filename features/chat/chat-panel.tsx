@@ -25,8 +25,9 @@ import {
     hasToolErrors,
 } from "@/features/chat/ai/tool-errors"
 import type { ChatMessage } from "@/features/chat/ai/types"
+import { useCloudConversations } from "@/features/chat/sessions/use-cloud-conversations"
 import { useLocalConversations } from "@/features/chat/sessions/use-local-conversations"
-import { useConversationSync } from "@/features/chat/sync/use-conversation-sync"
+import { useOfflineDetector } from "@/features/chat/sessions/use-offline-detector"
 import { ChatHeader } from "@/features/chat/ui/chat-header"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
@@ -237,15 +238,6 @@ export default function ChatPanel({
     const { data: authSession, status: authStatus } = useSession()
 
     const currentConversationIdRef = useRef("")
-    const queuePushConversationRef = useRef<
-        (id: string, opts?: { immediate?: boolean; deleted?: boolean }) => void
-    >(() => {})
-    const queuePushConversation = useCallback(
-        (id: string, opts?: { immediate?: boolean; deleted?: boolean }) => {
-            queuePushConversationRef.current?.(id, opts)
-        },
-        [],
-    )
 
     const {
         messages,
@@ -522,13 +514,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 }
             }
 
-            // 自动同步：消息生成完成后尽快 push（比 messages 变更更“稳定”）
-            const conversationId = currentConversationIdRef.current
-            if (conversationId) {
-                queuePushConversation(conversationId, {
-                    immediate: true,
-                })
-            }
+            // 云端模式通过防抖自动保存，本地模式通过 useLocalConversations 自动保存
 
             activeRequestIdRef.current = null
         },
@@ -731,34 +717,16 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         [handleFileChange],
     )
 
-    const {
-        conversations,
-        setConversations,
-        currentConversationId,
-        setCurrentConversationId,
-        sessionId,
-        hasRestored,
-        getConversationDisplayTitle,
-        loadConversation,
-        persistCurrentConversation,
-        handleNewChat,
-        handleSelectConversation,
-        handleDeleteConversation,
-        diagramVersions,
-        diagramVersionCursor,
-        canUndo,
-        canRedo,
-        undoDiagram,
-        redoDiagram,
-        restoreDiagramVersionIndex,
-        ensureDiagramVersionForMessage,
-        appendDiagramVersion,
-        getDiagramXmlForMessage,
-        getDiagramVersionIndexForMessage,
-        getPreviousDiagramXmlBeforeMessage,
-        truncateDiagramVersionsAfterMessage,
-    } = useLocalConversations({
-        userId: authSession?.user?.id || "anonymous",
+    // 离线检测
+    const { isOnline } = useOfflineDetector()
+
+    // 判断是否为登录用户
+    const isAuthenticated = authStatus === "authenticated"
+    const userId = authSession?.user?.id || "anonymous"
+
+    // 云端会话管理（仅登录用户）
+    const cloudHook = useCloudConversations({
+        userId,
         locale,
         t,
         isDrawioReady,
@@ -774,32 +742,96 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         setMessages,
         messagesRef,
         resetFiles,
-        queuePushConversation,
+        stopCurrentRequest,
+    })
+
+    // 本地会话管理（仅匿名用户）
+    // 匿名用户不需要云端同步，使用稳定的空函数
+    const noop = useCallback(() => {}, [])
+    const localHook = useLocalConversations({
+        userId: "anonymous",
+        locale,
+        t,
+        isDrawioReady,
+        onDisplayChart,
+        clearDiagram,
+        chartXML,
+        chartXMLRef,
+        messages,
+        processedToolCallsRef,
+        autoRetryCountRef,
+        editFailureCountRef,
+        forceDisplayNextRef,
+        setMessages,
+        messagesRef,
+        resetFiles,
+        queuePushConversation: noop, // 匿名用户不需要同步
         stopCurrentRequest,
         persistUploadedFiles,
     })
 
+    // 根据认证状态自动选择 Hook
     const {
-        isOnline,
-        syncInFlightCount,
-        lastSyncOkAt,
-        lastSyncErrorAt,
-        pullOnce,
-        queuePushConversation: syncQueuePushConversation,
-    } = useConversationSync({
-        authStatus,
-        userId: authSession?.user?.id,
-        hasRestored,
         conversations,
-        currentConversationId,
         setConversations,
+        currentConversationId,
         setCurrentConversationId,
+        sessionId,
+        hasRestored,
+        getConversationDisplayTitle,
         loadConversation,
-    })
+        persistCurrentConversation,
+        handleNewChat: _handleNewChat,
+        handleSelectConversation: _handleSelectConversation,
+        handleDeleteConversation: _handleDeleteConversation,
+        diagramVersions,
+        diagramVersionCursor,
+        canUndo,
+        canRedo,
+        undoDiagram,
+        redoDiagram,
+        restoreDiagramVersionIndex,
+        ensureDiagramVersionForMessage,
+        appendDiagramVersion,
+        getDiagramXmlForMessage,
+        getDiagramVersionIndexForMessage,
+        getPreviousDiagramXmlBeforeMessage,
+        truncateDiagramVersionsAfterMessage,
+    } = isAuthenticated ? cloudHook : localHook
 
-    useEffect(() => {
-        queuePushConversationRef.current = syncQueuePushConversation
-    }, [syncQueuePushConversation])
+    // 离线拦截（仅登录用户）
+    const handleNewChat = useCallback(
+        (options?: { keepDiagram?: boolean }) => {
+            if (isAuthenticated && !isOnline) {
+                toast.error("网络已断开，无法创建会话")
+                return false
+            }
+            return _handleNewChat(options)
+        },
+        [isAuthenticated, isOnline, _handleNewChat],
+    )
+
+    const handleSelectConversation = useCallback(
+        (id: string) => {
+            if (isAuthenticated && !isOnline) {
+                toast.error("网络已断开，无法切换会话")
+                return
+            }
+            _handleSelectConversation(id)
+        },
+        [isAuthenticated, isOnline, _handleSelectConversation],
+    )
+
+    const handleDeleteConversation = useCallback(
+        (id: string) => {
+            if (isAuthenticated && !isOnline) {
+                toast.error("网络已断开，无法删除会话")
+                return
+            }
+            _handleDeleteConversation(id)
+        },
+        [isAuthenticated, isOnline, _handleDeleteConversation],
+    )
 
     useEffect(() => {
         currentConversationIdRef.current = currentConversationId
@@ -1273,9 +1305,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 onProfileClick={() => setShowUserCenterDialog(true)}
                 showSync={authStatus === "authenticated"}
                 isOnline={isOnline}
-                syncInFlightCount={syncInFlightCount}
-                lastSyncOkAt={lastSyncOkAt}
-                lastSyncErrorAt={lastSyncErrorAt}
+                syncInFlightCount={0}
+                lastSyncOkAt={null}
+                lastSyncErrorAt={null}
                 syncOkLabel={t("sync.status.ok")}
                 syncOkAtLabel={(time: string) =>
                     t("sync.status.okAt", { time })
@@ -1284,7 +1316,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 syncOfflineLabel={t("sync.status.offline")}
                 syncErrorLabel={t("sync.status.error")}
                 locale={locale}
-                onSyncClick={() => void pullOnce()}
+                onSyncClick={noop}
                 conversations={conversations}
                 currentConversationId={currentConversationId}
                 getConversationDisplayTitle={getConversationDisplayTitle}

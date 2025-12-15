@@ -1,5 +1,6 @@
 import type { VariantProps } from "class-variance-authority"
 import type React from "react"
+import { memo } from "react"
 import { Button, type buttonVariants } from "@/components/ui/button"
 import {
     Tooltip,
@@ -15,33 +16,32 @@ interface ButtonWithTooltipProps
     asChild?: boolean
 }
 
-export function ButtonWithTooltip({
+export const ButtonWithTooltip = memo(function ButtonWithTooltip({
     tooltipContent,
     children,
     asChild = false,
     ...buttonProps
 }: ButtonWithTooltipProps) {
     const isDisabled = buttonProps.disabled === true
-    const trigger = isDisabled ? (
-        // Radix Tooltip 需要可接收 ref 的触发节点；禁用按钮无法触发 hover/focus，
-        // 因此仅在 disabled 场景下用外层 span 作为 trigger。
-        <span className="inline-flex outline-none" tabIndex={0}>
-            <Button {...buttonProps} asChild={false} tabIndex={-1}>
-                {children}
-            </Button>
-        </span>
-    ) : (
-        <Button {...buttonProps} asChild={asChild}>
-            {children}
-        </Button>
-    )
 
     return (
         <Tooltip>
-            <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+            <TooltipTrigger asChild>
+                {isDisabled ? (
+                    <span className="inline-flex outline-none" tabIndex={0}>
+                        <Button {...buttonProps} asChild={false} tabIndex={-1}>
+                            {children}
+                        </Button>
+                    </span>
+                ) : (
+                    <Button {...buttonProps} asChild={asChild}>
+                        {children}
+                    </Button>
+                )}
+            </TooltipTrigger>
             <TooltipContent className="max-w-xs text-wrap">
                 {tooltipContent}
             </TooltipContent>
         </Tooltip>
     )
-}
+})
