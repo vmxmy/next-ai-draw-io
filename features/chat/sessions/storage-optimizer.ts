@@ -1,4 +1,3 @@
-import LZString from "lz-string"
 import type { ConversationPayload } from "@/features/chat/sessions/storage"
 
 // 配置参数
@@ -6,61 +5,105 @@ const MAX_MESSAGES = 100 // 最多保留 100 条消息
 const MAX_SNAPSHOTS = 20 // 最多保留 20 个快照
 const MAX_DIAGRAM_VERSIONS = 50 // 最多保留 50 个图表版本
 const MAX_TOOL_RESULT_LENGTH = 5000 // 工具调用结果最大长度
+const MAX_ERROR_MESSAGE_LENGTH = 200 // 错误消息最大长度
 
-/**
- * 压缩 XML 数据
- */
-export function compressXML(xml: string): string {
-    if (!xml) return xml
-    try {
-        return LZString.compressToUTF16(xml)
-    } catch {
-        return xml // 压缩失败返回原始数据
-    }
+interface ErrorSummary {
+    type: string
+    location: string
+    message: string
 }
 
 /**
- * 解压 XML 数据
+ * Extract concise error summary from error text
  */
-export function decompressXML(compressed: string): string {
-    if (!compressed) return compressed
-    try {
-        const decompressed = LZString.decompressFromUTF16(compressed)
-        return decompressed || compressed // 如果解压失败，返回原始数据
-    } catch {
-        return compressed
-    }
-}
-
-/**
- * 智能解压：尝试解压，如果失败或结果无效则返回原值
- *
- * 逻辑：
- * 1. 如果字符串以 '<' 开头（明显是 XML），直接返回（未压缩）
- * 2. 尝试解压，如果成功且结果有效，返回解压结果
- * 3. 否则返回原值
- */
-export function smartDecompress(str: string): string {
-    if (!str) return str
-
-    // 快速检测：如果以 '<' 开头，很可能是未压缩的 XML
-    if (str.trimStart().startsWith("<")) {
-        return str
-    }
-
-    // 尝试解压
-    try {
-        const decompressed = LZString.decompressFromUTF16(str)
-        // 如果解压成功且结果非空且不同于原值，说明确实是压缩数据
-        if (decompressed && decompressed.length > 0 && decompressed !== str) {
-            return decompressed
+function extractErrorSummary(errorText: string): ErrorSummary {
+    if (!errorText) {
+        return {
+            type: "unknown",
+            location: "unknown",
+            message: "Error occurred",
         }
-    } catch {
-        // 解压失败，返回原值
     }
 
-    // 解压失败或结果无效，返回原值
-    return str
+    // Parse XML errors
+    const uncloseMatch = errorText.match(/unclosed tag:\s*(\w+)/i)
+    if (uncloseMatch) {
+        return {
+            type: "unclosed-tag",
+            location: uncloseMatch[1],
+            message: `Unclosed tag: ${uncloseMatch[1]}`,
+        }
+    }
+
+    const entityMatch = errorText.match(/undefined entity:\s*&(\w+)/i)
+    if (entityMatch) {
+        return {
+            type: "invalid-entity",
+            location: entityMatch[1],
+            message: `Invalid entity: &${entityMatch[1]}`,
+        }
+    }
+
+    const invalidCharMatch = errorText.match(
+        /invalid character|not well-formed/i,
+    )
+    if (invalidCharMatch) {
+        return {
+            type: "malformed-xml",
+            location: "unknown",
+            message: "XML is not well-formed",
+        }
+    }
+
+    // Generic error
+    return {
+        type: "generic",
+        location: "unknown",
+        message: errorText.slice(0, MAX_ERROR_MESSAGE_LENGTH),
+    }
+}
+
+/**
+ * Compress failed tool calls to save tokens
+ */
+function compressFailedToolCall(inv: any): any {
+    // Only compress failed tool calls
+    if (
+        inv.state !== "result" ||
+        !inv.result ||
+        typeof inv.result !== "string"
+    ) {
+        return inv
+    }
+
+    // Check if this is an error result (contains error indicators)
+    const isError =
+        inv.result.includes("Error") || inv.result.includes("Failed")
+    if (!isError) {
+        return inv
+    }
+
+    // Extract error summary
+    const errorSummary = extractErrorSummary(inv.result)
+
+    // Compress the tool call
+    return {
+        ...inv,
+        // Replace full input with summary if it's too large
+        args:
+            inv.args &&
+            typeof inv.args === "object" &&
+            JSON.stringify(inv.args).length > 1000
+                ? {
+                      summary:
+                          "[Failed XML - compressed for context management]",
+                      errorType: errorSummary.type,
+                      errorLocation: errorSummary.location,
+                  }
+                : inv.args,
+        // Compress error message
+        result: `${errorSummary.message}\n[Full error compressed - original length: ${inv.result.length} chars]`,
+    }
 }
 
 /**
@@ -72,17 +115,21 @@ function truncateToolResults(messages: any[]): any[] {
             return {
                 ...msg,
                 toolInvocations: msg.toolInvocations.map((inv: any) => {
+                    // First, try to compress failed tool calls
+                    const compressed = compressFailedToolCall(inv)
+
+                    // Then, truncate large successful results
                     if (
-                        inv.state === "result" &&
-                        typeof inv.result === "string" &&
-                        inv.result.length > MAX_TOOL_RESULT_LENGTH
+                        compressed.state === "result" &&
+                        typeof compressed.result === "string" &&
+                        compressed.result.length > MAX_TOOL_RESULT_LENGTH
                     ) {
                         return {
-                            ...inv,
-                            result: `${inv.result.slice(0, MAX_TOOL_RESULT_LENGTH)}...\n[输出过大已截断，原长度: ${inv.result.length} 字符]`,
+                            ...compressed,
+                            result: `${compressed.result.slice(0, MAX_TOOL_RESULT_LENGTH)}...\n[输出过大已截断，原长度: ${compressed.result.length} 字符]`,
                         }
                     }
-                    return inv
+                    return compressed
                 }),
             }
         }
@@ -91,7 +138,7 @@ function truncateToolResults(messages: any[]): any[] {
 }
 
 /**
- * 优化会话数据以减少存储空间
+ * 优化会话数据以减少存储空间（仅保留大小限制，不压缩）
  */
 export function optimizePayload(
     payload: ConversationPayload,
@@ -129,62 +176,7 @@ export function optimizePayload(
         )
     }
 
-    // 5. 压缩主 XML
-    if (optimized.xml) {
-        optimized.xml = compressXML(optimized.xml)
-    }
-
-    // 6. 压缩快照中的 XML
-    if (Array.isArray(optimized.snapshots)) {
-        optimized.snapshots = optimized.snapshots.map(([index, xml]) => [
-            index,
-            compressXML(xml),
-        ])
-    }
-
-    // 7. 压缩图表版本中的 XML
-    if (Array.isArray(optimized.diagramVersions)) {
-        optimized.diagramVersions = optimized.diagramVersions.map((ver) => ({
-            ...ver,
-            xml: compressXML(ver.xml),
-        }))
-    }
-
     return optimized
-}
-
-/**
- * 解压会话数据
- */
-export function deoptimizePayload(
-    payload: ConversationPayload,
-): ConversationPayload {
-    const deoptimized = { ...payload }
-
-    // 解压主 XML
-    if (deoptimized.xml) {
-        deoptimized.xml = smartDecompress(deoptimized.xml)
-    }
-
-    // 解压快照中的 XML
-    if (Array.isArray(deoptimized.snapshots)) {
-        deoptimized.snapshots = deoptimized.snapshots.map(([index, xml]) => [
-            index,
-            smartDecompress(xml),
-        ])
-    }
-
-    // 解压图表版本中的 XML
-    if (Array.isArray(deoptimized.diagramVersions)) {
-        deoptimized.diagramVersions = deoptimized.diagramVersions.map(
-            (ver) => ({
-                ...ver,
-                xml: smartDecompress(ver.xml),
-            }),
-        )
-    }
-
-    return deoptimized
 }
 
 /**

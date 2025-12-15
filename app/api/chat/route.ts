@@ -15,6 +15,7 @@ import {
     supportsPromptCaching,
 } from "@/lib/ai-providers"
 import { findCachedResponse } from "@/lib/cached-responses"
+import { expandFileReferences } from "@/lib/file-reference"
 import {
     getTelemetryConfig,
     setTraceInput,
@@ -31,6 +32,7 @@ import {
     EDIT_DIAGRAM_DESCRIPTION,
 } from "@/lib/tool-descriptions"
 import { analyzeDiagramXml } from "@/lib/xml-analyzer"
+import { generateXmlDiff } from "@/lib/xml-diff"
 import { buildDiagramSummary } from "@/lib/xml-summary"
 import { authOptions } from "@/server/auth"
 import {
@@ -635,8 +637,12 @@ When the current diagram XML is non-empty and the user requests incremental chan
 ${lastMessageText}
 """`
 
+    // Expand file references (fileId -> full content for last message)
+    // This allows us to store only fileId in localStorage/database
+    const expandedMessages = await expandFileReferences(messages)
+
     // Convert UIMessages to ModelMessages and add system message
-    const modelMessages = convertToModelMessages(messages)
+    const modelMessages = convertToModelMessages(expandedMessages as any)
 
     // Google（Gemini）工具调用的 thought signature 透传：
     // - API 返回的签名通常落在 part.providerMetadata.google.thoughtSignature
@@ -767,10 +773,10 @@ ${lastMessageText}
                   },
               ]
             : []),
-        // Cache breakpoint 2: Previous and Current diagram XML context
+        // Cache breakpoint 2: Current diagram XML context with optional diff summary
         {
             role: "system" as const,
-            content: `${previousXml ? `Previous diagram XML (before user's last message):\n"""xml\n${previousXml}\n"""\n\n` : ""}Current diagram XML (AUTHORITATIVE - the source of truth):\n"""xml\n${xml || ""}\n"""\n\nIMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on the canvas right now. The user can manually add, delete, or modify shapes directly in draw.io. Always count and describe elements based on the CURRENT XML, not on what you previously generated. If both previous and current XML are shown, compare them to understand what the user changed. When using edit_diagram, COPY search patterns exactly from the CURRENT XML - attribute order matters!`,
+            content: `${previousXml && xml ? `${generateXmlDiff(previousXml, xml)}\n\n` : ""}Current diagram XML (AUTHORITATIVE - the source of truth):\n"""xml\n${xml || ""}\n"""\n\nIMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on the canvas right now. The user can manually add, delete, or modify shapes directly in draw.io. Always count and describe elements based on the CURRENT XML, not on what you previously generated. When using edit_diagram, COPY search patterns exactly from the CURRENT XML - attribute order matters!`,
             ...(shouldCache && {
                 providerOptions: {
                     bedrock: { cachePoint: { type: "default" } },

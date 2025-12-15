@@ -13,6 +13,7 @@ import { AutoRetryLimitToast } from "@/components/auto-retry-limit-toast"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessageDisplay } from "@/components/chat-message-display"
+import { ConversationLimitDialog } from "@/components/conversation-limit-dialog"
 import { QuotaDialog } from "@/components/quota-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
 import { UserCenterDialog } from "@/components/user-center-dialog"
@@ -175,6 +176,8 @@ export default function ChatPanel({
     const [showAuthDialog, setShowAuthDialog] = useState(false)
     const [showUserCenterDialog, setShowUserCenterDialog] = useState(false)
     const [showQuotaDialog, setShowQuotaDialog] = useState(false)
+    const [showConversationLimitDialog, setShowConversationLimitDialog] =
+        useState(false)
     const [, setAccessCodeRequired] = useState(false)
     const [input, setInput] = useState("")
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
@@ -1008,18 +1011,44 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     userText += `\n\n[File: ${file.name}]\n${extracted.text}`
                 }
             } else if (imageParts) {
-                // Handle as image (only if imageParts array provided)
-                const reader = new FileReader()
-                const dataUrl = await new Promise<string>((resolve) => {
-                    reader.onload = () => resolve(reader.result as string)
-                    reader.readAsDataURL(file)
-                })
+                // Upload file to server and get fileId (new approach - saves tokens)
+                try {
+                    const formData = new FormData()
+                    formData.append("file", file)
 
-                imageParts.push({
-                    type: "file",
-                    url: dataUrl,
-                    mediaType: file.type,
-                })
+                    const response = await fetch("/api/files/upload", {
+                        method: "POST",
+                        body: formData,
+                    })
+
+                    if (!response.ok) {
+                        throw new Error("File upload failed")
+                    }
+
+                    const fileData = await response.json()
+
+                    imageParts.push({
+                        type: "file",
+                        fileId: fileData.fileId,
+                        fileName: fileData.fileName,
+                        fileType: fileData.fileType,
+                        summary: fileData.summary,
+                    })
+                } catch (error) {
+                    console.error("Failed to upload file:", error)
+                    // Fallback to data URL (backward compatibility)
+                    const reader = new FileReader()
+                    const dataUrl = await new Promise<string>((resolve) => {
+                        reader.onload = () => resolve(reader.result as string)
+                        reader.readAsDataURL(file)
+                    })
+
+                    imageParts.push({
+                        type: "file",
+                        url: dataUrl,
+                        mediaType: file.type,
+                    })
+                }
             }
         }
 
@@ -1227,7 +1256,12 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 noticeTooltip={isMobile ? "" : t("chat.header.noticeTooltip")}
                 onShowSettings={() => setShowSettingsDialog(true)}
                 newSessionTooltip={t("chat.header.newSessionTooltip")}
-                onNewSession={() => handleNewChat()}
+                onNewSession={() => {
+                    const success = handleNewChat()
+                    if (!success) {
+                        setShowConversationLimitDialog(true)
+                    }
+                }}
                 settingsTooltip={t("chat.header.settingsTooltip")}
                 hideTooltip={t("chat.header.hideTooltip")}
                 showTooltip={t("chat.header.showTooltip")}
@@ -1285,10 +1319,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     onSubmit={onFormSubmit}
                     onChange={handleInputChange}
                     onClearChat={({ clearDiagram }) => {
-                        if (clearDiagram) {
-                            handleNewChat()
-                        } else {
-                            handleNewChat({ keepDiagram: true })
+                        const success = clearDiagram
+                            ? handleNewChat()
+                            : handleNewChat({ keepDiagram: true })
+                        if (!success) {
+                            setShowConversationLimitDialog(true)
                         }
                     }}
                     onStop={stopCurrentRequest}
@@ -1327,6 +1362,25 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             <AuthDialog
                 open={showAuthDialog}
                 onOpenChange={setShowAuthDialog}
+            />
+
+            <ConversationLimitDialog
+                open={showConversationLimitDialog}
+                onOpenChange={setShowConversationLimitDialog}
+                onDeleteOldest={() => {
+                    // 删除最旧的会话
+                    const oldest = conversations.sort(
+                        (a, b) => a.updatedAt - b.updatedAt,
+                    )[0]
+                    if (oldest) {
+                        handleDeleteConversation(oldest.id)
+                        // 创建新会话
+                        handleNewChat()
+                    }
+                }}
+                onRegister={() => {
+                    setShowAuthDialog(true)
+                }}
             />
 
             <UserCenterDialog
