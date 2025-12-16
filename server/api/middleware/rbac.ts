@@ -8,43 +8,93 @@ const t = initTRPC
     .context<Awaited<ReturnType<typeof createTRPCContext>>>()
     .create()
 
+// 权限缓存配置
+const PERMISSION_CACHE_TTL_MS = 60_000 // 1 分钟缓存
+const PERMISSION_CACHE_MAX_SIZE = 1000 // 最多缓存 1000 个用户
+
+// 简单的 LRU 缓存实现
+interface CacheEntry {
+    permissions: string[]
+    expiresAt: number
+}
+
+const permissionCache = new Map<string, CacheEntry>()
+
+function getCachedPermissions(userId: string): string[] | null {
+    const entry = permissionCache.get(userId)
+    if (!entry) return null
+    if (Date.now() >= entry.expiresAt) {
+        permissionCache.delete(userId)
+        return null
+    }
+    return entry.permissions
+}
+
+function setCachedPermissions(userId: string, permissions: string[]): void {
+    // 简单的大小限制：超过最大值时清空缓存
+    if (permissionCache.size >= PERMISSION_CACHE_MAX_SIZE) {
+        permissionCache.clear()
+    }
+    permissionCache.set(userId, {
+        permissions,
+        expiresAt: Date.now() + PERMISSION_CACHE_TTL_MS,
+    })
+}
+
+/**
+ * 清除指定用户的权限缓存
+ * 在用户角色变更时调用
+ */
+export function invalidatePermissionCache(userId: string): void {
+    permissionCache.delete(userId)
+}
+
 /**
  * 检查用户是否拥有指定权限
+ * 使用缓存优化性能
  */
 async function checkUserPermission(
     db: PrismaClient,
     userId: string,
     permission: string,
 ): Promise<boolean> {
-    // 获取用户的所有角色和权限
-    const userRoles = await db.userRole.findMany({
-        where: { userId },
-        include: {
-            role: {
-                include: { permissions: true },
+    // 先检查缓存
+    let allPermissions = getCachedPermissions(userId)
+
+    if (!allPermissions) {
+        // 缓存未命中，从数据库获取
+        const userRoles = await db.userRole.findMany({
+            where: { userId },
+            include: {
+                role: {
+                    include: { permissions: true },
+                },
             },
-        },
-    })
+        })
+
+        // 收集所有权限
+        allPermissions = []
+        for (const ur of userRoles) {
+            for (const p of ur.role.permissions) {
+                allPermissions.push(p.name)
+            }
+        }
+
+        // 存入缓存
+        setCachedPermissions(userId, allPermissions)
+    }
 
     // 检查是否有超级管理员权限（通配符 "*"）
-    const hasSuperAdmin = userRoles.some((ur) =>
-        ur.role.permissions.some((p) => p.name === "*"),
-    )
-    if (hasSuperAdmin) return true
+    if (allPermissions.includes("*")) return true
 
     // 检查具体权限
-    const hasPermission = userRoles.some((ur) =>
-        ur.role.permissions.some((p) => {
-            // 精确匹配
-            if (p.name === permission) return true
-            // 资源级通配符，例如 "users:*" 匹配 "users:read"
-            const [resource] = permission.split(":")
-            if (p.name === `${resource}:*`) return true
-            return false
-        }),
-    )
+    if (allPermissions.includes(permission)) return true
 
-    return hasPermission
+    // 检查资源级通配符，例如 "users:*" 匹配 "users:read"
+    const [resource] = permission.split(":")
+    if (allPermissions.includes(`${resource}:*`)) return true
+
+    return false
 }
 
 /**
@@ -67,11 +117,17 @@ async function checkUserRole(
 
 /**
  * 获取用户的所有权限
+ * 使用缓存优化性能
  */
 export async function getUserPermissions(
     db: PrismaClient,
     userId: string,
 ): Promise<string[]> {
+    // 先检查缓存
+    const cached = getCachedPermissions(userId)
+    if (cached) return cached
+
+    // 缓存未命中，从数据库获取
     const userRoles = await db.userRole.findMany({
         where: { userId },
         include: {
@@ -88,7 +144,12 @@ export async function getUserPermissions(
         }
     }
 
-    return Array.from(permissions)
+    const result = Array.from(permissions)
+
+    // 存入缓存
+    setCachedPermissions(userId, result)
+
+    return result
 }
 
 /**

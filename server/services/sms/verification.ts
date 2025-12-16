@@ -2,9 +2,10 @@ import { createHash, randomInt } from "crypto"
 import { db } from "@/server/db"
 import { sendSmsBaoMessage } from "./smsbao"
 
-const CODE_LENGTH = 6
+const CODE_LENGTH = 8 // 8 位验证码，1 亿种组合，增强安全性
 const RESEND_WINDOW_SECONDS = 60
 const TTL_MINUTES = 10
+const MAX_VERIFICATION_ATTEMPTS = 5 // 最大验证尝试次数
 
 export const SMS_VERIFICATION_PURPOSES = {
     REGISTER_PHONE: "register_phone",
@@ -83,7 +84,15 @@ async function issueVerificationCode(
 
 export type VerifySmsCodeResult =
     | { ok: true }
-    | { ok: false; reason: "NOT_FOUND" | "EXPIRED" | "USED" | "INVALID" }
+    | {
+          ok: false
+          reason:
+              | "NOT_FOUND"
+              | "EXPIRED"
+              | "USED"
+              | "INVALID"
+              | "MAX_ATTEMPTS_EXCEEDED"
+      }
 
 export async function verifySmsCode(
     phone: string,
@@ -105,6 +114,11 @@ export async function verifySmsCode(
 
     if (record.expiresAt < new Date()) {
         return { ok: false, reason: "EXPIRED" }
+    }
+
+    // 检查尝试次数是否超限
+    if (record.attemptCount >= MAX_VERIFICATION_ATTEMPTS) {
+        return { ok: false, reason: "MAX_ATTEMPTS_EXCEEDED" }
     }
 
     if (hashCode(code) !== record.codeHash) {
