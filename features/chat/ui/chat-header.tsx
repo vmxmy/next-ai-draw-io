@@ -47,7 +47,6 @@ export function ChatHeader({
     conversations,
     currentConversationId,
     getConversationDisplayTitle,
-    sessionSwitcherPlaceholder,
     sessionListTitle,
     deleteLabel,
     onSelectConversation,
@@ -88,7 +87,6 @@ export function ChatHeader({
     conversations: ConversationMeta[]
     currentConversationId: string
     getConversationDisplayTitle: (id: string) => string
-    sessionSwitcherPlaceholder: string
     sessionListTitle: string
     deleteLabel: string
     onSelectConversation: (id: string) => void
@@ -147,7 +145,6 @@ export function ChatHeader({
                         }
                         locale={locale}
                         deleteLabel={deleteLabel}
-                        sessionSwitcherPlaceholder={sessionSwitcherPlaceholder}
                         sessionListTitle={sessionListTitle}
                         onSelectConversation={onSelectConversation}
                         onDeleteConversation={onDeleteConversation}
