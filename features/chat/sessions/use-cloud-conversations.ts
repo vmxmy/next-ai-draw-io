@@ -391,11 +391,57 @@ export function useCloudConversations({
         ],
     )
 
+    // 立即保存当前会话到云端（不防抖）
+    const flushSaveToCloud = useCallback(() => {
+        if (userId === "anonymous") return
+        if (!currentConversationId) return
+        if (isRestoringRef.current) return
+
+        const conversation = {
+            id: currentConversationId,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            payload: {
+                messages: messagesRef.current as any,
+                xml: chartXMLRef.current || "",
+                sessionId,
+                diagramVersions: diagramHistory.versionsRef.current,
+                diagramVersionCursor: diagramHistory.cursorRef.current,
+                diagramVersionMarks: diagramHistory.marksRef.current,
+            } as ConversationPayload,
+        }
+
+        // 立即保存，不防抖
+        pushMutateRef.current({
+            conversations: [conversation],
+        })
+
+        // 更新数据指纹，避免重复保存
+        const dataFingerprint = JSON.stringify({
+            messagesLength: (messagesRef.current as any[])?.length || 0,
+            xmlLength: (chartXMLRef.current || "").length,
+            sessionId,
+            versionsCount: diagramHistory.versionsRef.current.length,
+            cursor: diagramHistory.cursorRef.current,
+        })
+        lastSavedDataRef.current = dataFingerprint
+    }, [
+        userId,
+        currentConversationId,
+        sessionId,
+        chartXMLRef,
+        messagesRef,
+        diagramHistory.versionsRef,
+        diagramHistory.cursorRef,
+        diagramHistory.marksRef,
+    ])
+
     const handleSelectConversation = useCallback(
         (id: string) => {
             if (!id || id === currentConversationId) return
             try {
                 stopCurrentRequest?.()
+                flushSaveToCloud() // 切换前保存当前会话
                 setIsLoadingSwitch(true)
                 setCurrentConversationId(id)
             } catch (error) {
@@ -404,7 +450,7 @@ export function useCloudConversations({
                 setIsLoadingSwitch(false)
             }
         },
-        [currentConversationId, stopCurrentRequest, t],
+        [currentConversationId, stopCurrentRequest, t, flushSaveToCloud],
     )
 
     const handleDeleteConversation = useCallback(
