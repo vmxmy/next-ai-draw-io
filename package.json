@@ -52,6 +52,7 @@
         "@trpc/client": "^11.7.2",
         "@trpc/react-query": "^11.7.2",
         "@trpc/server": "^11.7.2",
+        "@vercel/analytics": "^1.6.1",
         "@xmldom/xmldom": "^0.9.8",
         "ai": "^5.0.89",
         "base-64": "^1.0.0",

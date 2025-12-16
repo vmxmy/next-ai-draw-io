@@ -1,4 +1,5 @@
 import { GoogleAnalytics } from "@next/third-parties/google"
+import { Analytics } from "@vercel/analytics/next"
 import type { Metadata, Viewport } from "next"
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google"
 import { Providers } from "@/app/providers"
@@ -116,6 +117,7 @@ export default function RootLayout({
                 className={`${plusJakarta.variable} ${jetbrainsMono.variable} antialiased`}
             >
                 <Providers>{children}</Providers>
+                <Analytics />
             </body>
             {process.env.NEXT_PUBLIC_GA_ID && (
                 <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
