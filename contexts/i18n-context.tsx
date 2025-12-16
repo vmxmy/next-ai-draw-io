@@ -283,6 +283,10 @@ export type I18nKey =
     | "chat.header.sessionSwitcher"
     | "chat.header.sessionList"
     | "chat.header.newSessionTooltip"
+    | "chat.session.edit"
+    | "chat.session.save"
+    | "chat.session.cancel"
+    | "chat.session.editPlaceholder"
     | "chat.tooltip.edit"
     | "chat.aria.input"
     | "files.removeFile"
@@ -616,6 +620,10 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.header.sessionSwitcher": "Switch session",
         "chat.header.sessionList": "Sessions",
         "chat.header.newSessionTooltip": "New session",
+        "chat.session.edit": "Edit session title",
+        "chat.session.save": "Save",
+        "chat.session.cancel": "Cancel",
+        "chat.session.editPlaceholder": "Enter session title",
         "chat.tooltip.edit": "Edit message",
         "chat.aria.input": "Chat input",
         "files.removeFile": "Remove file",
@@ -931,6 +939,10 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.header.sessionSwitcher": "切换会话",
         "chat.header.sessionList": "会话列表",
         "chat.header.newSessionTooltip": "新建会话",
+        "chat.session.edit": "编辑会话标题",
+        "chat.session.save": "保存",
+        "chat.session.cancel": "取消",
+        "chat.session.editPlaceholder": "输入会话标题",
         "chat.tooltip.edit": "编辑消息",
         "chat.aria.input": "聊天输入框",
         "files.removeFile": "移除文件",

@@ -49,8 +49,13 @@ export function ChatHeader({
     getConversationDisplayTitle,
     sessionListTitle,
     deleteLabel,
+    editLabel,
+    saveLabel,
+    cancelLabel,
+    editPlaceholder,
     onSelectConversation,
     onDeleteConversation,
+    onUpdateConversationTitle,
     isLoadingSwitch,
     quotaTooltip,
     onShowQuota,
@@ -89,8 +94,13 @@ export function ChatHeader({
     getConversationDisplayTitle: (id: string) => string
     sessionListTitle: string
     deleteLabel: string
+    editLabel: string
+    saveLabel: string
+    cancelLabel: string
+    editPlaceholder: string
     onSelectConversation: (id: string) => void
     onDeleteConversation: (id: string) => void
+    onUpdateConversationTitle: (id: string, title: string) => void
     isLoadingSwitch?: boolean
     quotaTooltip: string
     onShowQuota: () => void
@@ -145,9 +155,14 @@ export function ChatHeader({
                         }
                         locale={locale}
                         deleteLabel={deleteLabel}
+                        editLabel={editLabel}
+                        saveLabel={saveLabel}
+                        cancelLabel={cancelLabel}
+                        editPlaceholder={editPlaceholder}
                         sessionListTitle={sessionListTitle}
                         onSelectConversation={onSelectConversation}
                         onDeleteConversation={onDeleteConversation}
+                        onUpdateConversationTitle={onUpdateConversationTitle}
                         isLoadingSwitch={isLoadingSwitch}
                     />
 

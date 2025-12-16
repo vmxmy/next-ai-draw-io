@@ -834,6 +834,31 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         [isAuthenticated, isOnline, _handleDeleteConversation],
     )
 
+    // 更新会话标题
+    const handleUpdateConversationTitle = useCallback(
+        (id: string, title: string) => {
+            if (isAuthenticated && !isOnline) {
+                toast.error("网络已断开，无法更新会话")
+                return
+            }
+            // 更新本地会话列表中的标题
+            setConversations((prev) =>
+                prev.map((c) =>
+                    c.id === id ? { ...c, title, updatedAt: Date.now() } : c,
+                ),
+            )
+            // 触发持久化
+            persistCurrentConversation({ messages: messagesRef.current as any })
+        },
+        [
+            isAuthenticated,
+            isOnline,
+            setConversations,
+            persistCurrentConversation,
+            messagesRef,
+        ],
+    )
+
     // 删除最旧的会话（用于会话数量限制）
     const handleDeleteOldestConversation = useCallback(() => {
         const oldest = [...conversations].sort(
@@ -1384,8 +1409,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 getConversationDisplayTitle={getConversationDisplayTitle}
                 sessionListTitle={t("chat.header.sessionList")}
                 deleteLabel={t("settings.sessions.delete")}
+                editLabel={t("chat.session.edit")}
+                saveLabel={t("chat.session.save")}
+                cancelLabel={t("chat.session.cancel")}
+                editPlaceholder={t("chat.session.editPlaceholder")}
                 onSelectConversation={handleSelectConversation}
                 onDeleteConversation={handleDeleteConversation}
+                onUpdateConversationTitle={handleUpdateConversationTitle}
                 isLoadingSwitch={isLoadingSwitch}
                 quotaTooltip={t("chat.header.quotaTooltip")}
                 onShowQuota={() => setShowQuotaDialog(true)}
