@@ -25,6 +25,7 @@ import {
     hasToolErrors,
 } from "@/features/chat/ai/tool-errors"
 import type { ChatMessage } from "@/features/chat/ai/types"
+import { writeConversationMetasToStorage } from "@/features/chat/sessions/local-storage"
 import { useCloudConversations } from "@/features/chat/sessions/use-cloud-conversations"
 import { useLocalConversations } from "@/features/chat/sessions/use-local-conversations"
 import { useOfflineDetector } from "@/features/chat/sessions/use-offline-detector"
@@ -841,18 +842,21 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 toast.error("网络已断开，无法更新会话")
                 return
             }
-            // 更新本地会话列表中的标题
-            setConversations((prev) =>
-                prev.map((c) =>
-                    c.id === id ? { ...c, title, updatedAt: Date.now() } : c,
-                ),
+            // 更新本地会话列表中的标题并保存到存储
+            const updatedMetas = conversations.map((c) =>
+                c.id === id ? { ...c, title, updatedAt: Date.now() } : c,
             )
-            // 触发持久化
+            setConversations(updatedMetas)
+            // 保存到 localStorage
+            writeConversationMetasToStorage(userId, updatedMetas)
+            // 触发持久化（云端同步）
             persistCurrentConversation({ messages: messagesRef.current as any })
         },
         [
             isAuthenticated,
             isOnline,
+            conversations,
+            userId,
             setConversations,
             persistCurrentConversation,
             messagesRef,
