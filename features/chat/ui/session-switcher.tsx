@@ -1,14 +1,9 @@
 "use client"
 
 import * as SelectPrimitive from "@radix-ui/react-select"
-import { Trash2 } from "lucide-react"
+import { Loader2, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
-import {
-    Select,
-    SelectContent,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectTrigger } from "@/components/ui/select"
 import type { ConversationMeta } from "@/features/chat/sessions/storage"
 
 export function SessionSwitcher({
@@ -21,6 +16,7 @@ export function SessionSwitcher({
     sessionSwitcherPlaceholder,
     onSelectConversation,
     onDeleteConversation,
+    isLoadingSwitch,
 }: {
     isMobile: boolean
     conversations: ConversationMeta[]
@@ -31,6 +27,7 @@ export function SessionSwitcher({
     sessionSwitcherPlaceholder: string
     onSelectConversation: (id: string) => void
     onDeleteConversation: (id: string) => void
+    isLoadingSwitch?: boolean
 }) {
     const [mounted, setMounted] = useState(false)
 
@@ -45,15 +42,25 @@ export function SessionSwitcher({
             <Select
                 value={currentConversationId}
                 onValueChange={onSelectConversation}
+                disabled={isLoadingSwitch}
             >
                 <SelectTrigger className="h-8 w-[160px]">
-                    <SelectValue placeholder={sessionSwitcherPlaceholder}>
-                        {currentConversationId
-                            ? getConversationDisplayTitle(currentConversationId)
-                            : undefined}
-                    </SelectValue>
+                    {isLoadingSwitch ? (
+                        <div className="flex items-center gap-2">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Loading...</span>
+                        </div>
+                    ) : (
+                        <span className="truncate">
+                            {currentConversationId
+                                ? getConversationDisplayTitle(
+                                      currentConversationId,
+                                  )
+                                : sessionSwitcherPlaceholder}
+                        </span>
+                    )}
                 </SelectTrigger>
-                <SelectContent key={currentConversationId || "none"}>
+                <SelectContent>
                     {conversations.map((c) => {
                         const displayTitle = getConversationDisplayTitle(c.id)
                         const time = new Date(

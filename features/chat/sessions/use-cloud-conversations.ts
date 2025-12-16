@@ -3,7 +3,6 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import type { ChatMessage } from "@/features/chat/ai/types"
 import type {
     ConversationMeta,
     ConversationPayload,
@@ -14,6 +13,11 @@ import {
     createSessionId,
 } from "@/features/chat/sessions/storage"
 import { api } from "@/lib/trpc/client"
+import {
+    deriveConversationTitle,
+    useConversationTitles,
+    useDiagramVersionHistory,
+} from "./hooks"
 
 // 防抖函数
 function debounce<T extends (...args: any[]) => any>(
@@ -73,13 +77,11 @@ export function useCloudConversations({
 
     const pendingDiagramXmlRef = useRef<string | null>(null)
 
-    // 图表版本管理
-    const diagramVersionsRef = useRef<DiagramVersion[]>([])
-    const diagramVersionCursorRef = useRef<number>(-1)
-    const diagramVersionMarksRef = useRef<Record<number, number>>({})
-
-    const [diagramVersions, setDiagramVersions] = useState<DiagramVersion[]>([])
-    const [diagramVersionCursor, setDiagramVersionCursor] = useState<number>(-1)
+    // 使用共享的图表版本管理 hook
+    const diagramHistory = useDiagramVersionHistory({
+        onDisplayChart,
+        chartXMLRef,
+    })
 
     // 查询会话列表
     const { data: conversationsData, isLoading: isLoadingList } =
@@ -104,19 +106,29 @@ export function useCloudConversations({
         [conversationsData],
     )
 
+    // 使用共享的会话标题 hook
+    const { getConversationDisplayTitle } = useConversationTitles({
+        conversations,
+        locale,
+    })
+
+    // 切换会话时的 loading 状态
+    const [isLoadingSwitch, setIsLoadingSwitch] = useState(false)
+
     // 查询当前会话详情
-    const { data: currentPayloadData } = api.conversation.getById.useQuery(
-        { id: currentConversationId || "skip" }, // 避免传入空字符串
-        {
-            enabled:
-                !!currentConversationId &&
-                currentConversationId.length > 0 &&
-                userId !== "anonymous",
-            staleTime: 30_000, // 30秒缓存
-            refetchOnWindowFocus: false, // 禁止窗口聚焦时重新获取
-            refetchOnReconnect: false, // 禁止网络重连时重新获取
-        },
-    )
+    const { data: currentPayloadData, isFetching: isFetchingPayload } =
+        api.conversation.getById.useQuery(
+            { id: currentConversationId || "skip" }, // 避免传入空字符串
+            {
+                enabled:
+                    !!currentConversationId &&
+                    currentConversationId.length > 0 &&
+                    userId !== "anonymous",
+                staleTime: 30_000, // 30秒缓存
+                refetchOnWindowFocus: false, // 禁止窗口聚焦时重新获取
+                refetchOnReconnect: false, // 禁止网络重连时重新获取
+            },
+        )
 
     // 创建会话 mutation
     // 注意：不在 onSuccess 中刷新查询，避免与自动保存形成循环
@@ -128,6 +140,13 @@ export function useCloudConversations({
     useEffect(() => {
         pushMutateRef.current = pushMutation.mutate
     }, [pushMutation.mutate])
+
+    // 监听数据加载状态，关闭 loading
+    useEffect(() => {
+        if (!isFetchingPayload && isLoadingSwitch) {
+            setIsLoadingSwitch(false)
+        }
+    }, [isFetchingPayload, isLoadingSwitch])
 
     // 应用会话数据到 UI
     useEffect(() => {
@@ -147,7 +166,7 @@ export function useCloudConversations({
         editFailureCountRef.current = 0
         forceDisplayNextRef.current = false
 
-        // 恢复图表版本
+        // 恢复图表版本（使用共享 hook）
         const versions = Array.isArray(payload.diagramVersions)
             ? (payload.diagramVersions as DiagramVersion[])
             : []
@@ -161,14 +180,7 @@ export function useCloudConversations({
                 ? (payload.diagramVersionMarks as Record<number, number>)
                 : {}
 
-        diagramVersionsRef.current = versions
-        diagramVersionCursorRef.current = Math.min(
-            Math.max(cursor, -1),
-            versions.length - 1,
-        )
-        diagramVersionMarksRef.current = marks
-        setDiagramVersions(versions)
-        setDiagramVersionCursor(diagramVersionCursorRef.current)
+        diagramHistory.restoreState({ versions, cursor, marks })
 
         // 恢复图表 XML
         if (payload.xml) {
@@ -189,7 +201,7 @@ export function useCloudConversations({
             xmlLength: (payload.xml || "").length,
             sessionId: payload.sessionId || createSessionId(),
             versionsCount: versions.length,
-            cursor: diagramVersionCursorRef.current,
+            cursor: diagramHistory.cursorRef.current,
         })
         lastSavedDataRef.current = dataFingerprint
 
@@ -208,6 +220,7 @@ export function useCloudConversations({
         autoRetryCountRef,
         editFailureCountRef,
         forceDisplayNextRef,
+        diagramHistory.restoreState,
     ])
 
     // 防抖保存到云端（使用 ref 避免依赖不稳定导致的无限循环）
@@ -247,8 +260,8 @@ export function useCloudConversations({
             messagesLength: (messagesRef.current as any[])?.length || 0,
             xmlLength: (chartXMLRef.current || "").length,
             sessionId,
-            versionsCount: diagramVersionsRef.current.length,
-            cursor: diagramVersionCursorRef.current,
+            versionsCount: diagramHistory.versionsRef.current.length,
+            cursor: diagramHistory.cursorRef.current,
         })
 
         // 如果数据没有实际变化，跳过保存
@@ -265,9 +278,9 @@ export function useCloudConversations({
                 messages: messagesRef.current as any,
                 xml: chartXMLRef.current || "",
                 sessionId,
-                diagramVersions: diagramVersionsRef.current,
-                diagramVersionCursor: diagramVersionCursorRef.current,
-                diagramVersionMarks: diagramVersionMarksRef.current,
+                diagramVersions: diagramHistory.versionsRef.current,
+                diagramVersionCursor: diagramHistory.cursorRef.current,
+                diagramVersionMarks: diagramHistory.marksRef.current,
             } as ConversationPayload,
         }
 
@@ -279,31 +292,9 @@ export function useCloudConversations({
         sessionId,
         debouncedSave,
         userId,
+        diagramHistory.versions,
+        diagramHistory.cursor,
     ])
-
-    const deriveConversationTitle = useCallback((msgs: ChatMessage[]) => {
-        const firstUser = msgs.find((m) => m.role === "user") as any
-        const textPart =
-            firstUser?.parts?.find((p: any) => p.type === "text")?.text || ""
-        const trimmed = String(textPart).trim()
-        if (!trimmed) return undefined
-        return trimmed.slice(0, 24)
-    }, [])
-
-    const getConversationDisplayTitle = useCallback(
-        (id: string): string => {
-            const idx = conversations.findIndex((c) => c.id === id)
-            const meta = idx >= 0 ? conversations[idx] : undefined
-            if (meta?.title) return meta.title
-            if (idx >= 0) {
-                return locale === "zh-CN"
-                    ? `会话 ${idx + 1}`
-                    : `Session ${idx + 1}`
-            }
-            return id
-        },
-        [conversations, locale],
-    )
 
     const handleNewChat = useCallback(
         (options?: { keepDiagram?: boolean }): boolean => {
@@ -351,11 +342,7 @@ export function useCloudConversations({
                     clearDiagram()
                 }
                 resetFiles()
-                diagramVersionsRef.current = []
-                diagramVersionCursorRef.current = -1
-                diagramVersionMarksRef.current = {}
-                setDiagramVersions([])
-                setDiagramVersionCursor(-1)
+                diagramHistory.clearHistory()
                 setSessionId(newConv.payload.sessionId)
 
                 // 后台保存到云端，成功后刷新列表
@@ -400,6 +387,7 @@ export function useCloudConversations({
             stopCurrentRequest,
             t,
             queryClient,
+            diagramHistory.clearHistory,
         ],
     )
 
@@ -408,10 +396,12 @@ export function useCloudConversations({
             if (!id || id === currentConversationId) return
             try {
                 stopCurrentRequest?.()
+                setIsLoadingSwitch(true)
                 setCurrentConversationId(id)
             } catch (error) {
                 console.error("Failed to select conversation:", error)
                 toast.warning(t("toast.storageUpdateFailed"))
+                setIsLoadingSwitch(false)
             }
         },
         [currentConversationId, stopCurrentRequest, t],
@@ -492,208 +482,6 @@ export function useCloudConversations({
         ],
     )
 
-    // 图表版本管理（简化版，核心逻辑保留）
-    const MAX_DIAGRAM_VERSIONS = 50
-    const MAX_XML_SIZE = 5_000_000
-
-    const normalizeCursor = (cursor: number, len: number) =>
-        Math.min(Math.max(cursor, -1), len - 1)
-
-    const ensureDiagramVersionForMessage = useCallback(
-        (messageIndex: number, xml: string, note?: string) => {
-            const nextXml = String(xml ?? "")
-
-            if (nextXml.length > MAX_XML_SIZE) {
-                console.error(
-                    `[diagram] XML too large: ${nextXml.length} bytes`,
-                )
-                toast.error("图表过大，无法保存历史版本")
-                return nextXml
-            }
-
-            const versions = diagramVersionsRef.current
-            const cursor = diagramVersionCursorRef.current
-
-            const currentXml =
-                cursor >= 0 && cursor < versions.length
-                    ? versions[cursor]?.xml
-                    : ""
-
-            let nextIndex = cursor
-            if (nextXml && nextXml !== currentXml) {
-                let truncated =
-                    cursor >= 0 && cursor < versions.length - 1
-                        ? versions.slice(0, cursor + 1)
-                        : versions.slice()
-
-                if (truncated.length >= MAX_DIAGRAM_VERSIONS) {
-                    truncated = truncated.slice(
-                        truncated.length - MAX_DIAGRAM_VERSIONS + 1,
-                    )
-                }
-
-                const entry: DiagramVersion = {
-                    id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                    createdAt: Date.now(),
-                    xml: nextXml,
-                    note,
-                }
-                truncated.push(entry)
-                diagramVersionsRef.current = truncated
-                nextIndex = truncated.length - 1
-                diagramVersionCursorRef.current = nextIndex
-                setDiagramVersions(truncated)
-                setDiagramVersionCursor(nextIndex)
-            }
-
-            diagramVersionMarksRef.current = {
-                ...diagramVersionMarksRef.current,
-                [messageIndex]: nextIndex,
-            }
-            return nextXml
-        },
-        [],
-    )
-
-    const appendDiagramVersion = useCallback((xml: string, note?: string) => {
-        const nextXml = String(xml ?? "")
-        if (!nextXml) return
-
-        if (nextXml.length > MAX_XML_SIZE) {
-            console.error(`[diagram] XML too large: ${nextXml.length} bytes`)
-            toast.error("图表过大，无法保存历史版本")
-            return
-        }
-
-        const versions = diagramVersionsRef.current
-        const cursor = diagramVersionCursorRef.current
-        const currentXml =
-            cursor >= 0 && cursor < versions.length ? versions[cursor]?.xml : ""
-        if (nextXml === currentXml) return
-
-        let truncated =
-            cursor >= 0 && cursor < versions.length - 1
-                ? versions.slice(0, cursor + 1)
-                : versions.slice()
-
-        if (truncated.length >= MAX_DIAGRAM_VERSIONS) {
-            truncated = truncated.slice(
-                truncated.length - MAX_DIAGRAM_VERSIONS + 1,
-            )
-        }
-
-        const entry: DiagramVersion = {
-            id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            createdAt: Date.now(),
-            xml: nextXml,
-            note,
-        }
-        truncated.push(entry)
-
-        diagramVersionsRef.current = truncated
-        diagramVersionCursorRef.current = truncated.length - 1
-        setDiagramVersions(truncated)
-        setDiagramVersionCursor(diagramVersionCursorRef.current)
-    }, [])
-
-    const getDiagramXmlForMessage = useCallback((messageIndex: number) => {
-        const idx = diagramVersionMarksRef.current[messageIndex]
-        const versions = diagramVersionsRef.current
-        if (typeof idx !== "number") return ""
-        return idx >= 0 && idx < versions.length ? versions[idx]?.xml || "" : ""
-    }, [])
-
-    const getDiagramVersionIndexForMessage = useCallback(
-        (messageIndex: number) => {
-            const idx = diagramVersionMarksRef.current[messageIndex]
-            return typeof idx === "number" ? idx : -1
-        },
-        [],
-    )
-
-    const getPreviousDiagramXmlBeforeMessage = useCallback(
-        (beforeIndex: number) => {
-            const marks = diagramVersionMarksRef.current
-            const keys = Object.keys(marks)
-                .map((k) => Number(k))
-                .filter((k) => Number.isFinite(k) && k < beforeIndex)
-                .sort((a, b) => b - a)
-            if (keys.length === 0) return ""
-            const idx = marks[keys[0]]
-            const versions = diagramVersionsRef.current
-            return idx >= 0 && idx < versions.length
-                ? versions[idx]?.xml || ""
-                : ""
-        },
-        [],
-    )
-
-    const restoreDiagramVersionIndex = useCallback(
-        (index: number) => {
-            const versions = diagramVersionsRef.current
-            const nextIndex = normalizeCursor(index, versions.length)
-            const entry = versions[nextIndex]
-            if (!entry) return
-            onDisplayChart(entry.xml, true)
-            chartXMLRef.current = entry.xml
-            diagramVersionCursorRef.current = nextIndex
-            setDiagramVersionCursor(nextIndex)
-        },
-        [chartXMLRef, onDisplayChart],
-    )
-
-    const truncateDiagramVersionsAfterMessage = useCallback(
-        (messageIndex: number) => {
-            const markIdx = diagramVersionMarksRef.current[messageIndex]
-            if (typeof markIdx !== "number") return
-            const versions = diagramVersionsRef.current
-            const nextVersions =
-                markIdx >= 0 && markIdx < versions.length
-                    ? versions.slice(0, markIdx + 1)
-                    : versions.slice()
-
-            const nextMarks: Record<number, number> = {}
-            for (const [k, v] of Object.entries(
-                diagramVersionMarksRef.current,
-            )) {
-                const mi = Number(k)
-                if (!Number.isFinite(mi)) continue
-                if (
-                    mi <= messageIndex &&
-                    typeof v === "number" &&
-                    v <= markIdx
-                ) {
-                    nextMarks[mi] = v
-                }
-            }
-
-            diagramVersionsRef.current = nextVersions
-            diagramVersionMarksRef.current = nextMarks
-            diagramVersionCursorRef.current = normalizeCursor(
-                Math.min(diagramVersionCursorRef.current, markIdx),
-                nextVersions.length,
-            )
-            setDiagramVersions(nextVersions)
-            setDiagramVersionCursor(diagramVersionCursorRef.current)
-        },
-        [],
-    )
-
-    const canUndo = diagramVersionCursor > 0
-    const canRedo =
-        diagramVersionCursor >= 0 &&
-        diagramVersionCursor < diagramVersions.length - 1
-
-    const undoDiagram = useCallback(() => {
-        if (!canUndo) return
-        restoreDiagramVersionIndex(diagramVersionCursor - 1)
-    }, [canUndo, diagramVersionCursor, restoreDiagramVersionIndex])
-
-    const redoDiagram = useCallback(() => {
-        if (!canRedo) return
-        restoreDiagramVersionIndex(diagramVersionCursor + 1)
-    }, [canRedo, diagramVersionCursor, restoreDiagramVersionIndex])
-
     // 初始化：如果没有会话，创建一个
     useEffect(() => {
         if (isLoadingList) return
@@ -740,23 +528,29 @@ export function useCloudConversations({
         setSessionId,
         hasRestored: true, // 云端模式始终视为已恢复
         canSaveDiagram,
+        isLoadingSwitch, // 会话切换 loading 状态
         getConversationDisplayTitle,
         deriveConversationTitle,
         loadConversation: noop, // 云端模式通过 React Query 自动加载
         persistCurrentConversation: noop, // 云端模式通过防抖自动保存
-        diagramVersions,
-        diagramVersionCursor,
-        canUndo,
-        canRedo,
-        undoDiagram,
-        redoDiagram,
-        restoreDiagramVersionIndex,
-        ensureDiagramVersionForMessage,
-        appendDiagramVersion,
-        getDiagramXmlForMessage,
-        getDiagramVersionIndexForMessage,
-        getPreviousDiagramXmlBeforeMessage,
-        truncateDiagramVersionsAfterMessage,
+        // 图表版本管理（使用共享 hook）
+        diagramVersions: diagramHistory.versions,
+        diagramVersionCursor: diagramHistory.cursor,
+        canUndo: diagramHistory.canUndo,
+        canRedo: diagramHistory.canRedo,
+        undoDiagram: diagramHistory.undoDiagram,
+        redoDiagram: diagramHistory.redoDiagram,
+        restoreDiagramVersionIndex: diagramHistory.restoreDiagramVersionIndex,
+        ensureDiagramVersionForMessage:
+            diagramHistory.ensureDiagramVersionForMessage,
+        appendDiagramVersion: diagramHistory.appendDiagramVersion,
+        getDiagramXmlForMessage: diagramHistory.getDiagramXmlForMessage,
+        getDiagramVersionIndexForMessage:
+            diagramHistory.getDiagramVersionIndexForMessage,
+        getPreviousDiagramXmlBeforeMessage:
+            diagramHistory.getPreviousDiagramXmlBeforeMessage,
+        truncateDiagramVersionsAfterMessage:
+            diagramHistory.truncateDiagramVersionsAfterMessage,
         handleNewChat,
         handleSelectConversation,
         handleDeleteConversation,

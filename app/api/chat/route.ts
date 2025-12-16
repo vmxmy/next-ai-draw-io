@@ -674,10 +674,6 @@ When the current diagram XML is non-empty and the user requests incremental chan
     const lastMessageText =
         lastMessage.parts?.find((part: any) => part.type === "text")?.text || ""
 
-    // Extract file parts (images) from the last message
-    const fileParts =
-        lastMessage.parts?.filter((part: any) => part.type === "file") || []
-
     // User input only - XML is now in a separate cached system message
     const formattedUserInput = `User input:
 """md
@@ -688,7 +684,29 @@ ${lastMessageText}
     // This allows us to store only fileId in localStorage/database
     const expandedMessages = await expandFileReferences(messages)
 
-    // Convert UIMessages to ModelMessages and add system message
+    // Modify the last message's text BEFORE converting to ModelMessages
+    // This ensures convertToModelMessages handles the file parts correctly
+    if (expandedMessages.length > 0) {
+        const lastExpandedMessage =
+            expandedMessages[expandedMessages.length - 1]
+        if (lastExpandedMessage.role === "user" && lastExpandedMessage.parts) {
+            // Update the text part with formatted input
+            const updatedParts = lastExpandedMessage.parts.map((part: any) => {
+                if (part.type === "text") {
+                    return { ...part, text: formattedUserInput }
+                }
+                return part
+            })
+
+            expandedMessages[expandedMessages.length - 1] = {
+                ...lastExpandedMessage,
+                parts: updatedParts,
+            }
+        }
+    }
+
+    // Convert UIMessages to ModelMessages
+    // This will automatically handle file parts and convert them to image content
     const modelMessages = convertToModelMessages(expandedMessages as any)
 
     // Google（Gemini）工具调用的 thought signature 透传：
@@ -735,35 +753,10 @@ ${lastMessageText}
 
     // Filter out messages with empty content arrays (Bedrock API rejects these)
     // This is a safety measure - ideally convertToModelMessages should handle all cases
-    let enhancedMessages = placeholderMessages.filter(
+    const enhancedMessages = placeholderMessages.filter(
         (msg: any) =>
             msg.content && Array.isArray(msg.content) && msg.content.length > 0,
     )
-
-    // Update the last message with user input only (XML moved to separate cached system message)
-    if (enhancedMessages.length >= 1) {
-        const lastModelMessage = enhancedMessages[enhancedMessages.length - 1]
-        if (lastModelMessage.role === "user") {
-            // Build content array with user input text and file parts
-            const contentParts: any[] = [
-                { type: "text", text: formattedUserInput },
-            ]
-
-            // Add image parts back
-            for (const filePart of fileParts) {
-                contentParts.push({
-                    type: "image",
-                    image: filePart.url,
-                    mimeType: filePart.mediaType,
-                })
-            }
-
-            enhancedMessages = [
-                ...enhancedMessages.slice(0, -1),
-                { ...lastModelMessage, content: contentParts },
-            ]
-        }
-    }
 
     // Add cache point to the last assistant message in conversation history
     // This caches the entire conversation prefix for subsequent requests

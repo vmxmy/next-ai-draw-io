@@ -51,6 +51,7 @@ export function ChatHeader({
     deleteLabel,
     onSelectConversation,
     onDeleteConversation,
+    isLoadingSwitch,
     quotaTooltip,
     onShowQuota,
 }: {
@@ -90,6 +91,7 @@ export function ChatHeader({
     deleteLabel: string
     onSelectConversation: (id: string) => void
     onDeleteConversation: (id: string) => void
+    isLoadingSwitch?: boolean
     quotaTooltip: string
     onShowQuota: () => void
 }) {
@@ -146,6 +148,7 @@ export function ChatHeader({
                         sessionSwitcherPlaceholder={sessionSwitcherPlaceholder}
                         onSelectConversation={onSelectConversation}
                         onDeleteConversation={onDeleteConversation}
+                        isLoadingSwitch={isLoadingSwitch}
                     />
 
                     <ButtonWithTooltip

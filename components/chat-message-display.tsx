@@ -1209,6 +1209,22 @@ export function ChatMessageDisplay({
                                                                         part.type ===
                                                                         "file"
                                                                     ) {
+                                                                        const filePart =
+                                                                            part as {
+                                                                                url?: string
+                                                                                fileId?: string
+                                                                                fileName?: string
+                                                                            }
+
+                                                                        // Only render if we have a valid URL
+                                                                        if (
+                                                                            !filePart.url ||
+                                                                            filePart.url ===
+                                                                                ""
+                                                                        ) {
+                                                                            return null
+                                                                        }
+
                                                                         return (
                                                                             <div
                                                                                 key={`${message.id}-file-${group.startIndex}-${partIndex}`}
@@ -1216,12 +1232,7 @@ export function ChatMessageDisplay({
                                                                             >
                                                                                 <Image
                                                                                     src={
-                                                                                        (
-                                                                                            part as {
-                                                                                                url: string
-                                                                                            }
-                                                                                        )
-                                                                                            .url
+                                                                                        filePart.url
                                                                                     }
                                                                                     width={
                                                                                         200

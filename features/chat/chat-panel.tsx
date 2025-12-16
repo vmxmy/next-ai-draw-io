@@ -778,8 +778,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         setCurrentConversationId,
         sessionId,
         hasRestored,
+        isLoadingSwitch,
         getConversationDisplayTitle,
-        loadConversation,
+        loadConversation: _loadConversation,
         persistCurrentConversation,
         handleNewChat: _handleNewChat,
         handleSelectConversation: _handleSelectConversation,
@@ -925,17 +926,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 chartXMLRef.current = chartXml
 
                 // Build user text by concatenating input with pre-extracted text
-                // (Backend only reads first text part, so we must combine them)
-                const parts: any[] = []
+                // Process files separately for AI SDK format
+                const fileParts: any[] = []
                 const userText = await processFilesAndAppendContent(
                     input,
                     files,
                     pdfData,
-                    parts,
+                    fileParts,
                 )
-
-                // Add the combined text as the first part
-                parts.unshift({ type: "text", text: userText })
 
                 const messageIndex = messages.length
                 const previousXml =
@@ -949,7 +947,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 // Check all quota limits
                 if (!checkAllQuotaLimits()) return
 
-                sendChatMessage(parts, chartXml, previousXml, sessionId)
+                sendChatMessage(
+                    userText,
+                    fileParts,
+                    chartXml,
+                    previousXml,
+                    sessionId,
+                )
 
                 // Token count is tracked in onFinish with actual server usage
                 setInput("")
@@ -993,7 +997,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
     // Send chat message with headers and increment quota
     const sendChatMessage = useCallback(
-        (parts: any, xml: string, previousXml: string, sessionId: string) => {
+        (
+            userText: string,
+            fileParts: any[],
+            xml: string,
+            previousXml: string,
+            sessionId: string,
+        ) => {
             // Reset auto-retry count on user-initiated message
             autoRetryCountRef.current = 0
             editFailureCountRef.current = 0
@@ -1038,7 +1048,10 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             })
 
             sendMessage(
-                { parts },
+                {
+                    text: userText,
+                    files: fileParts,
+                },
                 {
                     body: {
                         xml,
@@ -1076,7 +1089,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     userText += `\n\n[File: ${file.name}]\n${extracted.text}`
                 }
             } else if (imageParts) {
-                // Upload file to server and get fileId (new approach - saves tokens)
+                // Create data URL for AI SDK (required for sendMessage)
+                const reader = new FileReader()
+                const dataUrl = await new Promise<string>((resolve) => {
+                    reader.onload = () => resolve(reader.result as string)
+                    reader.readAsDataURL(file)
+                })
+
+                // Upload file to server and get fileId (for backend optimization)
                 try {
                     const formData = new FormData()
                     formData.append("file", file)
@@ -1092,22 +1112,18 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
                     const fileData = await response.json()
 
+                    // Include both data URL (for AI SDK) and fileId (for backend)
                     imageParts.push({
                         type: "file",
+                        url: dataUrl,
+                        mediaType: file.type,
                         fileId: fileData.fileId,
                         fileName: fileData.fileName,
                         fileType: fileData.fileType,
-                        summary: fileData.summary,
                     })
                 } catch (error) {
                     console.error("Failed to upload file:", error)
-                    // Fallback to data URL (backward compatibility)
-                    const reader = new FileReader()
-                    const dataUrl = await new Promise<string>((resolve) => {
-                        reader.onload = () => resolve(reader.result as string)
-                        reader.readAsDataURL(file)
-                    })
-
+                    // Fallback: use data URL only
                     imageParts.push({
                         type: "file",
                         url: dataUrl,
@@ -1146,6 +1162,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             const textPart = userParts?.find((p: any) => p.type === "text")
             if (!textPart) return
 
+            // Extract text and file parts separately for AI SDK format
+            const userText = textPart.text || ""
+            const fileParts =
+                userParts?.filter((p: any) => p.type === "file") || []
+
             // Get the saved XML snapshot for this user message
             const savedXml = getDiagramXmlForMessage(userMessageIndex)
             const savedVersionIndex =
@@ -1177,7 +1198,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             if (!checkAllQuotaLimits()) return
 
             // Now send the message after state is guaranteed to be updated
-            sendChatMessage(userParts, savedXml, previousXml, sessionId)
+            sendChatMessage(
+                userText,
+                fileParts,
+                savedXml,
+                previousXml,
+                sessionId,
+            )
 
             // Token count is tracked in onFinish with actual server usage
         },
@@ -1234,13 +1261,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             // 清理该消息之后的版本/书签（用户将重写后续对话）
             truncateDiagramVersionsAfterMessage(messageIndex)
 
-            // Create new parts with updated text
-            const newParts = message.parts?.map((part: any) => {
-                if (part.type === "text") {
-                    return { ...part, text: newText }
-                }
-                return part
-            }) || [{ type: "text", text: newText }]
+            // Extract file parts (keep existing files)
+            const fileParts =
+                message.parts?.filter((part: any) => part.type === "file") || []
 
             // Remove the user message AND assistant message onwards (sendMessage will re-add the user message)
             // Use flushSync to ensure state update is processed synchronously before sending
@@ -1253,7 +1276,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             if (!checkAllQuotaLimits()) return
 
             // Now send the edited message after state is guaranteed to be updated
-            sendChatMessage(newParts, savedXml, previousXml, sessionId)
+            sendChatMessage(
+                newText,
+                fileParts,
+                savedXml,
+                previousXml,
+                sessionId,
+            )
             // Token count is tracked in onFinish with actual server usage
         },
         [
@@ -1357,6 +1386,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 deleteLabel={t("settings.sessions.delete")}
                 onSelectConversation={handleSelectConversation}
                 onDeleteConversation={handleDeleteConversation}
+                isLoadingSwitch={isLoadingSwitch}
                 quotaTooltip={t("chat.header.quotaTooltip")}
                 onShowQuota={() => setShowQuotaDialog(true)}
             />
