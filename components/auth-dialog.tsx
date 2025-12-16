@@ -235,49 +235,6 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                             </div>
                         )}
 
-                        {/* Agreement checkbox */}
-                        <div className="flex items-start space-x-2">
-                            <Checkbox
-                                id="terms-oauth"
-                                checked={agreedToTerms}
-                                onCheckedChange={(checked) =>
-                                    setAgreedToTerms(checked === true)
-                                }
-                            />
-                            <label
-                                htmlFor="terms-oauth"
-                                className="text-sm text-muted-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                            >
-                                {t("auth.dialog.byContining")}{" "}
-                                <a
-                                    href="/terms"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="underline hover:text-foreground transition-colors"
-                                >
-                                    {t("auth.dialog.terms")}
-                                </a>{" "}
-                                {t("auth.dialog.and")}{" "}
-                                <a
-                                    href="/privacy"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="underline hover:text-foreground transition-colors"
-                                >
-                                    {t("auth.dialog.privacy")}
-                                </a>
-                            </label>
-                        </div>
-
-                        {/* Error message for terms */}
-                        {phoneError && (
-                            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-                                <p className="text-sm text-destructive text-center">
-                                    {phoneError}
-                                </p>
-                            </div>
-                        )}
-
                         {/* Sign in buttons */}
                         <div className="space-y-3">
                             <Button
@@ -317,6 +274,49 @@ export function AuthDialog({ open, onOpenChange, error }: AuthDialogProps) {
                                     </span>
                                 </div>
                             </Button>
+                        </div>
+
+                        {/* Error message for terms */}
+                        {phoneError && (
+                            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                                <p className="text-sm text-destructive text-center">
+                                    {phoneError}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Agreement checkbox */}
+                        <div className="flex items-start space-x-2">
+                            <Checkbox
+                                id="terms-oauth"
+                                checked={agreedToTerms}
+                                onCheckedChange={(checked) =>
+                                    setAgreedToTerms(checked === true)
+                                }
+                            />
+                            <label
+                                htmlFor="terms-oauth"
+                                className="text-sm text-muted-foreground leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                                {t("auth.dialog.byContining")}{" "}
+                                <a
+                                    href="/terms"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline hover:text-foreground transition-colors"
+                                >
+                                    {t("auth.dialog.terms")}
+                                </a>{" "}
+                                {t("auth.dialog.and")}{" "}
+                                <a
+                                    href="/privacy"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline hover:text-foreground transition-colors"
+                                >
+                                    {t("auth.dialog.privacy")}
+                                </a>
+                            </label>
                         </div>
 
                         {/* Divider */}

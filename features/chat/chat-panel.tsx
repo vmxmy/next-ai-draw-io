@@ -870,6 +870,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     },
                 )
 
+                // 立即刷新查询，确保 UI 更新
+                queryClient.invalidateQueries({
+                    queryKey: [["conversation", "listMetas"]],
+                })
+
                 // 保存到数据库
                 pushMutation.mutate({
                     conversations: [
