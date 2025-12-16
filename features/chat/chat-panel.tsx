@@ -725,6 +725,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
     // 判断是否为登录用户
     const isAuthenticated = authStatus === "authenticated"
+    const isAuthLoading = authStatus === "loading"
     const userId = authSession?.user?.id || "anonymous"
 
     // React Query client 和 API mutation（用于云端更新）
@@ -750,6 +751,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         messagesRef,
         resetFiles,
         stopCurrentRequest,
+        enabled: isAuthenticated, // 仅登录用户启用云端会话管理
     })
 
     // 本地会话管理（仅匿名用户）
@@ -775,6 +777,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         queuePushConversation: noop, // 匿名用户不需要同步
         stopCurrentRequest,
         persistUploadedFiles,
+        // 仅匿名用户启用本地会话管理，认证加载中时禁用避免数据混淆
+        enabled: !isAuthenticated && !isAuthLoading,
     })
 
     // 根据认证状态自动选择 Hook

@@ -73,6 +73,7 @@ export function useLocalConversations({
     queuePushConversation,
     stopCurrentRequest,
     persistUploadedFiles,
+    enabled = true,
 }: {
     userId: string
     locale: string
@@ -93,6 +94,7 @@ export function useLocalConversations({
     queuePushConversation: QueuePushConversation
     stopCurrentRequest?: () => void
     persistUploadedFiles: boolean
+    enabled?: boolean
 }) {
     const [conversations, setConversations] = useState<ConversationMeta[]>([])
     const [currentConversationId, setCurrentConversationId] = useState(() => {
@@ -169,10 +171,19 @@ export function useLocalConversations({
 
     const loadConversation = useCallback(
         (id: string) => {
+            console.log("[session-debug] loadConversation called", {
+                id,
+                userId,
+                isDrawioReady,
+            })
             try {
-                const raw = localStorage.getItem(
-                    conversationStorageKey(userId, id),
-                )
+                const storageKey = conversationStorageKey(userId, id)
+                const raw = localStorage.getItem(storageKey)
+                console.log("[session-debug] loadConversation raw data", {
+                    storageKey,
+                    hasData: !!raw,
+                    dataLength: raw?.length ?? 0,
+                })
                 const payload: ConversationPayload = raw
                     ? JSON.parse(raw)
                     : {
@@ -184,6 +195,14 @@ export function useLocalConversations({
                           diagramVersionMarks: {},
                           sessionId: createSessionId(),
                       }
+                console.log("[session-debug] loadConversation parsed payload", {
+                    messageCount: payload.messages?.length ?? 0,
+                    xmlLength: payload.xml?.length ?? 0,
+                    hasXml: !!payload.xml,
+                    xmlPreview: payload.xml?.substring(0, 100),
+                    sessionId: payload.sessionId,
+                    diagramVersionCount: payload.diagramVersions?.length ?? 0,
+                })
 
                 setMessages((payload.messages || []) as any)
                 setSessionId(payload.sessionId || createSessionId())
@@ -221,20 +240,41 @@ export function useLocalConversations({
                 }
 
                 diagramHistory.restoreState({ versions, cursor, marks })
+                console.log("[session-debug] restored diagram history", {
+                    versionCount: versions.length,
+                    cursor,
+                    marksCount: Object.keys(marks).length,
+                })
 
                 if (payload.xml) {
+                    console.log("[session-debug] loading diagram XML", {
+                        isDrawioReady,
+                        xmlLength: payload.xml.length,
+                    })
                     if (isDrawioReady) {
-                        onDisplayChart(payload.xml, true)
+                        const result = onDisplayChart(payload.xml, true)
+                        console.log("[session-debug] onDisplayChart result", {
+                            result,
+                        })
                         chartXMLRef.current = payload.xml
                     } else {
+                        console.log(
+                            "[session-debug] drawio not ready, storing pending XML",
+                        )
                         pendingDiagramXmlRef.current = payload.xml
                     }
                 } else {
+                    console.log(
+                        "[session-debug] no XML in payload, clearing diagram",
+                    )
                     clearDiagram()
                     chartXMLRef.current = ""
                 }
+                console.log(
+                    "[session-debug] loadConversation completed successfully",
+                )
             } catch (error) {
-                console.error("Failed to load conversation:", error)
+                console.error("[session-debug] loadConversation FAILED", error)
                 setMessages([])
                 setSessionId(createSessionId())
                 clearDiagram()
@@ -261,29 +301,61 @@ export function useLocalConversations({
     // 从云端按需加载会话
     const loadConversationFromCloudIfNeeded = useCallback(
         async (id: string) => {
-            if (userId === "anonymous") return false
-
-            try {
-                const raw = localStorage.getItem(
-                    conversationStorageKey(userId, id),
+            console.log(
+                "[session-debug] loadConversationFromCloudIfNeeded called",
+                {
+                    id,
+                    userId,
+                },
+            )
+            if (userId === "anonymous") {
+                console.log(
+                    "[session-debug] Cloud load skipped: anonymous user",
                 )
-                if (raw) return false
-            } catch {
-                // ignore
+                return false
             }
 
-            if (loadingConversationRef.current === id) return false
+            try {
+                const storageKey = conversationStorageKey(userId, id)
+                const raw = localStorage.getItem(storageKey)
+                console.log(
+                    "[session-debug] Checking local storage for cloud load",
+                    {
+                        storageKey,
+                        hasLocal: !!raw,
+                    },
+                )
+                if (raw) {
+                    console.log(
+                        "[session-debug] Local data exists, skipping cloud load",
+                    )
+                    return false
+                }
+            } catch (error) {
+                console.log(
+                    "[session-debug] Error checking local storage",
+                    error,
+                )
+            }
+
+            if (loadingConversationRef.current === id) {
+                console.log("[session-debug] Already loading this conversation")
+                return false
+            }
             loadingConversationRef.current = id
 
             try {
-                const response = await fetch(
-                    `/api/trpc/conversation.getById?input=${encodeURIComponent(JSON.stringify({ id }))}`,
-                    {
-                        method: "GET",
-                        headers: { "Content-Type": "application/json" },
-                    },
-                )
+                const url = `/api/trpc/conversation.getById?input=${encodeURIComponent(JSON.stringify({ id }))}`
+                console.log("[session-debug] Fetching from cloud", { url })
+                const response = await fetch(url, {
+                    method: "GET",
+                    headers: { "Content-Type": "application/json" },
+                })
 
+                console.log("[session-debug] Cloud response", {
+                    ok: response.ok,
+                    status: response.status,
+                })
                 if (!response.ok) {
                     toast.error("会话加载失败")
                     return false
@@ -291,8 +363,15 @@ export function useLocalConversations({
 
                 const data = await response.json()
                 const result = data.result?.data
+                console.log("[session-debug] Cloud data parsed", {
+                    hasResult: !!result,
+                    hasPayload: !!result?.payload,
+                    messageCount: result?.payload?.messages?.length ?? 0,
+                    xmlLength: result?.payload?.xml?.length ?? 0,
+                })
 
                 if (!result || !result.payload) {
+                    console.log("[session-debug] Cloud data incomplete")
                     toast.error("会话数据不完整")
                     return false
                 }
@@ -301,14 +380,20 @@ export function useLocalConversations({
 
                 try {
                     writeConversationPayloadToStorage(userId, id, payload)
+                    console.log(
+                        "[session-debug] Cached cloud data to localStorage",
+                    )
                 } catch (error) {
-                    console.warn("缓存会话失败:", error)
+                    console.warn("[session-debug] 缓存会话失败:", error)
                 }
 
+                console.log(
+                    "[session-debug] Loading conversation from cloud data",
+                )
                 loadConversation(id)
                 return true
             } catch (error) {
-                console.error("从云端加载会话失败:", error)
+                console.error("[session-debug] 从云端加载会话失败:", error)
                 toast.error("加载会话失败，请重试")
                 return false
             } finally {
@@ -645,12 +730,23 @@ export function useLocalConversations({
 
     // Effect: 加载会话
     useEffect(() => {
-        if (!currentConversationId) return
+        if (!enabled) return
+        console.log("[session-debug] Effect: load conversation triggered", {
+            currentConversationId,
+            hasId: !!currentConversationId,
+        })
+        if (!currentConversationId) {
+            console.log(
+                "[session-debug] Effect: no currentConversationId, skipping",
+            )
+            return
+        }
         loadConversation(currentConversationId)
-    }, [currentConversationId, loadConversation])
+    }, [enabled, currentConversationId, loadConversation])
 
     // Effect: 消息变更时自动保存
     useEffect(() => {
+        if (!enabled) return
         if (!hasRestored) return
         if (!currentConversationId) return
 
@@ -669,6 +765,7 @@ export function useLocalConversations({
             }
         }
     }, [
+        enabled,
         currentConversationId,
         hasRestored,
         messages,
@@ -677,27 +774,53 @@ export function useLocalConversations({
 
     // Effect: DrawIO 就绪后加载待处理的 XML
     useEffect(() => {
+        if (!enabled) return
+        console.log("[session-debug] Effect: DrawIO ready check", {
+            isDrawioReady,
+            currentConversationId,
+            hasPendingXml: !!pendingDiagramXmlRef.current,
+        })
         if (!isDrawioReady) {
+            console.log(
+                "[session-debug] DrawIO not ready, disabling diagram save",
+            )
             setCanSaveDiagram(false)
             return
         }
         const pending = pendingDiagramXmlRef.current
         pendingDiagramXmlRef.current = null
+        console.log("[session-debug] DrawIO ready, processing pending XML", {
+            hasPending: !!pending,
+            pendingLength: pending?.length ?? 0,
+        })
 
         let xmlToLoad = pending
         if (!xmlToLoad && currentConversationId) {
-            xmlToLoad =
-                readConversationPayloadFromStorage(
-                    userId,
-                    currentConversationId,
-                )?.xml || ""
+            console.log("[session-debug] No pending XML, loading from storage")
+            const storedPayload = readConversationPayloadFromStorage(
+                userId,
+                currentConversationId,
+            )
+            xmlToLoad = storedPayload?.xml || ""
+            console.log("[session-debug] Loaded XML from storage", {
+                hasPayload: !!storedPayload,
+                xmlLength: xmlToLoad?.length ?? 0,
+            })
         }
         if (xmlToLoad) {
-            onDisplayChart(xmlToLoad, true)
+            console.log("[session-debug] Displaying XML in DrawIO", {
+                xmlLength: xmlToLoad.length,
+                xmlPreview: xmlToLoad.substring(0, 100),
+            })
+            const result = onDisplayChart(xmlToLoad, true)
+            console.log("[session-debug] onDisplayChart result", { result })
             chartXMLRef.current = xmlToLoad
+        } else {
+            console.log("[session-debug] No XML to load")
         }
         setTimeout(() => setCanSaveDiagram(true), 300)
     }, [
+        enabled,
         chartXMLRef,
         currentConversationId,
         isDrawioReady,
@@ -707,21 +830,24 @@ export function useLocalConversations({
 
     // Effect: 图表 XML 变更时保存
     useEffect(() => {
+        if (!enabled) return
         if (!canSaveDiagram) return
         if (chartXML && chartXML.length > 300) {
             persistCurrentConversation({ xml: chartXML })
         } else if (chartXML === "") {
             persistCurrentConversation({ xml: "" })
         }
-    }, [canSaveDiagram, chartXML, persistCurrentConversation])
+    }, [enabled, canSaveDiagram, chartXML, persistCurrentConversation])
 
     // Effect: sessionId 变更时保存
     useEffect(() => {
+        if (!enabled) return
         persistCurrentConversation({ sessionId })
-    }, [persistCurrentConversation, sessionId])
+    }, [enabled, persistCurrentConversation, sessionId])
 
     // Effect: 页面卸载前保存
     useEffect(() => {
+        if (!enabled) return
         const handleBeforeUnload = () => {
             if (!currentConversationId) return
             try {
@@ -767,6 +893,7 @@ export function useLocalConversations({
         return () =>
             window.removeEventListener("beforeunload", handleBeforeUnload)
     }, [
+        enabled,
         chartXMLRef,
         currentConversationId,
         diagramHistory.getStateSnapshot,
@@ -777,8 +904,22 @@ export function useLocalConversations({
 
     // Effect: 初始化会话列表
     useEffect(() => {
+        if (!enabled) {
+            console.log(
+                "[session-debug] Effect: Initialize skipped (not enabled)",
+            )
+            return
+        }
+        console.log("[session-debug] Effect: Initialize conversation list", {
+            userId,
+            currentConversationId,
+        })
         try {
             let metas = readConversationMetasFromStorage(userId)
+            console.log("[session-debug] Initial metas loaded", {
+                count: metas.length,
+                ids: metas.map((m) => m.id),
+            })
 
             // 迁移旧格式数据
             const legacyMessages = localStorage.getItem(STORAGE_MESSAGES_KEY)
@@ -787,6 +928,12 @@ export function useLocalConversations({
             )
             const legacyXml = localStorage.getItem(STORAGE_DIAGRAM_XML_KEY)
             const legacySession = localStorage.getItem(STORAGE_SESSION_ID_KEY)
+            console.log("[session-debug] Legacy data check", {
+                hasLegacyMessages: !!legacyMessages,
+                hasLegacySnapshots: !!legacySnapshots,
+                hasLegacyXml: !!legacyXml,
+                hasLegacySession: !!legacySession,
+            })
 
             if (
                 metas.length === 0 &&
@@ -824,6 +971,9 @@ export function useLocalConversations({
             }
 
             if (metas.length === 0) {
+                console.log(
+                    "[session-debug] No metas found, creating new conversation",
+                )
                 const id = createConversationId()
                 metas = [{ id, createdAt: Date.now(), updatedAt: Date.now() }]
                 writeConversationMetasToStorage(userId, metas)
@@ -837,29 +987,70 @@ export function useLocalConversations({
                     diagramVersionMarks: {},
                     sessionId: createSessionId(),
                 })
+                console.log("[session-debug] Created new conversation", { id })
                 setCurrentConversationId(id)
             } else if (!currentConversationId) {
                 const id = metas[0].id
+                console.log(
+                    "[session-debug] No currentConversationId, using first meta",
+                    { id },
+                )
                 writeCurrentConversationIdToStorage(userId, id)
                 setCurrentConversationId(id)
+            } else {
+                console.log(
+                    "[session-debug] Using existing currentConversationId",
+                    {
+                        currentConversationId,
+                    },
+                )
             }
 
+            console.log("[session-debug] Setting conversations", {
+                count: metas.length,
+            })
             setConversations(metas)
         } catch (error) {
-            console.error("Failed to restore conversations:", error)
+            console.error(
+                "[session-debug] Failed to restore conversations:",
+                error,
+            )
         } finally {
+            console.log(
+                "[session-debug] Initialization complete, setting hasRestored=true",
+            )
             setHasRestored(true)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userId])
+    }, [enabled, userId])
 
     // Effect: 按需从云端加载
     useEffect(() => {
-        if (!currentConversationId || !hasRestored) return
-        if (userId === "anonymous") return
+        if (!enabled) return
+        console.log("[session-debug] Effect: Cloud load check", {
+            currentConversationId,
+            hasRestored,
+            userId,
+            isAnonymous: userId === "anonymous",
+        })
+        if (!currentConversationId || !hasRestored) {
+            console.log(
+                "[session-debug] Cloud load skipped: no id or not restored",
+            )
+            return
+        }
+        if (userId === "anonymous") {
+            console.log("[session-debug] Cloud load skipped: anonymous user")
+            return
+        }
 
+        console.log(
+            "[session-debug] Triggering cloud load for",
+            currentConversationId,
+        )
         void loadConversationFromCloudIfNeeded(currentConversationId)
     }, [
+        enabled,
         currentConversationId,
         hasRestored,
         userId,

@@ -43,11 +43,29 @@ export function cleanOldestConversations(
 export function readConversationMetasFromStorage(
     userId: string,
 ): ConversationMeta[] {
+    const storageKey = STORAGE_CONVERSATIONS_KEY(userId)
+    console.log("[session-debug] readConversationMetasFromStorage", {
+        userId,
+        storageKey,
+    })
     try {
-        const raw = localStorage.getItem(STORAGE_CONVERSATIONS_KEY(userId))
+        const raw = localStorage.getItem(storageKey)
+        console.log("[session-debug] raw metas from localStorage", {
+            hasData: !!raw,
+            length: raw?.length ?? 0,
+        })
         const metas = raw ? (JSON.parse(raw) as unknown) : []
-        return Array.isArray(metas) ? (metas as ConversationMeta[]) : []
-    } catch {
+        const result = Array.isArray(metas) ? (metas as ConversationMeta[]) : []
+        console.log("[session-debug] parsed metas", {
+            count: result.length,
+            ids: result.map((m) => m.id),
+        })
+        return result
+    } catch (error) {
+        console.error(
+            "[session-debug] readConversationMetasFromStorage error",
+            error,
+        )
         return []
     }
 }
@@ -117,16 +135,38 @@ export function readConversationPayloadFromStorage(
     userId: string,
     id: string,
 ): ConversationPayload | null {
+    const storageKey = conversationStorageKey(userId, id)
+    console.log("[session-debug] readConversationPayloadFromStorage", {
+        userId,
+        id,
+        storageKey,
+    })
     try {
-        const raw = localStorage.getItem(conversationStorageKey(userId, id))
-        if (!raw) return null
+        const raw = localStorage.getItem(storageKey)
+        console.log("[session-debug] raw payload from localStorage", {
+            hasData: !!raw,
+            length: raw?.length ?? 0,
+        })
+        if (!raw) {
+            console.log("[session-debug] no payload found in localStorage")
+            return null
+        }
         const payload = JSON.parse(raw) as ConversationPayload
+        console.log("[session-debug] parsed payload", {
+            hasMessages: !!payload.messages,
+            messageCount: payload.messages?.length ?? 0,
+            hasXml: !!payload.xml,
+            xmlLength: payload.xml?.length ?? 0,
+            hasSessionId: !!payload.sessionId,
+            hasDiagramVersions: !!payload.diagramVersions,
+            diagramVersionCount: payload.diagramVersions?.length ?? 0,
+        })
 
         // 检测并清理旧的压缩数据
         // 如果 XML 字段不是以 '<' 开头，说明可能是压缩数据，删除并返回 null
         if (payload.xml && !payload.xml.trimStart().startsWith("<")) {
             console.warn(
-                `检测到旧的压缩数据，正在清理会话 ${id}，将从云端重新加载`,
+                `[session-debug] 检测到旧的压缩数据，正在清理会话 ${id}，将从云端重新加载`,
             )
             removeConversationPayloadFromStorage(userId, id)
             return null
@@ -139,7 +179,7 @@ export function readConversationPayloadFromStorage(
             )
             if (hasCompressedSnapshot) {
                 console.warn(
-                    `检测到旧的压缩快照数据，正在清理会话 ${id}，将从云端重新加载`,
+                    `[session-debug] 检测到旧的压缩快照数据，正在清理会话 ${id}，将从云端重新加载`,
                 )
                 removeConversationPayloadFromStorage(userId, id)
                 return null
@@ -153,15 +193,22 @@ export function readConversationPayloadFromStorage(
             )
             if (hasCompressedVersion) {
                 console.warn(
-                    `检测到旧的压缩版本数据，正在清理会话 ${id}，将从云端重新加载`,
+                    `[session-debug] 检测到旧的压缩版本数据，正在清理会话 ${id}，将从云端重新加载`,
                 )
                 removeConversationPayloadFromStorage(userId, id)
                 return null
             }
         }
 
+        console.log(
+            "[session-debug] payload validation passed, returning payload",
+        )
         return payload
-    } catch {
+    } catch (error) {
+        console.error(
+            "[session-debug] readConversationPayloadFromStorage error",
+            error,
+        )
         return null
     }
 }

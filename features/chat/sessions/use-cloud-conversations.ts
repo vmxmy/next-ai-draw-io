@@ -49,6 +49,7 @@ export function useCloudConversations({
     messagesRef,
     resetFiles,
     stopCurrentRequest,
+    enabled = true,
 }: {
     userId: string
     locale: string
@@ -67,6 +68,7 @@ export function useCloudConversations({
     messagesRef: React.MutableRefObject<any>
     resetFiles: () => void
     stopCurrentRequest?: () => void
+    enabled?: boolean
 }) {
     const queryClient = useQueryClient()
 
@@ -88,7 +90,7 @@ export function useCloudConversations({
         api.conversation.listMetas.useQuery(
             { limit: 50, offset: 0 },
             {
-                enabled: userId !== "anonymous",
+                enabled: enabled && userId !== "anonymous",
                 staleTime: 60_000, // 1分钟缓存
                 refetchOnWindowFocus: false, // 禁止窗口聚焦时重新获取
                 refetchOnReconnect: false, // 禁止网络重连时重新获取
@@ -121,6 +123,7 @@ export function useCloudConversations({
             { id: currentConversationId || "skip" }, // 避免传入空字符串
             {
                 enabled:
+                    enabled &&
                     !!currentConversationId &&
                     currentConversationId.length > 0 &&
                     userId !== "anonymous",
