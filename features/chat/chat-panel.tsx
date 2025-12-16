@@ -1383,6 +1383,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 currentConversationId={currentConversationId}
                 getConversationDisplayTitle={getConversationDisplayTitle}
                 sessionSwitcherPlaceholder={t("chat.header.sessionSwitcher")}
+                sessionListTitle={t("chat.header.sessionList")}
                 deleteLabel={t("settings.sessions.delete")}
                 onSelectConversation={handleSelectConversation}
                 onDeleteConversation={handleDeleteConversation}

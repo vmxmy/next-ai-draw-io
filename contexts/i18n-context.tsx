@@ -281,6 +281,7 @@ export type I18nKey =
     | "settings.aiProvider.restored"
     | "settings.aiProvider.noCloudConfig"
     | "chat.header.sessionSwitcher"
+    | "chat.header.sessionList"
     | "chat.header.newSessionTooltip"
     | "chat.tooltip.edit"
     | "chat.aria.input"
@@ -613,6 +614,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.restored": "Restored",
         "settings.aiProvider.noCloudConfig": "No cloud config found",
         "chat.header.sessionSwitcher": "Switch session",
+        "chat.header.sessionList": "Sessions",
         "chat.header.newSessionTooltip": "New session",
         "chat.tooltip.edit": "Edit message",
         "chat.aria.input": "Chat input",
@@ -927,6 +929,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.restored": "已恢复",
         "settings.aiProvider.noCloudConfig": "未找到云端配置",
         "chat.header.sessionSwitcher": "切换会话",
+        "chat.header.sessionList": "会话列表",
         "chat.header.newSessionTooltip": "新建会话",
         "chat.tooltip.edit": "编辑消息",
         "chat.aria.input": "聊天输入框",
