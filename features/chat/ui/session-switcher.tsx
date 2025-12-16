@@ -2,6 +2,7 @@
 
 import * as SelectPrimitive from "@radix-ui/react-select"
 import { Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
 import {
     Select,
     SelectContent,
@@ -31,7 +32,13 @@ export function SessionSwitcher({
     onSelectConversation: (id: string) => void
     onDeleteConversation: (id: string) => void
 }) {
-    if (isMobile || conversations.length <= 1) return null
+    const [mounted, setMounted] = useState(false)
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
+    if (isMobile || !mounted) return null
 
     return (
         <div className="mr-1">
@@ -68,38 +75,45 @@ export function SessionSwitcher({
                                         </span>
                                     </span>
                                 </SelectPrimitive.ItemText>
-                                <button
-                                    type="button"
-                                    title={deleteLabel}
-                                    aria-label={deleteLabel}
-                                    className="absolute right-2 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                                <span
+                                    className="absolute right-2 z-10"
                                     onPointerDownCapture={(e) => {
-                                        // Radix Select 可能在 pointerdown 阶段就完成“选中并关闭”，
-                                        // 导致 onClick 触发前组件已卸载，从而表现为“删除按钮无效”。
-                                        // 在捕获阶段拦截并直接执行删除，可避免与 Item 的选择行为冲突。
-                                        if (e.button !== 0) return
-                                        e.preventDefault()
                                         e.stopPropagation()
-                                        onDeleteConversation(c.id)
                                     }}
                                     onClickCapture={(e) => {
-                                        e.preventDefault()
                                         e.stopPropagation()
-                                    }}
-                                    onKeyDownCapture={(e) => {
-                                        if (
-                                            e.key !== "Enter" &&
-                                            e.key !== " "
-                                        ) {
-                                            return
-                                        }
-                                        e.preventDefault()
-                                        e.stopPropagation()
-                                        onDeleteConversation(c.id)
                                     }}
                                 >
-                                    <Trash2 className="h-4 w-4" />
-                                </button>
+                                    <button
+                                        type="button"
+                                        title={deleteLabel}
+                                        aria-label={deleteLabel}
+                                        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                                        onMouseDown={(e) => {
+                                            if (e.button !== 0) return
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                            onDeleteConversation(c.id)
+                                        }}
+                                        onClick={(e) => {
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (
+                                                e.key !== "Enter" &&
+                                                e.key !== " "
+                                            ) {
+                                                return
+                                            }
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                            onDeleteConversation(c.id)
+                                        }}
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </button>
+                                </span>
                             </SelectPrimitive.Item>
                         )
                     })}

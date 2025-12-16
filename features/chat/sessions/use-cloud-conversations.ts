@@ -358,8 +358,28 @@ export function useCloudConversations({
                 setDiagramVersionCursor(-1)
                 setSessionId(newConv.payload.sessionId)
 
-                // 后台保存到云端
-                pushMutateRef.current({ conversations: [newConv] })
+                // 后台保存到云端，成功后刷新列表
+                pushMutateRef.current(
+                    { conversations: [newConv] },
+                    {
+                        onSuccess: () => {
+                            // 创建成功后刷新会话列表，确保下拉列表显示最新数据
+                            queryClient.invalidateQueries({
+                                queryKey: [["conversation", "listMetas"]],
+                            })
+                        },
+                        onError: (error) => {
+                            console.error(
+                                "Failed to save new conversation:",
+                                error,
+                            )
+                            // 保存失败时回滚乐观更新
+                            queryClient.invalidateQueries({
+                                queryKey: [["conversation", "listMetas"]],
+                            })
+                        },
+                    },
+                )
 
                 toast.success(t("toast.startedFreshChat"), {
                     id: "startedFreshChat",
@@ -426,17 +446,37 @@ export function useCloudConversations({
                     }
                 }
 
-                // 后台标记删除
-                pushMutateRef.current({
-                    conversations: [
-                        {
-                            id,
-                            deleted: true,
-                            updatedAt: Date.now(),
-                            createdAt: Date.now(),
-                        } as any,
-                    ],
-                })
+                // 后台标记删除，并在成功后使缓存失效
+                pushMutateRef.current(
+                    {
+                        conversations: [
+                            {
+                                id,
+                                deleted: true,
+                                updatedAt: Date.now(),
+                                createdAt: Date.now(),
+                            } as any,
+                        ],
+                    },
+                    {
+                        onSuccess: () => {
+                            // 删除成功后使会话列表缓存失效，确保下次获取时是最新数据
+                            queryClient.invalidateQueries({
+                                queryKey: [["conversation", "listMetas"]],
+                            })
+                        },
+                        onError: (error) => {
+                            console.error(
+                                "Failed to delete conversation:",
+                                error,
+                            )
+                            // 删除失败时回滚乐观更新
+                            queryClient.invalidateQueries({
+                                queryKey: [["conversation", "listMetas"]],
+                            })
+                        },
+                    },
+                )
             } catch (error) {
                 console.error("Failed to delete conversation:", error)
                 toast.warning(t("toast.storageUpdateFailed"))

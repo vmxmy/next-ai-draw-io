@@ -1000,8 +1000,42 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             forceDisplayNextRef.current = false
 
             const config = getAIConfig()
+            console.log("[Chat] AI Config from localStorage:", {
+                provider: config.aiProvider,
+                baseUrl: config.aiBaseUrl
+                    ? `${config.aiBaseUrl.substring(0, 30)}...`
+                    : null,
+                apiKey: config.aiApiKey
+                    ? `${config.aiApiKey.substring(0, 10)}...`
+                    : null,
+                model: config.aiModel,
+            })
+
             const requestId = createRequestId()
             activeRequestIdRef.current = requestId
+
+            const headers = {
+                "x-access-code": config.accessCode,
+                ...(config.aiProvider && {
+                    "x-ai-provider": config.aiProvider,
+                    ...(config.aiBaseUrl && {
+                        "x-ai-base-url": config.aiBaseUrl,
+                    }),
+                    ...(config.aiApiKey && {
+                        "x-ai-api-key": config.aiApiKey,
+                    }),
+                    ...(config.aiModel && {
+                        "x-ai-model": config.aiModel,
+                    }),
+                }),
+            }
+
+            console.log("[Chat] Headers being sent:", {
+                ...headers,
+                "x-ai-api-key": headers["x-ai-api-key"]
+                    ? `${headers["x-ai-api-key"].substring(0, 10)}...`
+                    : undefined,
+            })
 
             sendMessage(
                 { parts },
@@ -1013,21 +1047,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                         conversationId: currentConversationIdRef.current,
                         requestId,
                     },
-                    headers: {
-                        "x-access-code": config.accessCode,
-                        ...(config.aiProvider && {
-                            "x-ai-provider": config.aiProvider,
-                            ...(config.aiBaseUrl && {
-                                "x-ai-base-url": config.aiBaseUrl,
-                            }),
-                            ...(config.aiApiKey && {
-                                "x-ai-api-key": config.aiApiKey,
-                            }),
-                            ...(config.aiModel && {
-                                "x-ai-model": config.aiModel,
-                            }),
-                        }),
-                    },
+                    headers,
                 },
             )
             quotaManager.incrementRequestCount()

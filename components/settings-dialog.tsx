@@ -36,8 +36,17 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/contexts/i18n-context"
 import { useTheme } from "@/contexts/theme-context"
+import { STORAGE_KEYS } from "@/lib/storage"
 import { api } from "@/lib/trpc/client"
 import { tweakcnThemes } from "@/lib/tweakcn-themes"
+
+export const STORAGE_ACCESS_CODE_KEY = STORAGE_KEYS.accessCode
+export const STORAGE_CLOSE_PROTECTION_KEY = STORAGE_KEYS.closeProtection
+const STORAGE_ACCESS_CODE_REQUIRED_KEY = STORAGE_KEYS.accessCodeRequired
+export const STORAGE_AI_PROVIDER_KEY = STORAGE_KEYS.aiProvider
+export const STORAGE_AI_BASE_URL_KEY = STORAGE_KEYS.aiBaseUrl
+export const STORAGE_AI_API_KEY_KEY = STORAGE_KEYS.aiApiKey
+export const STORAGE_AI_MODEL_KEY = STORAGE_KEYS.aiModel
 
 interface ModelOption {
     id: string
@@ -53,14 +62,6 @@ interface SettingsDialogProps {
     darkMode: boolean
     onToggleDarkMode: () => void
 }
-
-export const STORAGE_ACCESS_CODE_KEY = "next-ai-draw-io-access-code"
-export const STORAGE_CLOSE_PROTECTION_KEY = "next-ai-draw-io-close-protection"
-const STORAGE_ACCESS_CODE_REQUIRED_KEY = "next-ai-draw-io-access-code-required"
-export const STORAGE_AI_PROVIDER_KEY = "next-ai-draw-io-ai-provider"
-export const STORAGE_AI_BASE_URL_KEY = "next-ai-draw-io-ai-base-url"
-export const STORAGE_AI_API_KEY_KEY = "next-ai-draw-io-ai-api-key"
-export const STORAGE_AI_MODEL_KEY = "next-ai-draw-io-ai-model"
 
 function getStoredAccessCodeRequired(): boolean | null {
     if (typeof window === "undefined") return null
@@ -711,21 +712,20 @@ export function SettingsDialog({
                                                         value,
                                                     )
 
-                                                    // Sync to cloud if logged in
+                                                    // Sync to cloud if logged in and both apiKey and baseUrl are provided
                                                     if (
                                                         session?.user &&
-                                                        provider
+                                                        provider &&
+                                                        value &&
+                                                        baseUrl
                                                     ) {
                                                         upsertConfigMutation.mutate(
                                                             {
                                                                 provider:
                                                                     provider as any,
-                                                                apiKey:
-                                                                    value ||
-                                                                    undefined,
+                                                                apiKey: value,
                                                                 baseUrl:
-                                                                    baseUrl ||
-                                                                    undefined,
+                                                                    baseUrl,
                                                                 modelId:
                                                                     modelId ||
                                                                     undefined,
@@ -735,6 +735,9 @@ export function SettingsDialog({
                                                                     () => {
                                                                         setCloudApiKeyPreview(
                                                                             undefined,
+                                                                        )
+                                                                        console.log(
+                                                                            "[settings] Config synced to cloud (apiKey + baseUrl)",
                                                                         )
                                                                     },
                                                             },
@@ -766,11 +769,40 @@ export function SettingsDialog({
                                                 id="ai-base-url"
                                                 value={baseUrl}
                                                 onChange={(e) => {
-                                                    setBaseUrl(e.target.value)
+                                                    const value = e.target.value
+                                                    setBaseUrl(value)
                                                     localStorage.setItem(
                                                         STORAGE_AI_BASE_URL_KEY,
-                                                        e.target.value,
+                                                        value,
                                                     )
+
+                                                    // Sync to cloud if logged in and both apiKey and baseUrl are provided
+                                                    if (
+                                                        session?.user &&
+                                                        provider &&
+                                                        apiKey &&
+                                                        value
+                                                    ) {
+                                                        upsertConfigMutation.mutate(
+                                                            {
+                                                                provider:
+                                                                    provider as any,
+                                                                apiKey: apiKey,
+                                                                baseUrl: value,
+                                                                modelId:
+                                                                    modelId ||
+                                                                    undefined,
+                                                            },
+                                                            {
+                                                                onSuccess:
+                                                                    () => {
+                                                                        console.log(
+                                                                            "[settings] Config synced to cloud (apiKey + baseUrl)",
+                                                                        )
+                                                                    },
+                                                            },
+                                                        )
+                                                    }
                                                 }}
                                                 placeholder={
                                                     provider === "anthropic"
@@ -784,77 +816,78 @@ export function SettingsDialog({
                                                 }
                                             />
                                         </div>
-                                        {session?.user && provider && (
-                                            <Button
-                                                variant={
-                                                    syncSuccess
-                                                        ? "outline"
-                                                        : "default"
-                                                }
-                                                size="sm"
-                                                className="w-full"
-                                                disabled={
-                                                    upsertConfigMutation.isPending ||
-                                                    syncSuccess
-                                                }
-                                                onClick={() => {
-                                                    upsertConfigMutation.mutate(
-                                                        {
-                                                            provider:
-                                                                provider as any,
-                                                            apiKey:
-                                                                apiKey ||
-                                                                undefined,
-                                                            baseUrl:
-                                                                baseUrl ||
-                                                                undefined,
-                                                            modelId:
-                                                                modelId ||
-                                                                undefined,
-                                                        },
-                                                        {
-                                                            onSuccess: () => {
-                                                                console.log(
-                                                                    "[settings] Synced to cloud:",
-                                                                    provider,
-                                                                )
-                                                                setSyncSuccess(
-                                                                    true,
-                                                                )
-                                                                setTimeout(
+                                        {session?.user &&
+                                            provider &&
+                                            apiKey &&
+                                            baseUrl && (
+                                                <Button
+                                                    variant={
+                                                        syncSuccess
+                                                            ? "outline"
+                                                            : "default"
+                                                    }
+                                                    size="sm"
+                                                    className="w-full"
+                                                    disabled={
+                                                        upsertConfigMutation.isPending ||
+                                                        syncSuccess
+                                                    }
+                                                    onClick={() => {
+                                                        upsertConfigMutation.mutate(
+                                                            {
+                                                                provider:
+                                                                    provider as any,
+                                                                apiKey: apiKey,
+                                                                baseUrl:
+                                                                    baseUrl,
+                                                                modelId:
+                                                                    modelId ||
+                                                                    undefined,
+                                                            },
+                                                            {
+                                                                onSuccess:
                                                                     () => {
+                                                                        console.log(
+                                                                            "[settings] Synced to cloud:",
+                                                                            provider,
+                                                                        )
                                                                         setSyncSuccess(
-                                                                            false,
+                                                                            true,
+                                                                        )
+                                                                        setTimeout(
+                                                                            () => {
+                                                                                setSyncSuccess(
+                                                                                    false,
+                                                                                )
+                                                                            },
+                                                                            2000,
                                                                         )
                                                                     },
-                                                                    2000,
-                                                                )
                                                             },
-                                                        },
-                                                    )
-                                                }}
-                                            >
-                                                {syncSuccess ? (
-                                                    <>
-                                                        <Check className="h-4 w-4 mr-2 text-green-600" />
-                                                        {t(
-                                                            "settings.aiProvider.synced",
-                                                        )}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Cloud className="h-4 w-4 mr-2" />
-                                                        {upsertConfigMutation.isPending
-                                                            ? t(
-                                                                  "settings.aiProvider.syncing",
-                                                              )
-                                                            : t(
-                                                                  "settings.aiProvider.syncToCloud",
-                                                              )}
-                                                    </>
-                                                )}
-                                            </Button>
-                                        )}
+                                                        )
+                                                    }}
+                                                >
+                                                    {syncSuccess ? (
+                                                        <>
+                                                            <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                            {t(
+                                                                "settings.aiProvider.synced",
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Cloud className="h-4 w-4 mr-2" />
+                                                            {upsertConfigMutation.isPending
+                                                                ? t(
+                                                                      "settings.aiProvider.syncing",
+                                                                  )
+                                                                : t(
+                                                                      "settings.aiProvider.syncToCloud",
+                                                                  )}
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            )}
                                         {session?.user &&
                                             provider &&
                                             (cloudApiKeyPreview ||

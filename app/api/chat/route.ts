@@ -53,6 +53,16 @@ function sanitizeClientOverrides(headers: Headers): {
         process.env.ENABLE_CLIENT_AI_OVERRIDES === "true" ||
         process.env.NODE_ENV === "development"
 
+    console.log(
+        "[Client Overrides] allowClientOverrides:",
+        allowClientOverrides,
+    )
+    console.log("[Client Overrides] NODE_ENV:", process.env.NODE_ENV)
+    console.log(
+        "[Client Overrides] ENABLE_CLIENT_AI_OVERRIDES:",
+        process.env.ENABLE_CLIENT_AI_OVERRIDES,
+    )
+
     if (!allowClientOverrides) {
         return { provider: null, baseUrl: null, apiKey: null, modelId: null }
     }
@@ -62,8 +72,18 @@ function sanitizeClientOverrides(headers: Headers): {
     const apiKey = headers.get("x-ai-api-key")
     const modelId = headers.get("x-ai-model")
 
-    // KISS：没有 API Key 时不接受任何覆写，避免“强行切 provider 但走服务端默认密钥”的混淆与风险。
+    console.log("[Client Overrides] Headers received:", {
+        provider,
+        baseUrl: baseUrl ? `${baseUrl.substring(0, 30)}...` : null,
+        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : null,
+        modelId,
+    })
+
+    // KISS：没有 API Key 时不接受任何覆写，避免"强行切 provider 但走服务端默认密钥"的混淆与风险。
     if (!apiKey) {
+        console.log(
+            "[Client Overrides] No API key provided, rejecting overrides",
+        )
         return { provider: null, baseUrl: null, apiKey: null, modelId: null }
     }
 
@@ -73,7 +93,7 @@ function sanitizeClientOverrides(headers: Headers): {
         .filter(Boolean)
 
     let sanitizedBaseUrl: string | null = null
-    if (baseUrl && allowlist.length > 0) {
+    if (baseUrl) {
         try {
             const url = new URL(baseUrl)
             const hostname = url.hostname.toLowerCase()
@@ -101,13 +121,23 @@ function sanitizeClientOverrides(headers: Headers): {
                 throw new Error("hostname not allowed")
             }
 
-            if (allowlist.includes(hostname)) {
+            // 白名单为空时允许所有 HTTPS URL，否则检查白名单
+            if (allowlist.length === 0 || allowlist.includes(hostname)) {
                 sanitizedBaseUrl = url.toString()
             }
         } catch {
             sanitizedBaseUrl = null
         }
     }
+
+    const result = {
+        provider: provider || null,
+        baseUrl: sanitizedBaseUrl,
+        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : null,
+        modelId: modelId || null,
+    }
+
+    console.log("[Client Overrides] Final result:", result)
 
     return {
         provider: provider || null,
@@ -601,6 +631,23 @@ async function handleChatRequest(req: Request): Promise<Response> {
         apiKey: clientOverrides.apiKey || defaultConfig.apiKey,
         baseUrl: clientOverrides.baseUrl || defaultConfig.baseUrl,
     }
+
+    console.log("[Final Config] Using configuration:", {
+        provider: finalOverrides.provider,
+        modelId: finalOverrides.modelId,
+        apiKey: finalOverrides.apiKey
+            ? `${finalOverrides.apiKey.substring(0, 10)}...`
+            : null,
+        baseUrl: finalOverrides.baseUrl
+            ? `${finalOverrides.baseUrl.substring(0, 30)}...`
+            : null,
+        source: {
+            provider: clientOverrides.provider ? "client" : "default",
+            modelId: clientOverrides.modelId ? "client" : "default",
+            apiKey: clientOverrides.apiKey ? "client" : "default",
+            baseUrl: clientOverrides.baseUrl ? "client" : "default",
+        },
+    })
 
     // Get AI model with merged configuration
     const { model, providerOptions, headers, modelId } =

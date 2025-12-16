@@ -100,7 +100,10 @@ const upsertInputSchema = z
             .string()
             .min(1)
             .max(1000, "API key too long")
-            .regex(/^[A-Za-z0-9_\-.]+$/, "API key contains invalid characters")
+            .regex(
+                /^[A-Za-z0-9_\-./:+=]+$/,
+                "API key contains invalid characters",
+            )
             .optional(),
         baseUrl: z.string().url().max(500).optional().or(z.literal("")),
         modelId: z.string().max(200).optional(),
