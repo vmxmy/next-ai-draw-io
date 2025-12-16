@@ -97,7 +97,7 @@ export function SessionSwitcher({
                             return (
                                 <div
                                     key={c.id}
-                                    className={`group relative flex items-center justify-between rounded-lg border p-3 transition-all ${
+                                    className={`group relative flex items-center gap-2 rounded-lg border p-3 transition-all ${
                                         isCurrent
                                             ? "border-primary bg-accent shadow-sm"
                                             : "border-border hover:border-primary/50 hover:bg-accent/50"
@@ -105,13 +105,13 @@ export function SessionSwitcher({
                                 >
                                     <button
                                         type="button"
-                                        className="flex-1 text-left"
+                                        className="flex-1 min-w-0 text-left"
                                         onClick={() => {
                                             onSelectConversation(c.id)
                                             setSheetOpen(false)
                                         }}
                                     >
-                                        <div className="flex flex-col gap-1">
+                                        <div className="flex flex-col gap-1 min-w-0">
                                             <span
                                                 className={`truncate text-sm ${
                                                     isCurrent
@@ -121,7 +121,7 @@ export function SessionSwitcher({
                                             >
                                                 {displayTitle}
                                             </span>
-                                            <span className="text-xs text-muted-foreground">
+                                            <span className="text-xs text-muted-foreground truncate">
                                                 {time}
                                             </span>
                                         </div>
@@ -129,7 +129,7 @@ export function SessionSwitcher({
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="ml-2 h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
+                                        className="flex-shrink-0 h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
                                         onClick={(e) => {
                                             e.stopPropagation()
                                             onDeleteConversation(c.id)
