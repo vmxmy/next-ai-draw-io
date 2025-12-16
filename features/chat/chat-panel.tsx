@@ -1,6 +1,7 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
+import { useQueryClient } from "@tanstack/react-query"
 import { DefaultChatTransport } from "ai"
 import { PanelRightOpen } from "lucide-react"
 import { useSession } from "next-auth/react"
@@ -33,6 +34,7 @@ import { ChatHeader } from "@/features/chat/ui/chat-header"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
+import { api } from "@/lib/trpc/client"
 import { type FileData, useFileProcessor } from "@/lib/use-file-processor"
 import { useQuotaManager } from "@/lib/use-quota-manager"
 import { formatXML, wrapWithMxFile } from "@/lib/utils"
@@ -725,6 +727,10 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const isAuthenticated = authStatus === "authenticated"
     const userId = authSession?.user?.id || "anonymous"
 
+    // React Query client 和 API mutation（用于云端更新）
+    const queryClient = useQueryClient()
+    const pushMutation = api.conversation.push.useMutation()
+
     // 云端会话管理（仅登录用户）
     const cloudHook = useCloudConversations({
         userId,
@@ -842,24 +848,56 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 toast.error("网络已断开，无法更新会话")
                 return
             }
-            // 更新本地会话列表中的标题并保存到存储
-            const updatedMetas = conversations.map((c) =>
-                c.id === id ? { ...c, title, updatedAt: Date.now() } : c,
-            )
-            setConversations(updatedMetas)
-            // 保存到 localStorage
-            writeConversationMetasToStorage(userId, updatedMetas)
-            // 触发持久化（云端同步）
-            persistCurrentConversation({ messages: messagesRef.current as any })
+
+            if (isAuthenticated) {
+                // 登录用户：更新云端数据库
+                const updatedAt = Date.now()
+
+                // 乐观更新：立即更新 React Query 缓存
+                queryClient.setQueryData(
+                    [["conversation", "listMetas"]],
+                    (old: any) => {
+                        if (!old) return old
+                        return {
+                            ...old,
+                            conversations: (old.conversations || []).map(
+                                (c: any) =>
+                                    c.id === id
+                                        ? { ...c, title, updatedAt }
+                                        : c,
+                            ),
+                        }
+                    },
+                )
+
+                // 保存到数据库
+                pushMutation.mutate({
+                    conversations: [
+                        {
+                            id,
+                            title,
+                            updatedAt,
+                            createdAt: Date.now(), // API 需要但不会更新
+                        },
+                    ],
+                })
+            } else {
+                // 匿名用户：更新本地存储
+                const updatedMetas = conversations.map((c) =>
+                    c.id === id ? { ...c, title, updatedAt: Date.now() } : c,
+                )
+                setConversations(updatedMetas)
+                writeConversationMetasToStorage(userId, updatedMetas)
+            }
         },
         [
             isAuthenticated,
             isOnline,
             conversations,
             userId,
+            queryClient,
+            pushMutation,
             setConversations,
-            persistCurrentConversation,
-            messagesRef,
         ],
     )
 
