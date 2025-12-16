@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import {
     Sheet,
     SheetContent,
+    SheetDescription,
     SheetHeader,
     SheetTitle,
 } from "@/components/ui/sheet"
@@ -126,12 +127,12 @@ export function SessionSwitcher({
                         <SheetTitle>
                             {sessionListTitle || "Sessions"}
                         </SheetTitle>
-                        <p className="text-sm text-muted-foreground">
+                        <SheetDescription>
                             {conversations.length}{" "}
                             {conversations.length === 1
                                 ? "session"
                                 : "sessions"}
-                        </p>
+                        </SheetDescription>
                     </SheetHeader>
                     <div className="mt-6 space-y-2 overflow-y-auto max-h-[calc(100vh-120px)]">
                         {conversations.map((c) => {
