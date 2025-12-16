@@ -1,9 +1,28 @@
 export function escapeXmlAttrValue(value: string): string {
-    return value
+    // Step 1: Temporarily protect valid XML/HTML entities and numeric character references
+    // Pattern: &(#x?[0-9a-fA-F]+|[a-zA-Z]+);
+    // Examples: &#xa; &#10; &#160; &lt; &gt; &amp; &quot; &apos;
+    const entityPlaceholders: string[] = []
+    const protectedValue = value.replace(
+        /&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g,
+        (match) => {
+            const index = entityPlaceholders.length
+            entityPlaceholders.push(match)
+            return `__ENTITY_${index}__`
+        },
+    )
+
+    // Step 2: Escape special XML characters (& < > ")
+    const escaped = protectedValue
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
+
+    // Step 3: Restore protected entities
+    return escaped.replace(/__ENTITY_(\d+)__/g, (_match, index) => {
+        return entityPlaceholders[Number.parseInt(index, 10)]
+    })
 }
 
 export function parseXml(xml: string): Document {
