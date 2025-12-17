@@ -1,9 +1,23 @@
 "use client"
 
-import { Check, History, Loader2, Pencil, Trash2, X } from "lucide-react"
+import {
+    Check,
+    History,
+    Loader2,
+    MoreVertical,
+    Pencil,
+    Trash2,
+    X,
+} from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { Button } from "@/components/ui/button"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
     Sheet,
@@ -149,10 +163,12 @@ export function SessionSwitcher({
                             return (
                                 <div
                                     key={c.id}
-                                    className={`group relative flex items-center gap-2 rounded-lg border p-3 transition-all ${
+                                    className={`group relative flex items-center gap-2 rounded-xl border transition-all ${
+                                        isMobile ? "p-3.5" : "p-3"
+                                    } ${
                                         isCurrent
                                             ? "border-primary bg-accent shadow-sm"
-                                            : "border-border hover:border-primary/50 hover:bg-accent/50"
+                                            : "border-border hover:border-primary/50 hover:bg-accent/50 active:bg-accent/70"
                                     }`}
                                 >
                                     {isEditing ? (
@@ -170,13 +186,13 @@ export function SessionSwitcher({
                                                     placeholder={
                                                         editPlaceholder
                                                     }
-                                                    className="h-8 text-sm"
+                                                    className="h-9 text-sm"
                                                 />
                                             </div>
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="flex-shrink-0 h-8 w-8 text-green-600 hover:bg-green-100 hover:text-green-700"
+                                                className="flex-shrink-0 h-9 w-9 text-green-600 hover:bg-green-100 hover:text-green-700 active:bg-green-200"
                                                 onClick={handleSaveEdit}
                                                 title={saveLabel}
                                                 aria-label={saveLabel}
@@ -186,7 +202,7 @@ export function SessionSwitcher({
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="flex-shrink-0 h-8 w-8 text-muted-foreground hover:bg-accent"
+                                                className="flex-shrink-0 h-9 w-9 text-muted-foreground hover:bg-accent active:bg-accent/80"
                                                 onClick={handleCancelEdit}
                                                 title={cancelLabel}
                                                 aria-label={cancelLabel}
@@ -196,9 +212,23 @@ export function SessionSwitcher({
                                         </>
                                     ) : (
                                         <>
+                                            {/* iOS 风格：选中项显示勾选标记 */}
+                                            {isMobile && (
+                                                <div
+                                                    className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-all ${
+                                                        isCurrent
+                                                            ? "bg-primary text-primary-foreground"
+                                                            : "bg-transparent"
+                                                    }`}
+                                                >
+                                                    {isCurrent && (
+                                                        <Check className="h-3 w-3" />
+                                                    )}
+                                                </div>
+                                            )}
                                             <button
                                                 type="button"
-                                                className="flex-1 min-w-0 text-left"
+                                                className="flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
                                                 onClick={() => {
                                                     onSelectConversation(c.id)
                                                     setSheetOpen(false)
@@ -219,43 +249,87 @@ export function SessionSwitcher({
                                                     </span>
                                                 </div>
                                             </button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className={`flex-shrink-0 h-8 w-8 text-muted-foreground hover:bg-accent transition-all ${
-                                                    isMobile
-                                                        ? "opacity-70"
-                                                        : "opacity-0 group-hover:opacity-100"
-                                                }`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    handleStartEdit(
-                                                        c.id,
-                                                        displayTitle,
-                                                    )
-                                                }}
-                                                title={editLabel}
-                                                aria-label={editLabel}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className={`flex-shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all ${
-                                                    isMobile
-                                                        ? "opacity-70"
-                                                        : "opacity-0 group-hover:opacity-100"
-                                                }`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation()
-                                                    onDeleteConversation(c.id)
-                                                }}
-                                                title={deleteLabel}
-                                                aria-label={deleteLabel}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
+                                            {isMobile ? (
+                                                // iOS 风格：点击更多按钮显示下拉菜单
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger
+                                                        asChild
+                                                    >
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="flex-shrink-0 h-8 w-8 text-muted-foreground"
+                                                            onClick={(e) =>
+                                                                e.stopPropagation()
+                                                            }
+                                                        >
+                                                            <MoreVertical className="h-4 w-4" />
+                                                        </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent
+                                                        align="end"
+                                                        className="w-40"
+                                                    >
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                handleStartEdit(
+                                                                    c.id,
+                                                                    displayTitle,
+                                                                )
+                                                            }
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                            {editLabel}
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            variant="destructive"
+                                                            onClick={() =>
+                                                                onDeleteConversation(
+                                                                    c.id,
+                                                                )
+                                                            }
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                            {deleteLabel}
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            ) : (
+                                                // 桌面端：hover 显示按钮
+                                                <>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="flex-shrink-0 h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-accent transition-all"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            handleStartEdit(
+                                                                c.id,
+                                                                displayTitle,
+                                                            )
+                                                        }}
+                                                        title={editLabel}
+                                                        aria-label={editLabel}
+                                                    >
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="flex-shrink-0 h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            onDeleteConversation(
+                                                                c.id,
+                                                            )
+                                                        }}
+                                                        title={deleteLabel}
+                                                        aria-label={deleteLabel}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </>
+                                            )}
                                         </>
                                     )}
                                 </div>
