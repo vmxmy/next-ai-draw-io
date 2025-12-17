@@ -222,7 +222,11 @@ export function SessionSwitcher({
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="flex-shrink-0 h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-accent transition-all"
+                                                className={`flex-shrink-0 h-8 w-8 text-muted-foreground hover:bg-accent transition-all ${
+                                                    isMobile
+                                                        ? "opacity-70"
+                                                        : "opacity-0 group-hover:opacity-100"
+                                                }`}
                                                 onClick={(e) => {
                                                     e.stopPropagation()
                                                     handleStartEdit(
@@ -238,7 +242,11 @@ export function SessionSwitcher({
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="flex-shrink-0 h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
+                                                className={`flex-shrink-0 h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all ${
+                                                    isMobile
+                                                        ? "opacity-70"
+                                                        : "opacity-0 group-hover:opacity-100"
+                                                }`}
                                                 onClick={(e) => {
                                                     e.stopPropagation()
                                                     onDeleteConversation(c.id)
