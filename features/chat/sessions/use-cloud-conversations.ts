@@ -115,6 +115,7 @@ export function useCloudConversations({
 
     // 切换会话时的 loading 状态
     const [isLoadingSwitch, setIsLoadingSwitch] = useState(false)
+    const [switchingToId, setSwitchingToId] = useState<string | null>(null)
 
     // 查询当前会话详情
     const { data: currentPayloadData, isFetching: isFetchingPayload } =
@@ -148,6 +149,7 @@ export function useCloudConversations({
     useEffect(() => {
         if (!isFetchingPayload && isLoadingSwitch) {
             setIsLoadingSwitch(false)
+            setSwitchingToId(null)
         }
     }, [isFetchingPayload, isLoadingSwitch])
 
@@ -487,6 +489,7 @@ export function useCloudConversations({
             try {
                 stopCurrentRequest?.()
                 setIsLoadingSwitch(true)
+                setSwitchingToId(id)
 
                 // 等待当前会话保存完成
                 await flushSaveToCloud()
@@ -695,6 +698,7 @@ export function useCloudConversations({
         hasRestored: true, // 云端模式始终视为已恢复
         canSaveDiagram,
         isLoadingSwitch, // 会话切换 loading 状态
+        switchingToId, // 正在切换到的会话 ID
         getConversationDisplayTitle,
         deriveConversationTitle,
         loadConversation: noop, // 云端模式通过 React Query 自动加载

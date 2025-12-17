@@ -790,6 +790,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         sessionId,
         hasRestored,
         isLoadingSwitch,
+        switchingToId,
         getConversationDisplayTitle,
         loadConversation: _loadConversation,
         persistCurrentConversation,
@@ -1506,6 +1507,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 onDeleteConversation={handleDeleteConversation}
                 onUpdateConversationTitle={handleUpdateConversationTitle}
                 isLoadingSwitch={isLoadingSwitch}
+                switchingToId={switchingToId}
                 quotaTooltip={t("chat.header.quotaTooltip")}
                 onShowQuota={() => setShowQuotaDialog(true)}
             />

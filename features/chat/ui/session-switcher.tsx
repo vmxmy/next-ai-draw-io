@@ -43,6 +43,7 @@ export function SessionSwitcher({
     onDeleteConversation,
     onUpdateConversationTitle,
     isLoadingSwitch,
+    switchingToId,
     sessionListTitle,
 }: {
     isMobile: boolean
@@ -59,6 +60,7 @@ export function SessionSwitcher({
     onDeleteConversation: (id: string) => void
     onUpdateConversationTitle: (id: string, title: string) => void
     isLoadingSwitch?: boolean
+    switchingToId?: string | null
     sessionListTitle?: string
 }) {
     const [mounted, setMounted] = useState(false)
@@ -77,6 +79,16 @@ export function SessionSwitcher({
             inputRef.current.select()
         }
     }, [editingId])
+
+    // 切换完成后关闭 Sheet
+    const prevSwitchingToIdRef = useRef<string | null>(null)
+    useEffect(() => {
+        // 从有值变为 null 表示切换完成
+        if (prevSwitchingToIdRef.current && !switchingToId) {
+            setSheetOpen(false)
+        }
+        prevSwitchingToIdRef.current = switchingToId ?? null
+    }, [switchingToId])
 
     const handleStartEdit = (id: string, currentTitle: string) => {
         setEditingId(id)
@@ -157,6 +169,7 @@ export function SessionSwitcher({
                                 c.updatedAt || c.createdAt,
                             ).toLocaleString(locale)
                             const isCurrent = c.id === currentConversationId
+                            const isSwitchingTo = switchingToId === c.id
 
                             const isEditing = editingId === c.id
 
@@ -166,9 +179,11 @@ export function SessionSwitcher({
                                     className={`group relative flex items-center gap-2 rounded-xl border transition-all ${
                                         isMobile ? "p-3.5" : "p-3"
                                     } ${
-                                        isCurrent
+                                        isSwitchingTo
                                             ? "border-primary bg-accent shadow-sm"
-                                            : "border-border hover:border-primary/50 hover:bg-accent/50 active:bg-accent/70"
+                                            : isCurrent
+                                              ? "border-primary bg-accent shadow-sm"
+                                              : "border-border hover:border-primary/50 hover:bg-accent/50 active:bg-accent/70"
                                     }`}
                                 >
                                     {isEditing ? (
@@ -212,26 +227,36 @@ export function SessionSwitcher({
                                         </>
                                     ) : (
                                         <>
-                                            {/* iOS 风格：选中项显示勾选标记 */}
+                                            {/* iOS 风格：选中项显示勾选标记或加载状态 */}
                                             {isMobile && (
                                                 <div
                                                     className={`flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-all ${
-                                                        isCurrent
+                                                        switchingToId === c.id
                                                             ? "bg-primary text-primary-foreground"
-                                                            : "bg-transparent"
+                                                            : isCurrent
+                                                              ? "bg-primary text-primary-foreground"
+                                                              : "bg-transparent"
                                                     }`}
                                                 >
-                                                    {isCurrent && (
-                                                        <Check className="h-3 w-3" />
+                                                    {switchingToId === c.id ? (
+                                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                                    ) : (
+                                                        isCurrent && (
+                                                            <Check className="h-3 w-3" />
+                                                        )
                                                     )}
                                                 </div>
                                             )}
                                             <button
                                                 type="button"
-                                                className="flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
+                                                className={`flex-1 min-w-0 text-left active:opacity-70 transition-opacity ${
+                                                    isLoadingSwitch
+                                                        ? "pointer-events-none opacity-50"
+                                                        : ""
+                                                }`}
+                                                disabled={isLoadingSwitch}
                                                 onClick={() => {
                                                     onSelectConversation(c.id)
-                                                    setSheetOpen(false)
                                                 }}
                                             >
                                                 <div className="flex flex-col gap-1 min-w-0">
@@ -250,50 +275,61 @@ export function SessionSwitcher({
                                                 </div>
                                             </button>
                                             {isMobile ? (
-                                                // iOS 风格：点击更多按钮显示下拉菜单
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger
-                                                        asChild
-                                                    >
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="flex-shrink-0 h-8 w-8 text-muted-foreground"
-                                                            onClick={(e) =>
-                                                                e.stopPropagation()
-                                                            }
+                                                isSwitchingTo ? (
+                                                    // 移动端：加载状态占位（spinner 已在左侧圆形中显示）
+                                                    <div className="flex-shrink-0 h-8 w-8" />
+                                                ) : (
+                                                    // iOS 风格：点击更多按钮显示下拉菜单
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger
+                                                            asChild
                                                         >
-                                                            <MoreVertical className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent
-                                                        align="end"
-                                                        className="w-40"
-                                                    >
-                                                        <DropdownMenuItem
-                                                            onClick={() =>
-                                                                handleStartEdit(
-                                                                    c.id,
-                                                                    displayTitle,
-                                                                )
-                                                            }
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="flex-shrink-0 h-8 w-8 text-muted-foreground"
+                                                                onClick={(e) =>
+                                                                    e.stopPropagation()
+                                                                }
+                                                                disabled={
+                                                                    isLoadingSwitch
+                                                                }
+                                                            >
+                                                                <MoreVertical className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent
+                                                            align="end"
+                                                            className="w-40"
                                                         >
-                                                            <Pencil className="h-4 w-4" />
-                                                            {editLabel}
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem
-                                                            variant="destructive"
-                                                            onClick={() =>
-                                                                onDeleteConversation(
-                                                                    c.id,
-                                                                )
-                                                            }
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                            {deleteLabel}
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+                                                            <DropdownMenuItem
+                                                                onClick={() =>
+                                                                    handleStartEdit(
+                                                                        c.id,
+                                                                        displayTitle,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                                {editLabel}
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                variant="destructive"
+                                                                onClick={() =>
+                                                                    onDeleteConversation(
+                                                                        c.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                                {deleteLabel}
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                )
+                                            ) : isSwitchingTo ? (
+                                                // 桌面端：加载状态显示 spinner
+                                                <Loader2 className="flex-shrink-0 h-5 w-5 animate-spin text-primary" />
                                             ) : (
                                                 // 桌面端：hover 显示按钮
                                                 <>
@@ -310,6 +346,9 @@ export function SessionSwitcher({
                                                         }}
                                                         title={editLabel}
                                                         aria-label={editLabel}
+                                                        disabled={
+                                                            isLoadingSwitch
+                                                        }
                                                     >
                                                         <Pencil className="h-4 w-4" />
                                                     </Button>
@@ -325,6 +364,9 @@ export function SessionSwitcher({
                                                         }}
                                                         title={deleteLabel}
                                                         aria-label={deleteLabel}
+                                                        disabled={
+                                                            isLoadingSwitch
+                                                        }
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>

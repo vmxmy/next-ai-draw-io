@@ -1092,6 +1092,7 @@ export function useLocalConversations({
         hasRestored,
         canSaveDiagram,
         isLoadingSwitch: false, // 本地模式同步加载，无需 loading 状态
+        switchingToId: null, // 本地模式同步加载，无需此状态
         getConversationDisplayTitle,
         deriveConversationTitle,
         loadConversation,
