@@ -103,6 +103,10 @@ export function useLocalConversations({
     })
     const [sessionId, setSessionId] = useState(() => createSessionId())
     const [hasRestored, setHasRestored] = useState(false)
+
+    // Refs 用于事件处理器中获取最新值，避免闭包过期
+    const currentConversationIdRef = useRef(currentConversationId)
+    const sessionIdRef = useRef(sessionId)
     const [canSaveDiagram, setCanSaveDiagram] = useState(false)
 
     const pendingDiagramXmlRef = useRef<string | null>(null)
@@ -110,6 +114,15 @@ export function useLocalConversations({
         typeof setTimeout
     > | null>(null)
     const loadingConversationRef = useRef<string | null>(null)
+
+    // 同步 refs 保持最新
+    useEffect(() => {
+        currentConversationIdRef.current = currentConversationId
+    }, [currentConversationId])
+
+    useEffect(() => {
+        sessionIdRef.current = sessionId
+    }, [sessionId])
 
     // 使用共享的标题 hook
     const { getConversationDisplayTitle } = useConversationTitles({
@@ -847,32 +860,32 @@ export function useLocalConversations({
     }, [enabled, persistCurrentConversation, sessionId])
 
     // Effect: 页面隐藏/卸载前保存（企业级可靠性保障）
+    // 使用 refs 避免闭包捕获过期值
     useEffect(() => {
         if (!enabled) return
 
         const saveImmediately = () => {
-            if (!currentConversationId) return
+            // 使用 refs 获取最新值，避免闭包过期
+            const convId = currentConversationIdRef.current
+            const sessId = sessionIdRef.current
+            if (!convId) return
             try {
                 const versionState = diagramHistory.getStateSnapshot()
                 const payload: ConversationPayload = {
                     messages: messagesRef.current as any,
                     xml: chartXMLRef.current || "",
-                    sessionId,
+                    sessionId: sessId,
                     diagramVersions: versionState.versions,
                     diagramVersionCursor: versionState.cursor,
                     diagramVersionMarks: versionState.marks,
                 }
-                writeConversationPayloadToStorage(
-                    userId,
-                    currentConversationId,
-                    payload,
-                )
+                writeConversationPayloadToStorage(userId, convId, payload)
 
                 const metas = readConversationMetasFromStorage(userId)
                 const now = Date.now()
                 const next = Array.isArray(metas)
                     ? metas.map((m) =>
-                          m.id === currentConversationId
+                          m.id === convId
                               ? {
                                     ...m,
                                     updatedAt: now,
@@ -914,10 +927,8 @@ export function useLocalConversations({
     }, [
         enabled,
         chartXMLRef,
-        currentConversationId,
         diagramHistory.getStateSnapshot,
         messagesRef,
-        sessionId,
         userId,
     ])
 

@@ -15,20 +15,9 @@ import { api } from "@/lib/trpc/client"
 import {
     deriveConversationTitle,
     useConversationTitles,
+    useDebouncedCallback,
     useDiagramVersionHistory,
 } from "./hooks"
-
-// 防抖函数
-function debounce<T extends (...args: any[]) => any>(
-    func: T,
-    wait: number,
-): (...args: Parameters<T>) => void {
-    let timeout: ReturnType<typeof setTimeout> | null = null
-    return (...args: Parameters<T>) => {
-        if (timeout) clearTimeout(timeout)
-        timeout = setTimeout(() => func(...args), wait)
-    }
-}
 
 export function useCloudConversations({
     userId,
@@ -77,6 +66,19 @@ export function useCloudConversations({
     const [canSaveDiagram, setCanSaveDiagram] = useState(false)
 
     const pendingDiagramXmlRef = useRef<string | null>(null)
+
+    // Refs 用于事件处理器中获取最新值，避免闭包过期
+    const currentConversationIdRef = useRef(currentConversationId)
+    const sessionIdRef = useRef(sessionId)
+
+    // 同步 refs 保持最新
+    useEffect(() => {
+        currentConversationIdRef.current = currentConversationId
+    }, [currentConversationId])
+
+    useEffect(() => {
+        sessionIdRef.current = sessionId
+    }, [sessionId])
 
     // 使用共享的图表版本管理 hook
     const diagramHistory = useDiagramVersionHistory({
@@ -262,23 +264,20 @@ export function useCloudConversations({
     ])
 
     // 防抖保存到云端（300ms 防抖，企业级标准：快速响应 + 避免频繁请求）
-    const debouncedSave = useMemo(
-        () =>
-            debounce(
-                (conversation: {
-                    id: string
-                    title?: string
-                    createdAt: number
-                    updatedAt: number
-                    payload: ConversationPayload
-                }) => {
-                    pushMutateRef.current({
-                        conversations: [conversation],
-                    })
-                },
-                300,
-            ),
-        [],
+    // 使用 useDebouncedCallback 确保组件卸载时自动清理 timeout
+    const [debouncedSave] = useDebouncedCallback(
+        (conversation: {
+            id: string
+            title?: string
+            createdAt: number
+            updatedAt: number
+            payload: ConversationPayload
+        }) => {
+            pushMutateRef.current({
+                conversations: [conversation],
+            })
+        },
+        300,
     )
 
     // 自动保存会话（防抖）
@@ -616,21 +615,26 @@ export function useCloudConversations({
     }, [isDrawioReady, onDisplayChart, chartXMLRef])
 
     // 页面隐藏/关闭时立即保存（企业级可靠性保障）
+    // 使用 refs 避免闭包过期问题
     useEffect(() => {
         if (userId === "anonymous") return
-        if (!currentConversationId) return
 
         const saveImmediately = () => {
+            // 使用 refs 获取最新值，避免闭包过期
+            const convId = currentConversationIdRef.current
+            const sessId = sessionIdRef.current
+
+            if (!convId) return
             if (isRestoringRef.current) return
 
             const conversation = {
-                id: currentConversationId,
+                id: convId,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 payload: {
                     messages: messagesRef.current as any,
                     xml: chartXMLRef.current || "",
-                    sessionId,
+                    sessionId: sessId,
                     diagramVersions: diagramHistory.versionsRef.current,
                     diagramVersionCursor: diagramHistory.cursorRef.current,
                     diagramVersionMarks: diagramHistory.marksRef.current,
@@ -676,8 +680,8 @@ export function useCloudConversations({
         }
     }, [
         userId,
-        currentConversationId,
-        sessionId,
+        // 使用 refs，不再需要这些状态作为依赖
+        // currentConversationId, sessionId 已通过 refs 访问
         chartXMLRef,
         messagesRef,
         diagramHistory.versionsRef,
