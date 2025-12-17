@@ -129,6 +129,7 @@ export function useCloudConversations({
                 staleTime: 30_000, // 30秒缓存
                 refetchOnWindowFocus: false, // 禁止窗口聚焦时重新获取
                 refetchOnReconnect: false, // 禁止网络重连时重新获取
+                refetchOnMount: true, // 页面加载时重新获取最新数据
             },
         )
 
@@ -150,6 +151,9 @@ export function useCloudConversations({
         }
     }, [isFetchingPayload, isLoadingSwitch])
 
+    // 跟踪上次恢复的会话 ID，防止 isDrawioReady 变化时重复恢复
+    const lastRestoredConversationIdRef = useRef<string>("")
+
     // 应用会话数据到 UI
     useEffect(() => {
         if (!currentPayloadData?.payload) return
@@ -157,14 +161,12 @@ export function useCloudConversations({
         const payload =
             currentPayloadData.payload as unknown as ConversationPayload
 
-        console.log("[cloud-session] Restoring conversation:", {
-            id: currentConversationId,
-            xmlLength: payload.xml?.length || 0,
-            xmlPreview: payload.xml?.slice(0, 100),
-            versionsCount: payload.diagramVersions?.length || 0,
-            cursor: payload.diagramVersionCursor,
-            isDrawioReady,
-        })
+        // 如果是同一个会话且只是 isDrawioReady 变化，跳过重复恢复
+        // 待处理的 XML 会由 pendingDiagramXmlRef 机制处理
+        if (lastRestoredConversationIdRef.current === currentConversationId) {
+            return
+        }
+        lastRestoredConversationIdRef.current = currentConversationId
 
         // 标记正在恢复数据，避免触发自动保存
         isRestoringRef.current = true
@@ -172,7 +174,22 @@ export function useCloudConversations({
         setMessages((payload.messages || []) as any)
         setSessionId(payload.sessionId || createSessionId())
 
-        processedToolCallsRef.current = new Set()
+        // 预先填充已处理的工具调用 ID，防止历史消息中的 display_diagram 被重新执行
+        const existingToolCallIds = new Set<string>()
+        for (const message of payload.messages || []) {
+            if (!message.parts) continue
+            for (const part of message.parts as any[]) {
+                const toolCallId = part?.toolCallId
+                if (
+                    part?.type?.startsWith("tool-") &&
+                    typeof toolCallId === "string"
+                ) {
+                    existingToolCallIds.add(toolCallId)
+                }
+            }
+        }
+        processedToolCallsRef.current = existingToolCallIds
+
         autoRetryCountRef.current = 0
         editFailureCountRef.current = 0
         forceDisplayNextRef.current = false
@@ -193,17 +210,13 @@ export function useCloudConversations({
 
         diagramHistory.restoreState({ versions, cursor, marks })
 
-        // 恢复图表 XML - 优先使用版本历史中的最新版本
+        // 恢复图表 XML
+        // payload.xml 包含用户手动编辑和 AI 生成的最新状态
+        // versions[cursor].xml 只包含 AI 生成的版本历史
+        // 优先使用 payload.xml（包含用户手动编辑），仅当 payload.xml 为空时才使用版本历史
         const latestVersionXml =
             cursor >= 0 && versions[cursor]?.xml ? versions[cursor].xml : null
-        const xmlToLoad = latestVersionXml || payload.xml
-
-        console.log("[cloud-session] Loading diagram:", {
-            hasPayloadXml: !!payload.xml,
-            hasLatestVersionXml: !!latestVersionXml,
-            usingVersionXml: !!latestVersionXml,
-            xmlToLoadLength: xmlToLoad?.length || 0,
-        })
+        const xmlToLoad = payload.xml || latestVersionXml
 
         if (xmlToLoad) {
             if (isDrawioReady) {
@@ -233,6 +246,7 @@ export function useCloudConversations({
         }, 100)
     }, [
         currentPayloadData,
+        currentConversationId,
         setMessages,
         isDrawioReady,
         onDisplayChart,
@@ -299,9 +313,8 @@ export function useCloudConversations({
         })
 
         // 如果数据没有实际变化，跳过保存
-        if (dataFingerprint === lastSavedDataRef.current) {
-            return
-        }
+        if (dataFingerprint === lastSavedDataRef.current) return
+
         lastSavedDataRef.current = dataFingerprint
 
         const conversation = {

@@ -120,9 +120,16 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
             setChartXML(chart)
 
             if (drawioRef.current) {
-                drawioRef.current.load({
-                    xml: chart,
-                })
+                try {
+                    drawioRef.current.load({
+                        xml: chart,
+                    })
+                } catch (error) {
+                    console.error(
+                        "[loadDiagram] drawioRef.load() failed:",
+                        error,
+                    )
+                }
             }
 
             return null

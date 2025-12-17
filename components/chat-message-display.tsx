@@ -312,6 +312,18 @@ export function ChatMessageDisplay({
     const previousXML = useRef<string>("")
     const processedAssistantXmlMessages = useRef<Set<string>>(new Set())
     const processedToolCalls = processedToolCallsRef
+    const lastSessionIdRef = useRef<string | undefined>(undefined)
+
+    // Clear stale state when session changes
+    useEffect(() => {
+        if (sessionId !== lastSessionIdRef.current) {
+            // Clear assistant XML tracking for new session
+            processedAssistantXmlMessages.current = new Set()
+            // Clear previous XML tracking
+            previousXML.current = ""
+            lastSessionIdRef.current = sessionId
+        }
+    }, [sessionId])
     const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>(
         {},
     )
@@ -522,7 +534,7 @@ export function ChatMessageDisplay({
             if (!message.parts) continue
 
             // 兜底：有些模型（常见是 Gemini）会把 XML 直接输出为普通文本，而不走 tool-call。
-            // 这里在 assistant 消息里保守识别 draw.io XML，并自动应用到画布，避免“看起来没触发工具”。
+            // 这里在 assistant 消息里保守识别 draw.io XML，并自动应用到画布，避免"看起来没触发工具"。
             if (message.role === "assistant") {
                 const messageId = (message as any)?.id
                 if (
@@ -553,10 +565,9 @@ export function ChatMessageDisplay({
 
                 if (part.type === "tool-display_diagram" && input?.xml) {
                     const xml = input.xml as string
-                    if (
-                        state === "output-available" &&
-                        !processedToolCalls.current.has(toolCallId)
-                    ) {
+                    const isProcessed =
+                        processedToolCalls.current.has(toolCallId)
+                    if (state === "output-available" && !isProcessed) {
                         diagramUpdates.push({
                             toolCallId,
                             xml,
