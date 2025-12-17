@@ -114,20 +114,15 @@ export function ChatHeader({
         onClick: () => void,
         icon: ReactNode,
     ) => (
-        <div className="flex flex-col items-center gap-1">
-            <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 rounded-xl hover:bg-accent"
-                aria-label={label}
-                onClick={onClick}
-            >
-                {icon}
-            </Button>
-            <span className="text-[11px] leading-none text-muted-foreground">
-                {label}
-            </span>
-        </div>
+        <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 rounded-xl hover:bg-accent"
+            aria-label={label}
+            onClick={onClick}
+        >
+            {icon}
+        </Button>
     )
 
     return (
@@ -282,34 +277,30 @@ export function ChatHeader({
 
             {isMobile ? (
                 <div
-                    className="mt-3 grid grid-cols-4 gap-2"
+                    className="mt-2 flex items-center justify-center gap-1"
                     role="toolbar"
                     aria-label="主要操作"
                 >
-                    <div className="flex justify-center">
-                        <SessionSwitcher
-                            isMobile={isMobile}
-                            conversations={conversations}
-                            currentConversationId={currentConversationId}
-                            getConversationDisplayTitle={
-                                getConversationDisplayTitle
-                            }
-                            locale={locale}
-                            deleteLabel={deleteLabel}
-                            editLabel={editLabel}
-                            saveLabel={saveLabel}
-                            cancelLabel={cancelLabel}
-                            editPlaceholder={editPlaceholder}
-                            sessionListTitle={sessionListTitle}
-                            onSelectConversation={onSelectConversation}
-                            onDeleteConversation={onDeleteConversation}
-                            onUpdateConversationTitle={
-                                onUpdateConversationTitle
-                            }
-                            isLoadingSwitch={isLoadingSwitch}
-                            switchingToId={switchingToId}
-                        />
-                    </div>
+                    <SessionSwitcher
+                        isMobile={isMobile}
+                        conversations={conversations}
+                        currentConversationId={currentConversationId}
+                        getConversationDisplayTitle={
+                            getConversationDisplayTitle
+                        }
+                        locale={locale}
+                        deleteLabel={deleteLabel}
+                        editLabel={editLabel}
+                        saveLabel={saveLabel}
+                        cancelLabel={cancelLabel}
+                        editPlaceholder={editPlaceholder}
+                        sessionListTitle={sessionListTitle}
+                        onSelectConversation={onSelectConversation}
+                        onDeleteConversation={onDeleteConversation}
+                        onUpdateConversationTitle={onUpdateConversationTitle}
+                        isLoadingSwitch={isLoadingSwitch}
+                        switchingToId={switchingToId}
+                    />
                     {mobileAction(
                         newSessionTooltip,
                         onNewSession,

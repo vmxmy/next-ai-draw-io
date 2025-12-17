@@ -126,25 +126,20 @@ export function SessionSwitcher({
     return (
         <>
             {isMobile ? (
-                <div className="flex flex-col items-center gap-1">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSheetOpen(true)}
-                        className="h-11 w-11 rounded-xl hover:bg-accent"
-                        disabled={isLoadingSwitch}
-                        aria-label={triggerLabel}
-                    >
-                        {isLoadingSwitch ? (
-                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                        ) : (
-                            <History className="h-5 w-5 text-muted-foreground" />
-                        )}
-                    </Button>
-                    <span className="text-[11px] leading-none text-muted-foreground">
-                        {triggerLabel}
-                    </span>
-                </div>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSheetOpen(true)}
+                    className="h-10 w-10 rounded-xl hover:bg-accent"
+                    disabled={isLoadingSwitch}
+                    aria-label={triggerLabel}
+                >
+                    {isLoadingSwitch ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                        <History className="h-5 w-5 text-muted-foreground" />
+                    )}
+                </Button>
             ) : (
                 <ButtonWithTooltip
                     tooltipContent={triggerLabel}
