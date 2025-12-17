@@ -8,7 +8,9 @@ import {
     Settings,
 } from "lucide-react"
 import Image from "next/image"
+import type { ReactNode } from "react"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
+import { Button } from "@/components/ui/button"
 import type { ConversationMeta } from "@/features/chat/sessions/storage"
 import { AuthButton } from "@/features/chat/ui/auth-button"
 import { CloudSyncStatusButton } from "@/features/chat/ui/cloud-sync-status-button"
@@ -107,11 +109,32 @@ export function ChatHeader({
     quotaTooltip: string
     onShowQuota: () => void
 }) {
+    const mobileAction = (
+        label: string,
+        onClick: () => void,
+        icon: ReactNode,
+    ) => (
+        <div className="flex flex-col items-center gap-1">
+            <Button
+                variant="ghost"
+                size="icon"
+                className="h-11 w-11 rounded-xl hover:bg-accent"
+                aria-label={label}
+                onClick={onClick}
+            >
+                {icon}
+            </Button>
+            <span className="text-[11px] leading-none text-muted-foreground">
+                {label}
+            </span>
+        </div>
+    )
+
     return (
         <header
             className={`${isMobile ? "px-3 py-2" : "px-5 py-4"} border-b border-border/50`}
         >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2">
                         <Image
@@ -132,89 +155,112 @@ export function ChatHeader({
                     ) : null}
                 </div>
 
-                <div className="flex items-center gap-1">
-                    <CloudSyncStatusButton
-                        visible={showSync}
-                        isOnline={isOnline}
-                        syncInFlightCount={syncInFlightCount}
-                        lastSyncOkAt={lastSyncOkAt}
-                        lastSyncErrorAt={lastSyncErrorAt}
-                        okLabel={syncOkLabel}
-                        okAtLabel={syncOkAtLabel}
-                        syncingLabel={syncSyncingLabel}
-                        offlineLabel={syncOfflineLabel}
-                        errorLabel={syncErrorLabel}
-                        locale={locale}
-                        onClick={onSyncClick}
-                    />
-
-                    <SessionSwitcher
-                        isMobile={isMobile}
-                        conversations={conversations}
-                        currentConversationId={currentConversationId}
-                        getConversationDisplayTitle={
-                            getConversationDisplayTitle
-                        }
-                        locale={locale}
-                        deleteLabel={deleteLabel}
-                        editLabel={editLabel}
-                        saveLabel={saveLabel}
-                        cancelLabel={cancelLabel}
-                        editPlaceholder={editPlaceholder}
-                        sessionListTitle={sessionListTitle}
-                        onSelectConversation={onSelectConversation}
-                        onDeleteConversation={onDeleteConversation}
-                        onUpdateConversationTitle={onUpdateConversationTitle}
-                        isLoadingSwitch={isLoadingSwitch}
-                        switchingToId={switchingToId}
-                    />
-
-                    <ButtonWithTooltip
-                        tooltipContent={newSessionTooltip}
-                        variant="ghost"
-                        size="icon"
-                        onClick={onNewSession}
-                        className="hover:bg-accent"
-                    >
-                        <MessageSquarePlus
-                            className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
+                {isMobile ? (
+                    <div className="flex items-center gap-2">
+                        <CloudSyncStatusButton
+                            visible={showSync}
+                            isOnline={isOnline}
+                            syncInFlightCount={syncInFlightCount}
+                            lastSyncOkAt={lastSyncOkAt}
+                            lastSyncErrorAt={lastSyncErrorAt}
+                            okLabel={syncOkLabel}
+                            okAtLabel={syncOkAtLabel}
+                            syncingLabel={syncSyncingLabel}
+                            offlineLabel={syncOfflineLabel}
+                            errorLabel={syncErrorLabel}
+                            locale={locale}
+                            onClick={onSyncClick}
+                            isMobile
                         />
-                    </ButtonWithTooltip>
 
-                    <ButtonWithTooltip
-                        tooltipContent={quotaTooltip}
-                        variant="ghost"
-                        size="icon"
-                        onClick={onShowQuota}
-                        className="hover:bg-accent"
-                    >
-                        <ChartNoAxesColumn
-                            className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
+                        <AuthButton
+                            authStatus={authStatus}
+                            userImage={userImage}
+                            signInLabel={signInLabel}
+                            profileLabel={profileLabel}
+                            onSignIn={onSignIn}
+                            onProfileClick={onProfileClick}
                         />
-                    </ButtonWithTooltip>
-
-                    <ButtonWithTooltip
-                        tooltipContent={settingsTooltip}
-                        variant="ghost"
-                        size="icon"
-                        onClick={onShowSettings}
-                        className="hover:bg-accent"
-                    >
-                        <Settings
-                            className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1">
+                        <CloudSyncStatusButton
+                            visible={showSync}
+                            isOnline={isOnline}
+                            syncInFlightCount={syncInFlightCount}
+                            lastSyncOkAt={lastSyncOkAt}
+                            lastSyncErrorAt={lastSyncErrorAt}
+                            okLabel={syncOkLabel}
+                            okAtLabel={syncOkAtLabel}
+                            syncingLabel={syncSyncingLabel}
+                            offlineLabel={syncOfflineLabel}
+                            errorLabel={syncErrorLabel}
+                            locale={locale}
+                            onClick={onSyncClick}
                         />
-                    </ButtonWithTooltip>
 
-                    <AuthButton
-                        authStatus={authStatus}
-                        userImage={userImage}
-                        signInLabel={signInLabel}
-                        profileLabel={profileLabel}
-                        onSignIn={onSignIn}
-                        onProfileClick={onProfileClick}
-                    />
+                        <SessionSwitcher
+                            isMobile={isMobile}
+                            conversations={conversations}
+                            currentConversationId={currentConversationId}
+                            getConversationDisplayTitle={
+                                getConversationDisplayTitle
+                            }
+                            locale={locale}
+                            deleteLabel={deleteLabel}
+                            editLabel={editLabel}
+                            saveLabel={saveLabel}
+                            cancelLabel={cancelLabel}
+                            editPlaceholder={editPlaceholder}
+                            sessionListTitle={sessionListTitle}
+                            onSelectConversation={onSelectConversation}
+                            onDeleteConversation={onDeleteConversation}
+                            onUpdateConversationTitle={
+                                onUpdateConversationTitle
+                            }
+                            isLoadingSwitch={isLoadingSwitch}
+                            switchingToId={switchingToId}
+                        />
 
-                    {!isMobile && (
+                        <ButtonWithTooltip
+                            tooltipContent={newSessionTooltip}
+                            variant="ghost"
+                            size="icon"
+                            onClick={onNewSession}
+                            className="hover:bg-accent"
+                        >
+                            <MessageSquarePlus className="h-5 w-5 text-muted-foreground" />
+                        </ButtonWithTooltip>
+
+                        <ButtonWithTooltip
+                            tooltipContent={quotaTooltip}
+                            variant="ghost"
+                            size="icon"
+                            onClick={onShowQuota}
+                            className="hover:bg-accent"
+                        >
+                            <ChartNoAxesColumn className="h-5 w-5 text-muted-foreground" />
+                        </ButtonWithTooltip>
+
+                        <ButtonWithTooltip
+                            tooltipContent={settingsTooltip}
+                            variant="ghost"
+                            size="icon"
+                            onClick={onShowSettings}
+                            className="hover:bg-accent"
+                        >
+                            <Settings className="h-5 w-5 text-muted-foreground" />
+                        </ButtonWithTooltip>
+
+                        <AuthButton
+                            authStatus={authStatus}
+                            userImage={userImage}
+                            signInLabel={signInLabel}
+                            profileLabel={profileLabel}
+                            onSignIn={onSignIn}
+                            onProfileClick={onProfileClick}
+                        />
+
                         <ButtonWithTooltip
                             tooltipContent={
                                 isVisible ? hideTooltip : showTooltip
@@ -230,9 +276,57 @@ export function ChatHeader({
                                 <PanelRightOpen className="h-5 w-5 text-muted-foreground" />
                             )}
                         </ButtonWithTooltip>
+                    </div>
+                )}
+            </div>
+
+            {isMobile ? (
+                <div
+                    className="mt-3 grid grid-cols-4 gap-2"
+                    role="toolbar"
+                    aria-label="主要操作"
+                >
+                    <div className="flex justify-center">
+                        <SessionSwitcher
+                            isMobile={isMobile}
+                            conversations={conversations}
+                            currentConversationId={currentConversationId}
+                            getConversationDisplayTitle={
+                                getConversationDisplayTitle
+                            }
+                            locale={locale}
+                            deleteLabel={deleteLabel}
+                            editLabel={editLabel}
+                            saveLabel={saveLabel}
+                            cancelLabel={cancelLabel}
+                            editPlaceholder={editPlaceholder}
+                            sessionListTitle={sessionListTitle}
+                            onSelectConversation={onSelectConversation}
+                            onDeleteConversation={onDeleteConversation}
+                            onUpdateConversationTitle={
+                                onUpdateConversationTitle
+                            }
+                            isLoadingSwitch={isLoadingSwitch}
+                            switchingToId={switchingToId}
+                        />
+                    </div>
+                    {mobileAction(
+                        newSessionTooltip,
+                        onNewSession,
+                        <MessageSquarePlus className="h-5 w-5 text-muted-foreground" />,
+                    )}
+                    {mobileAction(
+                        quotaTooltip,
+                        onShowQuota,
+                        <ChartNoAxesColumn className="h-5 w-5 text-muted-foreground" />,
+                    )}
+                    {mobileAction(
+                        settingsTooltip,
+                        onShowSettings,
+                        <Settings className="h-5 w-5 text-muted-foreground" />,
                     )}
                 </div>
-            </div>
+            ) : null}
         </header>
     )
 }

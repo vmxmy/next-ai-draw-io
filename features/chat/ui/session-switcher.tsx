@@ -120,33 +120,55 @@ export function SessionSwitcher({
 
     if (!mounted) return null
 
+    const triggerLabel = sessionListTitle || "Sessions"
+
     // 移动端和桌面端统一使用 Sheet
     return (
         <>
-            <ButtonWithTooltip
-                tooltipContent={sessionListTitle || "Sessions"}
-                variant="ghost"
-                size="icon"
-                onClick={() => setSheetOpen(true)}
-                className="hover:bg-accent"
-                disabled={isLoadingSwitch}
-            >
-                {isLoadingSwitch ? (
-                    <Loader2
-                        className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} animate-spin text-muted-foreground`}
-                    />
-                ) : (
-                    <History
-                        className={`${isMobile ? "h-4 w-4" : "h-5 w-5"} text-muted-foreground`}
-                    />
-                )}
-            </ButtonWithTooltip>
+            {isMobile ? (
+                <div className="flex flex-col items-center gap-1">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setSheetOpen(true)}
+                        className="h-11 w-11 rounded-xl hover:bg-accent"
+                        disabled={isLoadingSwitch}
+                        aria-label={triggerLabel}
+                    >
+                        {isLoadingSwitch ? (
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        ) : (
+                            <History className="h-5 w-5 text-muted-foreground" />
+                        )}
+                    </Button>
+                    <span className="text-[11px] leading-none text-muted-foreground">
+                        {triggerLabel}
+                    </span>
+                </div>
+            ) : (
+                <ButtonWithTooltip
+                    tooltipContent={triggerLabel}
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSheetOpen(true)}
+                    className="hover:bg-accent"
+                    disabled={isLoadingSwitch}
+                >
+                    {isLoadingSwitch ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                        <History className="h-5 w-5 text-muted-foreground" />
+                    )}
+                </ButtonWithTooltip>
+            )}
 
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
                 <SheetContent
-                    side={isMobile ? "left" : "right"}
+                    side={isMobile ? "bottom" : "right"}
                     className={
-                        isMobile ? "w-[300px] sm:w-[400px]" : "w-[400px]"
+                        isMobile
+                            ? "w-full max-w-full h-[75vh] rounded-t-2xl pb-[max(env(safe-area-inset-bottom),16px)] pt-[max(env(safe-area-inset-top),12px)]"
+                            : "w-[400px]"
                     }
                 >
                     <SheetHeader>
@@ -160,7 +182,13 @@ export function SessionSwitcher({
                                 : "sessions"}
                         </SheetDescription>
                     </SheetHeader>
-                    <div className="mt-6 space-y-2 overflow-y-auto max-h-[calc(100vh-120px)]">
+                    <div
+                        className={`mt-6 space-y-2 overflow-y-auto ${
+                            isMobile
+                                ? "max-h-[calc(75vh-140px)] pr-1"
+                                : "max-h-[calc(100vh-120px)]"
+                        }`}
+                    >
                         {conversations.map((c) => {
                             const displayTitle = getConversationDisplayTitle(
                                 c.id,
@@ -201,28 +229,48 @@ export function SessionSwitcher({
                                                     placeholder={
                                                         editPlaceholder
                                                     }
-                                                    className="h-9 text-sm"
+                                                    className={`text-sm ${isMobile ? "h-11 text-base" : "h-9"}`}
                                                 />
                                             </div>
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="flex-shrink-0 h-9 w-9 text-green-600 hover:bg-green-100 hover:text-green-700 active:bg-green-200"
+                                                className={`flex-shrink-0 text-green-600 hover:bg-green-100 hover:text-green-700 active:bg-green-200 ${
+                                                    isMobile
+                                                        ? "h-11 w-11 rounded-xl"
+                                                        : "h-9 w-9"
+                                                }`}
                                                 onClick={handleSaveEdit}
                                                 title={saveLabel}
                                                 aria-label={saveLabel}
                                             >
-                                                <Check className="h-4 w-4" />
+                                                <Check
+                                                    className={`${
+                                                        isMobile
+                                                            ? "h-5 w-5"
+                                                            : "h-4 w-4"
+                                                    }`}
+                                                />
                                             </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="flex-shrink-0 h-9 w-9 text-muted-foreground hover:bg-accent active:bg-accent/80"
+                                                className={`flex-shrink-0 text-muted-foreground hover:bg-accent active:bg-accent/80 ${
+                                                    isMobile
+                                                        ? "h-11 w-11 rounded-xl"
+                                                        : "h-9 w-9"
+                                                }`}
                                                 onClick={handleCancelEdit}
                                                 title={cancelLabel}
                                                 aria-label={cancelLabel}
                                             >
-                                                <X className="h-4 w-4" />
+                                                <X
+                                                    className={`${
+                                                        isMobile
+                                                            ? "h-5 w-5"
+                                                            : "h-4 w-4"
+                                                    }`}
+                                                />
                                             </Button>
                                         </>
                                     ) : (
@@ -277,7 +325,7 @@ export function SessionSwitcher({
                                             {isMobile ? (
                                                 isSwitchingTo ? (
                                                     // 移动端：加载状态占位（spinner 已在左侧圆形中显示）
-                                                    <div className="flex-shrink-0 h-8 w-8" />
+                                                    <div className="flex-shrink-0 h-11 w-11" />
                                                 ) : (
                                                     // iOS 风格：点击更多按钮显示下拉菜单
                                                     <DropdownMenu>
@@ -287,7 +335,7 @@ export function SessionSwitcher({
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
-                                                                className="flex-shrink-0 h-8 w-8 text-muted-foreground"
+                                                                className="flex-shrink-0 h-11 w-11 rounded-xl text-muted-foreground"
                                                                 onClick={(e) =>
                                                                     e.stopPropagation()
                                                                 }
@@ -295,7 +343,7 @@ export function SessionSwitcher({
                                                                     isLoadingSwitch
                                                                 }
                                                             >
-                                                                <MoreVertical className="h-4 w-4" />
+                                                                <MoreVertical className="h-5 w-5" />
                                                             </Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent
