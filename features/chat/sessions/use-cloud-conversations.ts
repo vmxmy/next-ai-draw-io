@@ -1,6 +1,5 @@
 "use client"
 
-import { useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import type {
@@ -70,7 +69,7 @@ export function useCloudConversations({
     stopCurrentRequest?: () => void
     enabled?: boolean
 }) {
-    const queryClient = useQueryClient()
+    const utils = api.useUtils()
 
     const [currentConversationId, setCurrentConversationId] =
         useState<string>("")
@@ -158,6 +157,15 @@ export function useCloudConversations({
         const payload =
             currentPayloadData.payload as unknown as ConversationPayload
 
+        console.log("[cloud-session] Restoring conversation:", {
+            id: currentConversationId,
+            xmlLength: payload.xml?.length || 0,
+            xmlPreview: payload.xml?.slice(0, 100),
+            versionsCount: payload.diagramVersions?.length || 0,
+            cursor: payload.diagramVersionCursor,
+            isDrawioReady,
+        })
+
         // 标记正在恢复数据，避免触发自动保存
         isRestoringRef.current = true
 
@@ -185,13 +193,24 @@ export function useCloudConversations({
 
         diagramHistory.restoreState({ versions, cursor, marks })
 
-        // 恢复图表 XML
-        if (payload.xml) {
+        // 恢复图表 XML - 优先使用版本历史中的最新版本
+        const latestVersionXml =
+            cursor >= 0 && versions[cursor]?.xml ? versions[cursor].xml : null
+        const xmlToLoad = latestVersionXml || payload.xml
+
+        console.log("[cloud-session] Loading diagram:", {
+            hasPayloadXml: !!payload.xml,
+            hasLatestVersionXml: !!latestVersionXml,
+            usingVersionXml: !!latestVersionXml,
+            xmlToLoadLength: xmlToLoad?.length || 0,
+        })
+
+        if (xmlToLoad) {
             if (isDrawioReady) {
-                onDisplayChart(payload.xml, true)
-                chartXMLRef.current = payload.xml
+                onDisplayChart(xmlToLoad, true)
+                chartXMLRef.current = xmlToLoad
             } else {
-                pendingDiagramXmlRef.current = payload.xml
+                pendingDiagramXmlRef.current = xmlToLoad
             }
         } else {
             clearDiagram()
@@ -226,7 +245,7 @@ export function useCloudConversations({
         diagramHistory.restoreState,
     ])
 
-    // 防抖保存到云端（使用 ref 避免依赖不稳定导致的无限循环）
+    // 防抖保存到云端（300ms 防抖，企业级标准：快速响应 + 避免频繁请求）
     const debouncedSave = useMemo(
         () =>
             debounce(
@@ -241,7 +260,7 @@ export function useCloudConversations({
                         conversations: [conversation],
                     })
                 },
-                1000,
+                300,
             ),
         [],
     )
@@ -251,6 +270,11 @@ export function useCloudConversations({
     const lastSavedDataRef = useRef<string>("")
     const isRestoringRef = useRef(false) // 标记是否正在恢复数据
 
+    // 同步更新 chartXMLRef（确保 ref 在 effect 触发前已更新）
+    useEffect(() => {
+        chartXMLRef.current = chartXML
+    }, [chartXML])
+
     useEffect(() => {
         // 匿名用户不保存到云端
         if (userId === "anonymous") return
@@ -259,9 +283,16 @@ export function useCloudConversations({
         if (isRestoringRef.current) return
 
         // 创建数据指纹，用于检测实际变化
+        // 使用 chartXML 而非 chartXMLRef.current 确保时序正确
+        const currentXml = chartXML || ""
         const dataFingerprint = JSON.stringify({
             messagesLength: (messagesRef.current as any[])?.length || 0,
-            xmlLength: (chartXMLRef.current || "").length,
+            xmlHash:
+                currentXml.length > 0
+                    ? currentXml.slice(0, 100) +
+                      currentXml.slice(-100) +
+                      currentXml.length
+                    : "",
             sessionId,
             versionsCount: diagramHistory.versionsRef.current.length,
             cursor: diagramHistory.cursorRef.current,
@@ -279,7 +310,7 @@ export function useCloudConversations({
             updatedAt: Date.now(),
             payload: {
                 messages: messagesRef.current as any,
-                xml: chartXMLRef.current || "",
+                xml: currentXml,
                 sessionId,
                 diagramVersions: diagramHistory.versionsRef.current,
                 diagramVersionCursor: diagramHistory.cursorRef.current,
@@ -324,10 +355,10 @@ export function useCloudConversations({
             try {
                 stopCurrentRequest?.()
 
-                // 乐观更新：立即更新 UI
-                queryClient.setQueryData(
-                    [["conversation", "listMetas"]],
-                    (old: any) => {
+                // 乐观更新：使用 TRPC utils 正确更新 React Query 缓存
+                utils.conversation.listMetas.setData(
+                    { limit: 50, offset: 0 },
+                    (old) => {
                         if (!old) return { conversations: [newConv] }
                         return {
                             ...old,
@@ -348,25 +379,17 @@ export function useCloudConversations({
                 diagramHistory.clearHistory()
                 setSessionId(newConv.payload.sessionId)
 
-                // 后台保存到云端，成功后刷新列表
+                // 后台保存到云端（乐观更新已完成 UI 更新，仅失败时回滚）
                 pushMutateRef.current(
                     { conversations: [newConv] },
                     {
-                        onSuccess: () => {
-                            // 创建成功后刷新会话列表，确保下拉列表显示最新数据
-                            queryClient.invalidateQueries({
-                                queryKey: [["conversation", "listMetas"]],
-                            })
-                        },
                         onError: (error) => {
                             console.error(
                                 "Failed to save new conversation:",
                                 error,
                             )
                             // 保存失败时回滚乐观更新
-                            queryClient.invalidateQueries({
-                                queryKey: [["conversation", "listMetas"]],
-                            })
+                            utils.conversation.listMetas.invalidate()
                         },
                     },
                 )
@@ -389,16 +412,16 @@ export function useCloudConversations({
             setMessages,
             stopCurrentRequest,
             t,
-            queryClient,
+            utils,
             diagramHistory.clearHistory,
         ],
     )
 
-    // 立即保存当前会话到云端（不防抖）
-    const flushSaveToCloud = useCallback(() => {
-        if (userId === "anonymous") return
-        if (!currentConversationId) return
-        if (isRestoringRef.current) return
+    // 立即保存当前会话到云端（不防抖，返回 Promise）
+    const flushSaveToCloud = useCallback((): Promise<void> => {
+        if (userId === "anonymous") return Promise.resolve()
+        if (!currentConversationId) return Promise.resolve()
+        if (isRestoringRef.current) return Promise.resolve()
 
         const conversation = {
             id: currentConversationId,
@@ -414,11 +437,6 @@ export function useCloudConversations({
             } as ConversationPayload,
         }
 
-        // 立即保存，不防抖
-        pushMutateRef.current({
-            conversations: [conversation],
-        })
-
         // 更新数据指纹，避免重复保存
         const dataFingerprint = JSON.stringify({
             messagesLength: (messagesRef.current as any[])?.length || 0,
@@ -428,6 +446,17 @@ export function useCloudConversations({
             cursor: diagramHistory.cursorRef.current,
         })
         lastSavedDataRef.current = dataFingerprint
+
+        // 立即保存，返回 Promise 以便等待完成
+        return new Promise((resolve) => {
+            pushMutateRef.current(
+                { conversations: [conversation] },
+                {
+                    onSuccess: () => resolve(),
+                    onError: () => resolve(), // 即使失败也 resolve，避免阻塞切换
+                },
+            )
+        })
     }, [
         userId,
         currentConversationId,
@@ -440,12 +469,25 @@ export function useCloudConversations({
     ])
 
     const handleSelectConversation = useCallback(
-        (id: string) => {
+        async (id: string) => {
             if (!id || id === currentConversationId) return
             try {
                 stopCurrentRequest?.()
-                flushSaveToCloud() // 切换前保存当前会话
                 setIsLoadingSwitch(true)
+
+                // 等待当前会话保存完成
+                await flushSaveToCloud()
+
+                // 强制重新获取目标会话的最新数据（绕过缓存）
+                await utils.conversation.getById.invalidate({ id })
+                const freshData = await utils.conversation.getById.fetch(
+                    { id },
+                    { staleTime: 0 }, // 强制获取最新数据
+                )
+
+                // 手动更新缓存，确保 useQuery 使用最新数据
+                utils.conversation.getById.setData({ id }, freshData)
+
                 setCurrentConversationId(id)
             } catch (error) {
                 console.error("Failed to select conversation:", error)
@@ -453,7 +495,7 @@ export function useCloudConversations({
                 setIsLoadingSwitch(false)
             }
         },
-        [currentConversationId, stopCurrentRequest, t, flushSaveToCloud],
+        [currentConversationId, stopCurrentRequest, t, flushSaveToCloud, utils],
     )
 
     const handleDeleteConversation = useCallback(
@@ -461,15 +503,15 @@ export function useCloudConversations({
             try {
                 stopCurrentRequest?.()
 
-                // 乐观更新：立即从列表移除
-                queryClient.setQueryData(
-                    [["conversation", "listMetas"]],
-                    (old: any) => {
+                // 乐观更新：使用 TRPC utils 正确更新 React Query 缓存
+                utils.conversation.listMetas.setData(
+                    { limit: 50, offset: 0 },
+                    (old) => {
                         if (!old) return old
                         return {
                             ...old,
                             conversations: (old.conversations || []).filter(
-                                (c: any) => c.id !== id,
+                                (c) => c.id !== id,
                             ),
                         }
                     },
@@ -485,7 +527,7 @@ export function useCloudConversations({
                     }
                 }
 
-                // 后台标记删除，并在成功后使缓存失效
+                // 后台标记删除（乐观更新已完成 UI 更新，仅失败时回滚）
                 pushMutateRef.current(
                     {
                         conversations: [
@@ -498,21 +540,13 @@ export function useCloudConversations({
                         ],
                     },
                     {
-                        onSuccess: () => {
-                            // 删除成功后使会话列表缓存失效，确保下次获取时是最新数据
-                            queryClient.invalidateQueries({
-                                queryKey: [["conversation", "listMetas"]],
-                            })
-                        },
                         onError: (error) => {
                             console.error(
                                 "Failed to delete conversation:",
                                 error,
                             )
                             // 删除失败时回滚乐观更新
-                            queryClient.invalidateQueries({
-                                queryKey: [["conversation", "listMetas"]],
-                            })
+                            utils.conversation.listMetas.invalidate()
                         },
                     },
                 )
@@ -526,7 +560,7 @@ export function useCloudConversations({
             currentConversationId,
             stopCurrentRequest,
             t,
-            queryClient,
+            utils,
             handleNewChat,
         ],
     )
@@ -564,6 +598,76 @@ export function useCloudConversations({
         }
         setTimeout(() => setCanSaveDiagram(true), 300)
     }, [isDrawioReady, onDisplayChart, chartXMLRef])
+
+    // 页面隐藏/关闭时立即保存（企业级可靠性保障）
+    useEffect(() => {
+        if (userId === "anonymous") return
+        if (!currentConversationId) return
+
+        const saveImmediately = () => {
+            if (isRestoringRef.current) return
+
+            const conversation = {
+                id: currentConversationId,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                payload: {
+                    messages: messagesRef.current as any,
+                    xml: chartXMLRef.current || "",
+                    sessionId,
+                    diagramVersions: diagramHistory.versionsRef.current,
+                    diagramVersionCursor: diagramHistory.cursorRef.current,
+                    diagramVersionMarks: diagramHistory.marksRef.current,
+                } as ConversationPayload,
+            }
+
+            // 使用 sendBeacon 确保页面关闭时也能发送请求
+            const payload = JSON.stringify({
+                conversations: [conversation],
+            })
+
+            // 优先使用 sendBeacon（页面关闭时更可靠）
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(
+                    "/api/trpc/conversation.push",
+                    new Blob([payload], { type: "application/json" }),
+                )
+            } else {
+                // 降级到同步请求
+                pushMutateRef.current({ conversations: [conversation] })
+            }
+        }
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "hidden") {
+                saveImmediately()
+            }
+        }
+
+        const handleBeforeUnload = () => {
+            saveImmediately()
+        }
+
+        document.addEventListener("visibilitychange", handleVisibilityChange)
+        window.addEventListener("beforeunload", handleBeforeUnload)
+
+        return () => {
+            document.removeEventListener(
+                "visibilitychange",
+                handleVisibilityChange,
+            )
+            window.removeEventListener("beforeunload", handleBeforeUnload)
+        }
+    }, [
+        userId,
+        currentConversationId,
+        sessionId,
+        chartXMLRef,
+        messagesRef,
+        diagramHistory.versionsRef,
+        diagramHistory.cursorRef,
+        diagramHistory.marksRef,
+    ])
 
     // 云端模式的空操作函数（使用 useCallback 确保引用稳定）
     const noop = useCallback(() => {}, [])

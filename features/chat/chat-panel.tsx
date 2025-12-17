@@ -1,7 +1,6 @@
 "use client"
 
 import { useChat } from "@ai-sdk/react"
-import { useQueryClient } from "@tanstack/react-query"
 import { DefaultChatTransport } from "ai"
 import { PanelRightOpen } from "lucide-react"
 import { useSession } from "next-auth/react"
@@ -27,6 +26,7 @@ import {
 } from "@/features/chat/ai/tool-errors"
 import type { ChatMessage } from "@/features/chat/ai/types"
 import { writeConversationMetasToStorage } from "@/features/chat/sessions/local-storage"
+import type { ConversationPayload } from "@/features/chat/sessions/storage"
 import { useCloudConversations } from "@/features/chat/sessions/use-cloud-conversations"
 import { useLocalConversations } from "@/features/chat/sessions/use-local-conversations"
 import { useOfflineDetector } from "@/features/chat/sessions/use-offline-detector"
@@ -728,8 +728,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const isAuthLoading = authStatus === "loading"
     const userId = authSession?.user?.id || "anonymous"
 
-    // React Query client 和 API mutation（用于云端更新）
-    const queryClient = useQueryClient()
+    // TRPC utils 和 API mutation（用于云端更新）
+    const utils = api.useUtils()
     const pushMutation = api.conversation.push.useMutation()
 
     // 云端会话管理（仅登录用户）
@@ -857,39 +857,77 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 // 登录用户：更新云端数据库
                 const updatedAt = Date.now()
 
-                // 乐观更新：立即更新 React Query 缓存
-                queryClient.setQueryData(
-                    [["conversation", "listMetas"]],
-                    (old: any) => {
+                // 乐观更新：使用 TRPC utils 正确更新 React Query 缓存
+                utils.conversation.listMetas.setData(
+                    { limit: 50, offset: 0 },
+                    (old) => {
                         if (!old) return old
                         return {
                             ...old,
-                            conversations: (old.conversations || []).map(
-                                (c: any) =>
-                                    c.id === id
-                                        ? { ...c, title, updatedAt }
-                                        : c,
+                            conversations: (old.conversations || []).map((c) =>
+                                c.id === id ? { ...c, title, updatedAt } : c,
                             ),
                         }
                     },
                 )
 
-                // 立即刷新查询，确保 UI 更新
-                queryClient.invalidateQueries({
-                    queryKey: [["conversation", "listMetas"]],
-                })
+                // 保存到数据库（后台进行，不影响 UI 响应），必须带上现有 payload 以避免覆盖为空
+                void (async () => {
+                    const meta = conversations.find((c) => c.id === id)
+                    let createdAt = meta?.createdAt ?? Date.now()
 
-                // 保存到数据库
-                pushMutation.mutate({
-                    conversations: [
+                    let payload = utils.conversation.getById.getData({ id })
+                        ?.payload as ConversationPayload | undefined
+
+                    if (!payload) {
+                        try {
+                            const fetched =
+                                await utils.conversation.getById.fetch({ id })
+                            if (fetched?.payload) {
+                                payload =
+                                    fetched.payload as unknown as ConversationPayload
+                            }
+                            if (!meta && fetched?.createdAt) {
+                                createdAt = fetched.createdAt
+                            }
+                        } catch (error) {
+                            console.error(
+                                "Failed to fetch conversation payload:",
+                                error,
+                            )
+                            toast.error("更新会话失败，请稍后重试")
+                            void utils.conversation.listMetas.invalidate()
+                            return
+                        }
+                    }
+
+                    if (!payload) {
+                        toast.error("更新会话失败：未找到会话内容")
+                        void utils.conversation.listMetas.invalidate()
+                        return
+                    }
+
+                    pushMutation.mutate(
                         {
-                            id,
-                            title,
-                            updatedAt,
-                            createdAt: Date.now(), // API 需要但不会更新
+                            conversations: [
+                                {
+                                    id,
+                                    title,
+                                    updatedAt,
+                                    createdAt,
+                                    payload,
+                                },
+                            ],
                         },
-                    ],
-                })
+                        {
+                            onError: (error) => {
+                                console.error("Failed to update title:", error)
+                                // 失败时回滚乐观更新
+                                utils.conversation.listMetas.invalidate()
+                            },
+                        },
+                    )
+                })()
             } else {
                 // 匿名用户：更新本地存储
                 const updatedMetas = conversations.map((c) =>
@@ -904,7 +942,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             isOnline,
             conversations,
             userId,
-            queryClient,
+            utils,
             pushMutation,
             setConversations,
         ],
@@ -928,13 +966,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     }, [currentConversationId])
 
     // Sync chartXML changes to current conversation (fixes manual draw.io edits not syncing)
+    // 200ms 防抖，企业级标准：快速响应用户编辑 + 避免频繁写入
     useEffect(() => {
         if (!currentConversationId || !chartXML) return
 
-        // Debounce to avoid frequent writes during rapid diagram changes
         const timer = setTimeout(() => {
             persistCurrentConversation({ xml: chartXML })
-        }, 500)
+        }, 200)
 
         return () => clearTimeout(timer)
     }, [chartXML, currentConversationId, persistCurrentConversation])

@@ -753,10 +753,11 @@ export function useLocalConversations({
         if (persistDebounceTimerRef.current) {
             clearTimeout(persistDebounceTimerRef.current)
         }
+        // 300ms 防抖，企业级标准：快速响应 + 避免频繁写入
         persistDebounceTimerRef.current = setTimeout(() => {
             persistDebounceTimerRef.current = null
             persistCurrentConversation({ messages: messages as any })
-        }, 800)
+        }, 300)
 
         return () => {
             if (persistDebounceTimerRef.current) {
@@ -845,10 +846,11 @@ export function useLocalConversations({
         persistCurrentConversation({ sessionId })
     }, [enabled, persistCurrentConversation, sessionId])
 
-    // Effect: 页面卸载前保存
+    // Effect: 页面隐藏/卸载前保存（企业级可靠性保障）
     useEffect(() => {
         if (!enabled) return
-        const handleBeforeUnload = () => {
+
+        const saveImmediately = () => {
             if (!currentConversationId) return
             try {
                 const versionState = diagramHistory.getStateSnapshot()
@@ -885,13 +887,30 @@ export function useLocalConversations({
                     : []
                 writeConversationMetasToStorage(userId, next)
             } catch (error) {
-                console.error("Failed to persist state before unload:", error)
+                console.error("Failed to persist state:", error)
             }
         }
 
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "hidden") {
+                saveImmediately()
+            }
+        }
+
+        const handleBeforeUnload = () => {
+            saveImmediately()
+        }
+
+        document.addEventListener("visibilitychange", handleVisibilityChange)
         window.addEventListener("beforeunload", handleBeforeUnload)
-        return () =>
+
+        return () => {
+            document.removeEventListener(
+                "visibilitychange",
+                handleVisibilityChange,
+            )
             window.removeEventListener("beforeunload", handleBeforeUnload)
+        }
     }, [
         enabled,
         chartXMLRef,
