@@ -103,6 +103,8 @@ export function useLocalConversations({
     })
     const [sessionId, setSessionId] = useState(() => createSessionId())
     const [hasRestored, setHasRestored] = useState(false)
+    const [isLoadingSwitch, setIsLoadingSwitch] = useState(false)
+    const [switchingToId, setSwitchingToId] = useState<string | null>(null)
 
     // Refs 用于事件处理器中获取最新值，避免闭包过期
     const currentConversationIdRef = useRef(currentConversationId)
@@ -661,12 +663,16 @@ export function useLocalConversations({
             if (!id || id === currentConversationId) return
             try {
                 stopCurrentRequest?.()
+                setIsLoadingSwitch(true)
+                setSwitchingToId(id)
                 flushPersistCurrentConversation()
                 writeCurrentConversationIdToStorage(userId, id)
                 setCurrentConversationId(id)
             } catch (error) {
                 console.error("Failed to select conversation:", error)
                 toast.warning(t("toast.storageUpdateFailed"))
+                setIsLoadingSwitch(false)
+                setSwitchingToId(null)
             }
         },
         [
@@ -755,6 +761,14 @@ export function useLocalConversations({
             return
         }
         loadConversation(currentConversationId)
+
+        // 加载完成后清除 loading 状态（短暂延迟确保 UI 更新完成）
+        const timer = setTimeout(() => {
+            setIsLoadingSwitch(false)
+            setSwitchingToId(null)
+        }, 100)
+
+        return () => clearTimeout(timer)
     }, [enabled, currentConversationId, loadConversation])
 
     // Effect: 消息变更时自动保存
@@ -1102,8 +1116,8 @@ export function useLocalConversations({
         setSessionId,
         hasRestored,
         canSaveDiagram,
-        isLoadingSwitch: false, // 本地模式同步加载，无需 loading 状态
-        switchingToId: null, // 本地模式同步加载，无需此状态
+        isLoadingSwitch,
+        switchingToId,
         getConversationDisplayTitle,
         deriveConversationTitle,
         loadConversation,
