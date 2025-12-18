@@ -83,16 +83,16 @@ export default function TierManagementPage() {
     }
 
     return (
-        <div className="container mx-auto p-8 max-w-7xl">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold mb-2">等级配额管理</h1>
-                <p className="text-muted-foreground">
+        <div className="space-y-6">
+            <div>
+                <h1 className="text-2xl md:text-3xl font-bold">等级配额管理</h1>
+                <p className="text-muted-foreground mt-1">
                     管理用户等级和配额配置，更改将立即生效
                 </p>
             </div>
 
             {/* 统计信息 */}
-            <div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {stats?.map((stat) => (
                     <Card key={stat.tier}>
                         <CardHeader className="pb-3">

@@ -58,7 +58,7 @@ export default function SessionsPage() {
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-bold">会话管理</h1>
+                <h1 className="text-2xl md:text-3xl font-bold">会话管理</h1>
                 <p className="text-muted-foreground mt-2">
                     监控和管理当前活跃的用户会话
                 </p>
@@ -135,93 +135,96 @@ export default function SessionsPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>用户</TableHead>
-                                <TableHead>IP 地址</TableHead>
-                                <TableHead>设备</TableHead>
-                                <TableHead>登录时间</TableHead>
-                                <TableHead>最后活动</TableHead>
-                                <TableHead>状态</TableHead>
-                                <TableHead className="text-right">
-                                    操作
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {sessions.length === 0 ? (
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[800px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell
-                                        colSpan={7}
-                                        className="text-center text-muted-foreground"
-                                    >
-                                        暂无活跃会话
-                                    </TableCell>
+                                    <TableHead>用户</TableHead>
+                                    <TableHead>IP 地址</TableHead>
+                                    <TableHead>设备</TableHead>
+                                    <TableHead>登录时间</TableHead>
+                                    <TableHead>最后活动</TableHead>
+                                    <TableHead>状态</TableHead>
+                                    <TableHead className="text-right">
+                                        操作
+                                    </TableHead>
                                 </TableRow>
-                            ) : (
-                                sessions.map((session) => (
-                                    <TableRow key={session.id}>
-                                        <TableCell>
-                                            <div>
-                                                <div className="font-medium">
-                                                    {session.userName}
-                                                </div>
-                                                <div className="text-sm text-muted-foreground">
-                                                    {session.email}
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="font-mono text-sm">
-                                            {session.ipAddress}
-                                        </TableCell>
-                                        <TableCell>
-                                            {session.userAgent}
-                                        </TableCell>
-                                        <TableCell>
-                                            {session.createdAt.toLocaleString(
-                                                "zh-CN",
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            {session.lastActivity.toLocaleString(
-                                                "zh-CN",
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge
-                                                variant={
-                                                    session.status === "active"
-                                                        ? "default"
-                                                        : "secondary"
-                                                }
-                                            >
-                                                {session.status === "active"
-                                                    ? "活跃"
-                                                    : "非活跃"}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            {hasWritePermission && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        handleForceLogout(
-                                                            session.id,
-                                                        )
-                                                    }
-                                                >
-                                                    <LogOut className="h-4 w-4 mr-2" />
-                                                    强制登出
-                                                </Button>
-                                            )}
+                            </TableHeader>
+                            <TableBody>
+                                {sessions.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={7}
+                                            className="text-center text-muted-foreground"
+                                        >
+                                            暂无活跃会话
                                         </TableCell>
                                     </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
+                                ) : (
+                                    sessions.map((session) => (
+                                        <TableRow key={session.id}>
+                                            <TableCell>
+                                                <div>
+                                                    <div className="font-medium">
+                                                        {session.userName}
+                                                    </div>
+                                                    <div className="text-sm text-muted-foreground">
+                                                        {session.email}
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="font-mono text-sm">
+                                                {session.ipAddress}
+                                            </TableCell>
+                                            <TableCell>
+                                                {session.userAgent}
+                                            </TableCell>
+                                            <TableCell>
+                                                {session.createdAt.toLocaleString(
+                                                    "zh-CN",
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {session.lastActivity.toLocaleString(
+                                                    "zh-CN",
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge
+                                                    variant={
+                                                        session.status ===
+                                                        "active"
+                                                            ? "default"
+                                                            : "secondary"
+                                                    }
+                                                >
+                                                    {session.status === "active"
+                                                        ? "活跃"
+                                                        : "非活跃"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {hasWritePermission && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            handleForceLogout(
+                                                                session.id,
+                                                            )
+                                                        }
+                                                    >
+                                                        <LogOut className="h-4 w-4 mr-2" />
+                                                        强制登出
+                                                    </Button>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
 

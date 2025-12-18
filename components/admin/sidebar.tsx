@@ -10,8 +10,15 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+} from "@/components/ui/sheet"
 import { usePermission } from "@/lib/use-permissions"
 import { cn } from "@/lib/utils"
+import { useSidebar } from "./sidebar-context"
 
 interface MenuItem {
     label: string
@@ -98,8 +105,10 @@ const menuItems: MenuItem[] = [
 
 function ChildNavItem({
     child,
+    onNavigate,
 }: {
     child: { label: string; href: string; permission?: string }
+    onNavigate?: () => void
 }) {
     const pathname = usePathname()
     const hasPermission = usePermission(child.permission ?? "")
@@ -114,6 +123,7 @@ function ChildNavItem({
     return (
         <Link
             href={child.href}
+            onClick={onNavigate}
             className={cn(
                 "block rounded-md px-3 py-1.5 text-sm transition-all hover:bg-accent",
                 isActive
@@ -126,7 +136,13 @@ function ChildNavItem({
     )
 }
 
-function NavItem({ item }: { item: MenuItem }) {
+function NavItem({
+    item,
+    onNavigate,
+}: {
+    item: MenuItem
+    onNavigate?: () => void
+}) {
     const pathname = usePathname()
     const hasPermission = usePermission(item.permission ?? "")
     const Icon = item.icon
@@ -143,6 +159,7 @@ function NavItem({ item }: { item: MenuItem }) {
         <div>
             <Link
                 href={item.href}
+                onClick={onNavigate}
                 className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
                     isActive
@@ -156,7 +173,11 @@ function NavItem({ item }: { item: MenuItem }) {
             {item.children && (
                 <div className="ml-6 mt-1 space-y-1">
                     {item.children.map((child) => (
-                        <ChildNavItem key={child.href} child={child} />
+                        <ChildNavItem
+                            key={child.href}
+                            child={child}
+                            onNavigate={onNavigate}
+                        />
                     ))}
                 </div>
             )}
@@ -164,18 +185,17 @@ function NavItem({ item }: { item: MenuItem }) {
     )
 }
 
-export function AdminSidebar() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     return (
-        <div className="flex h-full w-64 flex-col border-r bg-background">
-            {/* Logo/Title */}
-            <div className="flex h-16 items-center border-b px-6">
-                <h1 className="text-xl font-bold">运维管理平台</h1>
-            </div>
-
+        <>
             {/* Navigation */}
             <nav className="flex-1 space-y-1 overflow-y-auto p-4">
                 {menuItems.map((item) => (
-                    <NavItem key={item.href} item={item} />
+                    <NavItem
+                        key={item.href}
+                        item={item}
+                        onNavigate={onNavigate}
+                    />
                 ))}
             </nav>
 
@@ -185,6 +205,38 @@ export function AdminSidebar() {
                     Admin Platform v1.0
                 </p>
             </div>
+        </>
+    )
+}
+
+export function AdminSidebar() {
+    return (
+        <div className="hidden md:flex h-full w-64 flex-col border-r bg-background">
+            {/* Logo/Title */}
+            <div className="flex h-16 items-center border-b px-6">
+                <h1 className="text-xl font-bold">运维管理平台</h1>
+            </div>
+
+            <SidebarContent />
         </div>
+    )
+}
+
+export function MobileSidebar() {
+    const { isOpen, close } = useSidebar()
+
+    return (
+        <Sheet open={isOpen} onOpenChange={(open) => !open && close()}>
+            <SheetContent side="left" className="w-64 p-0">
+                <SheetHeader className="h-16 flex-row items-center border-b px-6">
+                    <SheetTitle className="text-xl font-bold">
+                        运维管理平台
+                    </SheetTitle>
+                </SheetHeader>
+                <div className="flex h-[calc(100%-4rem)] flex-col">
+                    <SidebarContent onNavigate={close} />
+                </div>
+            </SheetContent>
+        </Sheet>
     )
 }

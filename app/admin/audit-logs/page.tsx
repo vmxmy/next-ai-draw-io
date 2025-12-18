@@ -89,7 +89,9 @@ export default function AuditLogsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">操作日志</h1>
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                    操作日志
+                </h1>
                 <p className="text-muted-foreground mt-1">
                     查看系统操作审计日志
                 </p>
@@ -165,7 +167,7 @@ export default function AuditLogsPage() {
                                 )
                             }
                         >
-                            <SelectTrigger className="w-[180px]">
+                            <SelectTrigger className="w-full sm:w-[160px]">
                                 <SelectValue placeholder="资源类型" />
                             </SelectTrigger>
                             <SelectContent>
@@ -190,7 +192,7 @@ export default function AuditLogsPage() {
                                 )
                             }
                         >
-                            <SelectTrigger className="w-[180px]">
+                            <SelectTrigger className="w-full sm:w-[140px]">
                                 <SelectValue placeholder="状态" />
                             </SelectTrigger>
                             <SelectContent>
@@ -213,8 +215,8 @@ export default function AuditLogsPage() {
                         </div>
                     ) : (
                         <>
-                            <div className="rounded-md border">
-                                <Table>
+                            <div className="rounded-md border overflow-x-auto">
+                                <Table className="min-w-[600px]">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>操作用户</TableHead>
@@ -301,7 +303,7 @@ export default function AuditLogsPage() {
 
                             {/* Pagination */}
                             {data && data.totalPages > 1 && (
-                                <div className="flex items-center justify-between mt-4">
+                                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
                                     <div className="text-sm text-muted-foreground">
                                         第 {page} 页，共 {data.totalPages} 页
                                     </div>

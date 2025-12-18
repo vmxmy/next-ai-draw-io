@@ -3,7 +3,8 @@
 import { redirect, usePathname } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { AdminHeader } from "@/components/admin/header"
-import { AdminSidebar } from "@/components/admin/sidebar"
+import { AdminSidebar, MobileSidebar } from "@/components/admin/sidebar"
+import { SidebarProvider } from "@/components/admin/sidebar-context"
 import { useHasAdminAccess } from "@/lib/use-permissions"
 
 function LoadingScreen() {
@@ -77,14 +78,17 @@ export default function AdminLayout({
     }
 
     return (
-        <div className="flex h-screen overflow-hidden">
-            <AdminSidebar />
-            <div className="flex flex-1 flex-col overflow-hidden">
-                <AdminHeader />
-                <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
-                    {children}
-                </main>
+        <SidebarProvider>
+            <div className="flex h-screen overflow-hidden">
+                <AdminSidebar />
+                <MobileSidebar />
+                <div className="flex flex-1 flex-col overflow-hidden">
+                    <AdminHeader />
+                    <main className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-6">
+                        {children}
+                    </main>
+                </div>
             </div>
-        </div>
+        </SidebarProvider>
     )
 }

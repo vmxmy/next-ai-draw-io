@@ -115,7 +115,9 @@ export default function UsersPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">用户管理</h1>
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                    用户管理
+                </h1>
                 <p className="text-muted-foreground mt-1">查看和管理系统用户</p>
             </div>
 
@@ -138,46 +140,54 @@ export default function UsersPage() {
                                 className="pl-8"
                             />
                         </div>
-                        <Select
-                            value={tierFilter ?? "all"}
-                            onValueChange={(value) =>
-                                setTierFilter(
-                                    value === "all" ? undefined : value,
-                                )
-                            }
-                        >
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="筛选等级" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">全部等级</SelectItem>
-                                <SelectItem value="free">Free</SelectItem>
-                                <SelectItem value="basic">Basic</SelectItem>
-                                <SelectItem value="pro">Pro</SelectItem>
-                                <SelectItem value="enterprise">
-                                    Enterprise
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Select
-                            value={statusFilter ?? "all"}
-                            onValueChange={(value) =>
-                                setStatusFilter(
-                                    value === "all"
-                                        ? undefined
-                                        : (value as "active" | "suspended"),
-                                )
-                            }
-                        >
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="筛选状态" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">全部状态</SelectItem>
-                                <SelectItem value="active">活跃</SelectItem>
-                                <SelectItem value="suspended">禁用</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <div className="flex gap-2">
+                            <Select
+                                value={tierFilter ?? "all"}
+                                onValueChange={(value) =>
+                                    setTierFilter(
+                                        value === "all" ? undefined : value,
+                                    )
+                                }
+                            >
+                                <SelectTrigger className="w-full sm:w-[140px]">
+                                    <SelectValue placeholder="筛选等级" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">
+                                        全部等级
+                                    </SelectItem>
+                                    <SelectItem value="free">Free</SelectItem>
+                                    <SelectItem value="basic">Basic</SelectItem>
+                                    <SelectItem value="pro">Pro</SelectItem>
+                                    <SelectItem value="enterprise">
+                                        Enterprise
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Select
+                                value={statusFilter ?? "all"}
+                                onValueChange={(value) =>
+                                    setStatusFilter(
+                                        value === "all"
+                                            ? undefined
+                                            : (value as "active" | "suspended"),
+                                    )
+                                }
+                            >
+                                <SelectTrigger className="w-full sm:w-[140px]">
+                                    <SelectValue placeholder="筛选状态" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">
+                                        全部状态
+                                    </SelectItem>
+                                    <SelectItem value="active">活跃</SelectItem>
+                                    <SelectItem value="suspended">
+                                        禁用
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     {/* Table */}
@@ -192,8 +202,8 @@ export default function UsersPage() {
                         </div>
                     ) : (
                         <>
-                            <div className="rounded-md border">
-                                <Table>
+                            <div className="rounded-md border overflow-x-auto">
+                                <Table className="min-w-[700px]">
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>用户</TableHead>
@@ -361,7 +371,7 @@ export default function UsersPage() {
 
                             {/* Pagination */}
                             {data && data.totalPages > 1 && (
-                                <div className="flex items-center justify-between mt-4">
+                                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
                                     <div className="text-sm text-muted-foreground">
                                         第 {page} 页，共 {data.totalPages} 页
                                     </div>

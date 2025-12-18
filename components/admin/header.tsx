@@ -1,6 +1,6 @@
 "use client"
 
-import { LogOut, User } from "lucide-react"
+import { LogOut, Menu, User } from "lucide-react"
 import { signOut, useSession } from "next-auth/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -13,10 +13,12 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useUserRoles } from "@/lib/use-permissions"
+import { useSidebar } from "./sidebar-context"
 
 export function AdminHeader() {
     const { data: session } = useSession()
     const userRoles = useUserRoles()
+    const { toggle } = useSidebar()
 
     const handleSignOut = async () => {
         await signOut({ callbackUrl: "/admin/login" })
@@ -33,11 +35,20 @@ export function AdminHeader() {
     const roleNames = userRoles.map((r) => r.displayName).join(", ")
 
     return (
-        <header className="flex h-16 items-center justify-between border-b bg-background px-6">
-            <div className="flex items-center gap-4">
-                <h2 className="text-lg font-semibold text-muted-foreground">
-                    {/* Breadcrumbs can be added here */}
-                </h2>
+        <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6">
+            <div className="flex items-center gap-3">
+                {/* Mobile menu button */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden"
+                    onClick={toggle}
+                >
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">打开菜单</span>
+                </Button>
+                {/* Mobile title */}
+                <h1 className="text-lg font-bold md:hidden">运维管理平台</h1>
             </div>
 
             <div className="flex items-center gap-4">

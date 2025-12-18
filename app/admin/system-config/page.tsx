@@ -239,7 +239,7 @@ export default function SystemConfigPage() {
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-bold">系统配置管理</h1>
+                <h1 className="text-2xl md:text-3xl font-bold">系统配置管理</h1>
                 <p className="text-muted-foreground mt-2">
                     管理 AI 模型、API 密钥等系统级配置，更改将立即生效（带 1
                     分钟缓存）
@@ -470,118 +470,127 @@ export default function SystemConfigPage() {
                     <CardDescription>所有系统配置项的详细视图</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[250px]">
-                                    配置项
-                                </TableHead>
-                                <TableHead>当前值</TableHead>
-                                <TableHead>说明</TableHead>
-                                <TableHead className="w-[120px]">
-                                    操作
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {configs?.map((config) => (
-                                <TableRow key={config.key}>
-                                    <TableCell className="font-mono text-sm">
-                                        {getConfigLabel(config.key)}
-                                    </TableCell>
-                                    <TableCell>
-                                        {editingKey === config.key ? (
-                                            Array.isArray(config.value) ||
-                                            typeof config.value === "object" ? (
-                                                <Textarea
-                                                    value={editValue}
-                                                    onChange={(e) =>
-                                                        setEditValue(
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    className="font-mono text-xs"
-                                                    rows={5}
-                                                />
-                                            ) : (
-                                                <Input
-                                                    value={editValue}
-                                                    onChange={(e) =>
-                                                        setEditValue(
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    className="font-mono text-sm"
-                                                />
-                                            )
-                                        ) : (
-                                            <div className="max-w-md">
-                                                {config.key.includes(
-                                                    "apiKey",
-                                                ) ? (
-                                                    <span className="text-muted-foreground">
-                                                        {config.value
-                                                            ? "••••••••" +
-                                                              String(
-                                                                  config.value,
-                                                              ).slice(-8)
-                                                            : "未配置"}
-                                                    </span>
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[700px]">
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[200px]">
+                                        配置项
+                                    </TableHead>
+                                    <TableHead>当前值</TableHead>
+                                    <TableHead className="hidden md:table-cell">
+                                        说明
+                                    </TableHead>
+                                    <TableHead className="w-[100px]">
+                                        操作
+                                    </TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {configs?.map((config) => (
+                                    <TableRow key={config.key}>
+                                        <TableCell className="font-mono text-sm">
+                                            {getConfigLabel(config.key)}
+                                        </TableCell>
+                                        <TableCell>
+                                            {editingKey === config.key ? (
+                                                Array.isArray(config.value) ||
+                                                typeof config.value ===
+                                                    "object" ? (
+                                                    <Textarea
+                                                        value={editValue}
+                                                        onChange={(e) =>
+                                                            setEditValue(
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        className="font-mono text-xs"
+                                                        rows={5}
+                                                    />
                                                 ) : (
-                                                    <pre className="text-xs overflow-auto">
-                                                        {getDisplayValue(
-                                                            config.value,
-                                                        )}
-                                                    </pre>
-                                                )}
-                                            </div>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">
-                                        {config.description || "-"}
-                                    </TableCell>
-                                    <TableCell>
-                                        {editingKey === config.key ? (
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        handleSave(config.key)
-                                                    }
-                                                    disabled={
-                                                        updateMutation.isPending
-                                                    }
-                                                >
-                                                    保存
-                                                </Button>
+                                                    <Input
+                                                        value={editValue}
+                                                        onChange={(e) =>
+                                                            setEditValue(
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        className="font-mono text-sm"
+                                                    />
+                                                )
+                                            ) : (
+                                                <div className="max-w-md">
+                                                    {config.key.includes(
+                                                        "apiKey",
+                                                    ) ? (
+                                                        <span className="text-muted-foreground">
+                                                            {config.value
+                                                                ? "••••••••" +
+                                                                  String(
+                                                                      config.value,
+                                                                  ).slice(-8)
+                                                                : "未配置"}
+                                                        </span>
+                                                    ) : (
+                                                        <pre className="text-xs overflow-auto">
+                                                            {getDisplayValue(
+                                                                config.value,
+                                                            )}
+                                                        </pre>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                                            {config.description || "-"}
+                                        </TableCell>
+                                        <TableCell>
+                                            {editingKey === config.key ? (
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            handleSave(
+                                                                config.key,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            updateMutation.isPending
+                                                        }
+                                                    >
+                                                        保存
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={handleCancel}
+                                                    >
+                                                        取消
+                                                    </Button>
+                                                </div>
+                                            ) : (
                                                 <Button
                                                     size="sm"
                                                     variant="outline"
-                                                    onClick={handleCancel}
+                                                    onClick={() =>
+                                                        handleEdit(
+                                                            config.key,
+                                                            config.value,
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        !hasWritePermission
+                                                    }
                                                 >
-                                                    取消
+                                                    编辑
                                                 </Button>
-                                            </div>
-                                        ) : (
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() =>
-                                                    handleEdit(
-                                                        config.key,
-                                                        config.value,
-                                                    )
-                                                }
-                                                disabled={!hasWritePermission}
-                                            >
-                                                编辑
-                                            </Button>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
 
                     {!configs || configs.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">

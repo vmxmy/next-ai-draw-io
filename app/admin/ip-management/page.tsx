@@ -87,7 +87,7 @@ export default function IPManagementPage() {
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-bold">IP 限流管理</h1>
+                <h1 className="text-2xl md:text-3xl font-bold">IP 限流管理</h1>
                 <p className="text-muted-foreground mt-2">
                     管理匿名用户 IP 限流和黑名单
                 </p>
@@ -201,68 +201,72 @@ export default function IPManagementPage() {
                     <CardDescription>已封禁的 IP 列表</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>IP Hash</TableHead>
-                                <TableHead>封禁原因</TableHead>
-                                <TableHead>请求次数</TableHead>
-                                <TableHead>添加时间</TableHead>
-                                <TableHead>操作人</TableHead>
-                                <TableHead className="text-right">
-                                    操作
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {ipBlacklist.length === 0 ? (
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[700px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell
-                                        colSpan={6}
-                                        className="text-center text-muted-foreground"
-                                    >
-                                        暂无黑名单 IP
-                                    </TableCell>
+                                    <TableHead>IP Hash</TableHead>
+                                    <TableHead>封禁原因</TableHead>
+                                    <TableHead>请求次数</TableHead>
+                                    <TableHead>添加时间</TableHead>
+                                    <TableHead>操作人</TableHead>
+                                    <TableHead className="text-right">
+                                        操作
+                                    </TableHead>
                                 </TableRow>
-                            ) : (
-                                ipBlacklist.map((item) => (
-                                    <TableRow key={item.id}>
-                                        <TableCell className="font-mono">
-                                            {item.ipHash}
-                                        </TableCell>
-                                        <TableCell>{item.reason}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="destructive">
-                                                {item.requestCount}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            {item.createdAt.toLocaleString(
-                                                "zh-CN",
-                                            )}
-                                        </TableCell>
-                                        <TableCell>{item.createdBy}</TableCell>
-                                        <TableCell className="text-right">
-                                            {hasWritePermission && (
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        handleRemoveBlacklist(
-                                                            item.id,
-                                                        )
-                                                    }
-                                                >
-                                                    <Trash2 className="h-4 w-4 mr-2" />
-                                                    移除
-                                                </Button>
-                                            )}
+                            </TableHeader>
+                            <TableBody>
+                                {ipBlacklist.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={6}
+                                            className="text-center text-muted-foreground"
+                                        >
+                                            暂无黑名单 IP
                                         </TableCell>
                                     </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
+                                ) : (
+                                    ipBlacklist.map((item) => (
+                                        <TableRow key={item.id}>
+                                            <TableCell className="font-mono">
+                                                {item.ipHash}
+                                            </TableCell>
+                                            <TableCell>{item.reason}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="destructive">
+                                                    {item.requestCount}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {item.createdAt.toLocaleString(
+                                                    "zh-CN",
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {item.createdBy}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {hasWritePermission && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            handleRemoveBlacklist(
+                                                                item.id,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Trash2 className="h-4 w-4 mr-2" />
+                                                        移除
+                                                    </Button>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -273,63 +277,66 @@ export default function IPManagementPage() {
                     <CardDescription>近期访问频繁的 IP 统计</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>IP Hash</TableHead>
-                                <TableHead>请求次数</TableHead>
-                                <TableHead>最后请求</TableHead>
-                                <TableHead>状态</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {rateLimitStats.length === 0 ? (
+                    <div className="overflow-x-auto">
+                        <Table className="min-w-[500px]">
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell
-                                        colSpan={4}
-                                        className="text-center text-muted-foreground"
-                                    >
-                                        暂无限流记录
-                                    </TableCell>
+                                    <TableHead>IP Hash</TableHead>
+                                    <TableHead>请求次数</TableHead>
+                                    <TableHead>最后请求</TableHead>
+                                    <TableHead>状态</TableHead>
                                 </TableRow>
-                            ) : (
-                                rateLimitStats.map((stat, index) => (
-                                    <TableRow key={index}>
-                                        <TableCell className="font-mono">
-                                            {stat.ipHash}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge
-                                                variant={
-                                                    stat.status === "warning"
-                                                        ? "destructive"
-                                                        : "secondary"
-                                                }
-                                            >
-                                                {stat.requestCount}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            {stat.lastRequest.toLocaleString(
-                                                "zh-CN",
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            {stat.status === "warning" ? (
-                                                <Badge variant="destructive">
-                                                    警告
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="secondary">
-                                                    正常
-                                                </Badge>
-                                            )}
+                            </TableHeader>
+                            <TableBody>
+                                {rateLimitStats.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={4}
+                                            className="text-center text-muted-foreground"
+                                        >
+                                            暂无限流记录
                                         </TableCell>
                                     </TableRow>
-                                ))
-                            )}
-                        </TableBody>
-                    </Table>
+                                ) : (
+                                    rateLimitStats.map((stat, index) => (
+                                        <TableRow key={index}>
+                                            <TableCell className="font-mono">
+                                                {stat.ipHash}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge
+                                                    variant={
+                                                        stat.status ===
+                                                        "warning"
+                                                            ? "destructive"
+                                                            : "secondary"
+                                                    }
+                                                >
+                                                    {stat.requestCount}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {stat.lastRequest.toLocaleString(
+                                                    "zh-CN",
+                                                )}
+                                            </TableCell>
+                                            <TableCell>
+                                                {stat.status === "warning" ? (
+                                                    <Badge variant="destructive">
+                                                        警告
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge variant="secondary">
+                                                        正常
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
 

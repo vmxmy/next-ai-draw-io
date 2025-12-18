@@ -54,7 +54,9 @@ export default function QuotaMonitoringPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold tracking-tight">配额监控</h1>
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                    配额监控
+                </h1>
                 <p className="text-muted-foreground mt-1">
                     监控系统配额使用情况
                 </p>
