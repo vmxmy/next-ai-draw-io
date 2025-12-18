@@ -130,7 +130,7 @@ export function SessionSwitcher({
                     variant="ghost"
                     size="icon"
                     onClick={() => setSheetOpen(true)}
-                    className="h-10 w-10 rounded-xl hover:bg-accent"
+                    className="h-11 w-11 rounded-xl hover:bg-accent"
                     disabled={isLoadingSwitch}
                     aria-label={triggerLabel}
                 >
