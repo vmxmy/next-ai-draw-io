@@ -1,6 +1,12 @@
 "use client"
 
-import { AlertCircle, CheckCircle2, CloudOff, RefreshCw } from "lucide-react"
+import {
+    AlertCircle,
+    CheckCircle2,
+    CloudOff,
+    Loader2,
+    RefreshCw,
+} from "lucide-react"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { Button } from "@/components/ui/button"
 
@@ -18,6 +24,8 @@ export function CloudSyncStatusButton({
     locale,
     onClick,
     isMobile = false,
+    isLoading = false,
+    loadingLabel,
 }: {
     visible: boolean
     isOnline: boolean
@@ -32,20 +40,27 @@ export function CloudSyncStatusButton({
     locale: string
     onClick: () => void
     isMobile?: boolean
+    isLoading?: boolean
+    loadingLabel?: string
 }) {
     if (!visible) return null
 
-    const label = !isOnline
-        ? offlineLabel
-        : syncInFlightCount > 0
-          ? syncingLabel
-          : lastSyncErrorAt && (!lastSyncOkAt || lastSyncErrorAt > lastSyncOkAt)
-            ? errorLabel
-            : lastSyncOkAt
-              ? okAtLabel(new Date(lastSyncOkAt).toLocaleTimeString(locale))
-              : okLabel
+    const label = isLoading
+        ? (loadingLabel ?? syncingLabel)
+        : !isOnline
+          ? offlineLabel
+          : syncInFlightCount > 0
+            ? syncingLabel
+            : lastSyncErrorAt &&
+                (!lastSyncOkAt || lastSyncErrorAt > lastSyncOkAt)
+              ? errorLabel
+              : lastSyncOkAt
+                ? okAtLabel(new Date(lastSyncOkAt).toLocaleTimeString(locale))
+                : okLabel
 
-    const icon = !isOnline ? (
+    const icon = isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+    ) : !isOnline ? (
         <CloudOff className="h-5 w-5 text-muted-foreground" />
     ) : syncInFlightCount > 0 ? (
         <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -61,7 +76,9 @@ export function CloudSyncStatusButton({
                 variant="ghost"
                 size="icon"
                 aria-label={label}
+                aria-busy={isLoading}
                 onClick={onClick}
+                disabled={isLoading}
                 className="h-11 w-11 rounded-xl hover:bg-accent"
             >
                 {icon}
@@ -76,6 +93,8 @@ export function CloudSyncStatusButton({
             variant="ghost"
             size="icon"
             onClick={onClick}
+            aria-busy={isLoading}
+            disabled={isLoading}
             className="hover:bg-accent"
         >
             {icon}

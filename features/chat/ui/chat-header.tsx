@@ -166,6 +166,8 @@ export function ChatHeader({
                             locale={locale}
                             onClick={onSyncClick}
                             isMobile
+                            isLoading={!!isLoadingSwitch}
+                            loadingLabel={syncSyncingLabel}
                         />
 
                         <AuthButton
@@ -192,6 +194,8 @@ export function ChatHeader({
                             errorLabel={syncErrorLabel}
                             locale={locale}
                             onClick={onSyncClick}
+                            isLoading={!!isLoadingSwitch}
+                            loadingLabel={syncSyncingLabel}
                         />
 
                         <SessionSwitcher
