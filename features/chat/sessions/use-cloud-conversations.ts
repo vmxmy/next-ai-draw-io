@@ -148,8 +148,14 @@ export function useCloudConversations({
     }, [pushMutation.mutate])
 
     // 监听数据加载状态，关闭 loading
+    // 使用 ref 跟踪 isFetchingPayload 的前一个值，只在从 true 变为 false 时清除 loading
+    const prevIsFetchingRef = useRef(isFetchingPayload)
     useEffect(() => {
-        if (!isFetchingPayload && isLoadingSwitch) {
+        const wasLoading = prevIsFetchingRef.current
+        prevIsFetchingRef.current = isFetchingPayload
+
+        // 只在 isFetchingPayload 从 true 变为 false 时清除 loading
+        if (wasLoading && !isFetchingPayload && isLoadingSwitch) {
             setIsLoadingSwitch(false)
             setSwitchingToId(null)
         }
