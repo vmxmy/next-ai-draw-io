@@ -11,6 +11,7 @@ import { createOllama } from "ollama-ai-provider-v2"
 export type ProviderName =
     | "bedrock"
     | "openai"
+    | "openai_compatible"
     | "anthropic"
     | "google"
     | "azure"
@@ -36,6 +37,7 @@ export interface ClientOverrides {
 // Providers that can be used with client-provided API keys
 const ALLOWED_CLIENT_PROVIDERS: ProviderName[] = [
     "openai",
+    "openai_compatible",
     "anthropic",
     "google",
     "azure",
@@ -103,7 +105,8 @@ function buildProviderOptions(
     const options: Record<string, any> = {}
 
     switch (provider) {
-        case "openai": {
+        case "openai":
+        case "openai_compatible": {
             const reasoningEffort = process.env.OPENAI_REASONING_EFFORT
             const reasoningSummary = process.env.OPENAI_REASONING_SUMMARY
 
@@ -354,6 +357,7 @@ function buildProviderOptions(
 const PROVIDER_ENV_VARS: Record<ProviderName, string | null> = {
     bedrock: null, // AWS SDK auto-uses IAM role on AWS, or env vars locally
     openai: "OPENAI_API_KEY",
+    openai_compatible: "OPENAI_API_KEY",
     anthropic: "ANTHROPIC_API_KEY",
     google: "GOOGLE_GENERATIVE_AI_API_KEY",
     azure: "AZURE_API_KEY",
@@ -373,6 +377,10 @@ function detectProvider(): ProviderName | null {
     for (const [provider, envVar] of Object.entries(PROVIDER_ENV_VARS)) {
         if (envVar === null) {
             // Skip ollama - it doesn't require credentials
+            continue
+        }
+        if (provider === "openai_compatible") {
+            // 兼容模式只在显式选择时使用，避免自动检测歧义
             continue
         }
         if (process.env[envVar]) {
@@ -425,7 +433,7 @@ function validateProviderCredentials(provider: ProviderName): void {
  * Get the AI model based on environment variables
  *
  * Environment variables:
- * - AI_PROVIDER: The provider to use (bedrock, openai, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow)
+ * - AI_PROVIDER: The provider to use (bedrock, openai, openai_compatible, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow)
  * - AI_MODEL: The model ID/name for the selected provider
  *
  * Provider-specific env vars:
@@ -553,7 +561,8 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
             break
         }
 
-        case "openai": {
+        case "openai":
+        case "openai_compatible": {
             const apiKey = overrides?.apiKey || process.env.OPENAI_API_KEY
             const baseURL = overrides?.baseUrl || process.env.OPENAI_BASE_URL
             // Always use custom instance to support baseURL configuration
@@ -670,7 +679,7 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
 
         default:
             throw new Error(
-                `Unknown AI provider: ${provider}. Supported providers: bedrock, openai, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow`,
+                `Unknown AI provider: ${provider}. Supported providers: bedrock, openai, openai_compatible, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow`,
             )
     }
 

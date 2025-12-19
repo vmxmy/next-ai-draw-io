@@ -139,7 +139,23 @@ export function useCloudConversations({
     // 创建会话 mutation
     // 注意：不在 onSuccess 中刷新查询，避免与自动保存形成循环
     // 所有更新都通过乐观更新处理（setQueryData）
-    const pushMutation = api.conversation.push.useMutation()
+    const pushMutation = api.conversation.push.useMutation({
+        onError: (error, variables) => {
+            console.error("[conversation.push] Client error:", error)
+            console.log("[conversation.push] Failed variables:", {
+                count: variables.conversations.length,
+                conversations: variables.conversations.map((c: any) => ({
+                    id: c.id,
+                    title: c.title,
+                    createdAt: c.createdAt,
+                    updatedAt: c.updatedAt,
+                    deleted: c.deleted,
+                    hasPayload: !!c.payload,
+                    payloadKeys: c.payload ? Object.keys(c.payload) : [],
+                })),
+            })
+        },
+    })
 
     // 使用 ref 存储 mutate 函数以避免依赖问题
     const pushMutateRef = useRef(pushMutation.mutate)
@@ -491,6 +507,7 @@ export function useCloudConversations({
     const handleSelectConversation = useCallback(
         async (id: string) => {
             if (!id || id === currentConversationId) return
+            console.log("[session] Switching to conversation:", id)
             try {
                 stopCurrentRequest?.()
                 setIsLoadingSwitch(true)
@@ -510,10 +527,17 @@ export function useCloudConversations({
                 utils.conversation.getById.setData({ id }, freshData)
 
                 setCurrentConversationId(id)
+                console.log(
+                    "[session] Switch successful, clearing loading state",
+                )
+                // 明确清除 loading 状态（不再仅依赖 isFetchingPayload 变化）
+                setIsLoadingSwitch(false)
+                setSwitchingToId(null)
             } catch (error) {
-                console.error("Failed to select conversation:", error)
+                console.error("[session] Failed to select conversation:", error)
                 toast.warning(t("toast.storageUpdateFailed"))
                 setIsLoadingSwitch(false)
+                setSwitchingToId(null)
             }
         },
         [currentConversationId, stopCurrentRequest, t, flushSaveToCloud, utils],
@@ -648,14 +672,19 @@ export function useCloudConversations({
             }
 
             // 使用 sendBeacon 确保页面关闭时也能发送请求
+            // tRPC batch 格式: {"0":{"json":{input}}}
             const payload = JSON.stringify({
-                conversations: [conversation],
+                "0": {
+                    json: {
+                        conversations: [conversation],
+                    },
+                },
             })
 
             // 优先使用 sendBeacon（页面关闭时更可靠）
             if (navigator.sendBeacon) {
                 navigator.sendBeacon(
-                    "/api/trpc/conversation.push",
+                    "/api/trpc/conversation.push?batch=1",
                     new Blob([payload], { type: "application/json" }),
                 )
             } else {

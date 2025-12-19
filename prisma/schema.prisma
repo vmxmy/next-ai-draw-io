@@ -131,30 +131,64 @@ model AnonymousRateLimit {
 model ProviderConfig {
   id       String @id @default(cuid())
   userId   String
-  // 支持: bedrock, openai, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow
+  // 支持: bedrock, openai, openai_compatible, anthropic, google, azure, ollama, openrouter, deepseek, siliconflow
   provider String
 
-  // AES-256-GCM 加密存储的 API Key
-  encryptedApiKey String?
-  // 加密向量（Initialization Vector）
-  encryptionIv    String?
-  // 认证标签（Authentication Tag，用于 AES-GCM 完整性验证）
-  authTag         String?
-  // 加密密钥版本（支持密钥轮换）
-  keyVersion      Int     @default(1)
+  // 连接别名（同一 provider 下可多条）
+  name      String @default("default")
+  isDefault Boolean @default(false)
+  isDisabled Boolean @default(false)
 
   // 可选配置
-  baseUrl String?
-  modelId String?
+  baseUrl     String?
+  modelId     String?
+  headers     Json?
+  extraConfig Json?
+
+  // 统一凭证（加密 JSON 字符串）
+  credentialType       String @default("apiKey")
+  encryptedCredentials String?
+  credentialsIv        String?
+  credentialsAuthTag   String?
+  credentialsVersion   Int     @default(1)
+
+  // 常见 provider 参数（便于显式配置）
+  orgId        String?
+  apiVersion   String?
+  region       String?
+  resourceName String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, provider])
+  @@unique([userId, provider, name])
   @@index([userId])
-  @@index([keyVersion])
+  @@index([provider])
+  @@index([credentialsVersion])
+}
+
+// Provider 默认配置目录（系统级）
+model ProviderCatalog {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  displayName     String
+  compatibility   String   // native | openai_compat
+  authType        String   // apiKey | aws | oauth | none | custom
+  defaultBaseUrl  String?
+  defaultModelId  String?
+  defaultHeaders  Json?
+  defaultParams   Json?
+  // 建议模型列表，存储为 JSON 数组: [{ id: string, label?: string }]
+  suggestedModels Json?
+  isBuiltin       Boolean  @default(true)
+  isActive        Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
 }
 
 // SMS 验证码（用于手机号登录）

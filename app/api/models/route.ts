@@ -1,5 +1,8 @@
+import { getServerSession } from "next-auth/next"
 import { z } from "zod"
-import { getModelOptions } from "@/lib/model-catalog"
+import { authOptions } from "@/server/auth"
+import { db } from "@/server/db"
+import { decryptCredentials } from "@/server/encryption"
 
 const querySchema = z.object({
     provider: z.string().optional(),
@@ -11,7 +14,65 @@ const postBodySchema = z.object({
     baseUrl: z.string().optional(),
 })
 
+// 从用户云端配置获取凭证
+async function getUserCloudCredentials(
+    userId: string,
+    provider: string,
+): Promise<{ apiKey: string; baseUrl?: string } | null> {
+    const userConfig = await db.providerConfig.findFirst({
+        where: {
+            userId,
+            provider,
+            isDisabled: false,
+        },
+        orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+    })
+
+    if (!userConfig?.encryptedCredentials) {
+        return null
+    }
+
+    try {
+        const decrypted = decryptCredentials({
+            encryptedData: userConfig.encryptedCredentials,
+            iv: userConfig.credentialsIv!,
+            authTag: userConfig.credentialsAuthTag!,
+            keyVersion: userConfig.credentialsVersion,
+        })
+        const credentials = JSON.parse(decrypted)
+        return {
+            apiKey: credentials.apiKey,
+            baseUrl: userConfig.baseUrl || undefined,
+        }
+    } catch (error) {
+        console.error(
+            "[/api/models] Failed to decrypt user credentials:",
+            error,
+        )
+        return null
+    }
+}
+
 type ModelRow = { id: string; label?: string }
+
+// 从数据库获取 Provider 的建议模型
+async function getSuggestedModels(provider: string): Promise<ModelRow[]> {
+    const catalog = await db.providerCatalog.findUnique({
+        where: { key: provider },
+        select: { suggestedModels: true },
+    })
+    if (!catalog?.suggestedModels) return []
+    const models = catalog.suggestedModels as unknown
+    if (!Array.isArray(models)) return []
+    return models
+        .filter(
+            (m): m is { id: string; label?: string } =>
+                typeof m === "object" &&
+                m !== null &&
+                typeof (m as { id?: unknown }).id === "string",
+        )
+        .map((m) => ({ id: m.id, label: m.label }))
+}
 
 function normalizeBaseUrl(url: string) {
     return url.replace(/\/+$/, "")
@@ -95,7 +156,7 @@ export async function GET(req: Request) {
     }
 
     return Response.json({
-        models: getModelOptions(provider),
+        models: await getSuggestedModels(provider),
     })
 }
 
@@ -107,11 +168,35 @@ export async function POST(req: Request) {
     }
 
     const provider = parsed.data.provider.trim().toLowerCase()
-    const apiKey = (parsed.data.apiKey || "").trim()
-    const baseUrl = (parsed.data.baseUrl || "").trim()
+    let apiKey = (parsed.data.apiKey || "").trim()
+    let baseUrl = (parsed.data.baseUrl || "").trim()
+
+    // 如果客户端没有传 apiKey，尝试从用户云端配置获取
+    if (!apiKey) {
+        const session = await getServerSession(authOptions)
+        const userId = session?.user?.id
+
+        if (userId) {
+            const cloudCredentials = await getUserCloudCredentials(
+                userId,
+                provider,
+            )
+            if (cloudCredentials) {
+                apiKey = cloudCredentials.apiKey
+                // 只在客户端没有传 baseUrl 时使用云端的
+                if (!baseUrl && cloudCredentials.baseUrl) {
+                    baseUrl = cloudCredentials.baseUrl
+                }
+                console.log(
+                    "[/api/models] Using user cloud credentials for:",
+                    provider,
+                )
+            }
+        }
+    }
 
     if (!apiKey) {
-        return Response.json({ models: getModelOptions(provider) })
+        return Response.json({ models: await getSuggestedModels(provider) })
     }
 
     try {
@@ -124,6 +209,16 @@ export async function POST(req: Request) {
                     models: await listModelsFromOpenAICompatible({
                         baseUrl:
                             effectiveBaseUrl || "https://api.openai.com/v1",
+                        apiKey,
+                    }),
+                })
+            case "openai_compatible":
+                if (!effectiveBaseUrl) {
+                    return Response.json({ models: [] })
+                }
+                return Response.json({
+                    models: await listModelsFromOpenAICompatible({
+                        baseUrl: effectiveBaseUrl,
                         apiKey,
                     }),
                 })
@@ -171,9 +266,11 @@ export async function POST(req: Request) {
                     }),
                 })
             default:
-                return Response.json({ models: getModelOptions(provider) })
+                return Response.json({
+                    models: await getSuggestedModels(provider),
+                })
         }
     } catch {
-        return Response.json({ models: getModelOptions(provider) })
+        return Response.json({ models: await getSuggestedModels(provider) })
     }
 }

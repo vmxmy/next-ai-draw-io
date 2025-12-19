@@ -35,6 +35,8 @@ import { analyzeDiagramXml } from "@/lib/xml-analyzer"
 import { generateXmlDiff } from "@/lib/xml-diff"
 import { buildDiagramSummary } from "@/lib/xml-summary"
 import { authOptions } from "@/server/auth"
+import { db } from "@/server/db"
+import { decryptCredentials } from "@/server/encryption"
 import {
     enforceQuotaLimit,
     QuotaExceededError,
@@ -613,23 +615,122 @@ async function handleChatRequest(req: Request): Promise<Response> {
     const session = await getServerSession(authOptions)
     const userId = session?.user?.id
 
+    // 获取用户云端配置（登录用户，从 ProviderConfig 读取）
+    let userCloudConfig: {
+        provider?: string
+        apiKey?: string
+        baseUrl?: string
+        modelId?: string
+    } = {}
+
+    // 如果用户已登录且客户端没有传 API Key，尝试从云端获取配置
+    if (userId && !clientOverrides.apiKey) {
+        const requestedProvider =
+            clientOverrides.provider ||
+            req.headers.get("x-ai-provider-hint") ||
+            null
+
+        // 查询用户的 ProviderConfig
+        const userConfig = await db.providerConfig.findFirst({
+            where: {
+                userId,
+                ...(requestedProvider
+                    ? { provider: requestedProvider }
+                    : { isDefault: true }),
+                isDisabled: false,
+            },
+            orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+        })
+
+        if (userConfig?.encryptedCredentials) {
+            try {
+                const decrypted = decryptCredentials({
+                    encryptedData: userConfig.encryptedCredentials,
+                    iv: userConfig.credentialsIv!,
+                    authTag: userConfig.credentialsAuthTag!,
+                    keyVersion: userConfig.credentialsVersion,
+                })
+                const credentials = JSON.parse(decrypted)
+
+                userCloudConfig = {
+                    provider: userConfig.provider,
+                    apiKey: credentials.apiKey,
+                    baseUrl: userConfig.baseUrl || undefined,
+                    modelId: userConfig.modelId || undefined,
+                }
+
+                console.log("[User Cloud Config] Loaded from database:", {
+                    provider: userCloudConfig.provider,
+                    hasApiKey: !!userCloudConfig.apiKey,
+                    baseUrl: userCloudConfig.baseUrl
+                        ? `${userCloudConfig.baseUrl.substring(0, 30)}...`
+                        : null,
+                    modelId: userCloudConfig.modelId,
+                })
+            } catch (error) {
+                console.error(
+                    "[User Cloud Config] Failed to decrypt credentials:",
+                    error,
+                )
+            }
+        }
+    }
+
     // 配额限额检查：统一处理匿名和已认证用户，BYOK 用户绕过
+    const hasBYOK = !!(clientOverrides.provider && clientOverrides.apiKey)
+    const hasUserCloudConfig = !!userCloudConfig.apiKey
     const quotaContext = await enforceQuotaLimit({
         headers: req.headers,
         userId,
-        bypassBYOK: !!(clientOverrides.provider && clientOverrides.apiKey),
+        bypassBYOK: hasBYOK || hasUserCloudConfig,
     })
 
     // 获取系统默认 AI 配置（数据库优先，fallback 到环境变量）
     const { getDefaultAIConfig } = await import("@/server/system-config")
     const defaultConfig = await getDefaultAIConfig()
 
-    // 合并配置：客户端覆盖 > 数据库配置 > 环境变量
+    // 合并配置优先级：客户端 BYOK > 用户云端配置 > 系统默认配置
     const finalOverrides = {
-        provider: clientOverrides.provider || defaultConfig.provider,
-        modelId: clientOverrides.modelId || defaultConfig.model,
-        apiKey: clientOverrides.apiKey || defaultConfig.apiKey,
-        baseUrl: clientOverrides.baseUrl || defaultConfig.baseUrl,
+        provider:
+            clientOverrides.provider ||
+            userCloudConfig.provider ||
+            defaultConfig.provider,
+        modelId:
+            clientOverrides.modelId ||
+            userCloudConfig.modelId ||
+            defaultConfig.model,
+        apiKey:
+            clientOverrides.apiKey ||
+            userCloudConfig.apiKey ||
+            defaultConfig.apiKey,
+        baseUrl:
+            clientOverrides.baseUrl ||
+            userCloudConfig.baseUrl ||
+            defaultConfig.baseUrl,
+    }
+
+    // 确定配置来源
+    const configSource = {
+        provider: clientOverrides.provider
+            ? "client"
+            : userCloudConfig.provider
+              ? "user-cloud"
+              : "system",
+        modelId: clientOverrides.modelId
+            ? "client"
+            : userCloudConfig.modelId
+              ? "user-cloud"
+              : "system",
+        apiKey: clientOverrides.apiKey
+            ? "client"
+            : userCloudConfig.apiKey
+              ? "user-cloud"
+              : "system",
+        baseUrl: clientOverrides.baseUrl
+            ? "client"
+            : userCloudConfig.baseUrl
+              ? "user-cloud"
+              : "system",
     }
 
     console.log("[Final Config] Using configuration:", {
@@ -641,12 +742,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
         baseUrl: finalOverrides.baseUrl
             ? `${finalOverrides.baseUrl.substring(0, 30)}...`
             : null,
-        source: {
-            provider: clientOverrides.provider ? "client" : "default",
-            modelId: clientOverrides.modelId ? "client" : "default",
-            apiKey: clientOverrides.apiKey ? "client" : "default",
-            baseUrl: clientOverrides.baseUrl ? "client" : "default",
-        },
+        source: configSource,
     })
 
     // Get AI model with merged configuration

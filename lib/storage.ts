@@ -26,6 +26,7 @@ export const STORAGE_KEYS = {
     closeProtection: "next-ai-draw-io-close-protection",
     accessCodeRequired: "next-ai-draw-io-access-code-required",
     aiProvider: "next-ai-draw-io-ai-provider",
+    aiProviderConnection: "next-ai-draw-io-ai-provider-connection",
     aiBaseUrl: "next-ai-draw-io-ai-base-url",
     aiApiKey: "next-ai-draw-io-ai-api-key",
     aiModel: "next-ai-draw-io-ai-model",

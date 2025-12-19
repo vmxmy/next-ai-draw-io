@@ -1,5 +1,6 @@
 "use client"
 
+import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useState } from "react"
 import {
     Dialog,
@@ -11,13 +12,20 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/contexts/i18n-context"
 import { STORAGE_KEYS } from "@/lib/storage"
-import { useCloudSync, useModelSelector } from "./hooks"
+import {
+    type CloudConfig,
+    useCloudSync,
+    useModelSelector,
+    useProviderCatalog,
+} from "./hooks"
 import { AboutTab, InterfaceTab, ModelConfigTab } from "./tabs"
 
 // Re-export storage keys for backward compatibility
 export const STORAGE_ACCESS_CODE_KEY = STORAGE_KEYS.accessCode
 export const STORAGE_CLOSE_PROTECTION_KEY = STORAGE_KEYS.closeProtection
 export const STORAGE_AI_PROVIDER_KEY = STORAGE_KEYS.aiProvider
+export const STORAGE_AI_PROVIDER_CONNECTION_KEY =
+    STORAGE_KEYS.aiProviderConnection
 export const STORAGE_AI_BASE_URL_KEY = STORAGE_KEYS.aiBaseUrl
 export const STORAGE_AI_API_KEY_KEY = STORAGE_KEYS.aiApiKey
 export const STORAGE_AI_MODEL_KEY = STORAGE_KEYS.aiModel
@@ -49,6 +57,8 @@ export function SettingsDialog({
     onToggleDarkMode,
 }: SettingsDialogProps) {
     const { t } = useI18n()
+    const { data: session } = useSession()
+    const isLoggedIn = Boolean(session?.user)
 
     // Access code state
     const [accessCode, setAccessCode] = useState("")
@@ -58,11 +68,17 @@ export function SettingsDialog({
         () => getStoredAccessCodeRequired() ?? false,
     )
 
-    // Local provider config state
+    // Provider config state
     const [provider, setProvider] = useState("")
+    const [connectionName, setConnectionName] = useState("default")
+    const [connectionIsDefault, setConnectionIsDefault] = useState(true)
     const [baseUrl, setBaseUrl] = useState("")
     const [apiKey, setApiKey] = useState("")
     const [modelId, setModelId] = useState("")
+    const [isLoadingConfig, setIsLoadingConfig] = useState(false)
+    const [allCloudConnections, setAllCloudConnections] = useState<
+        CloudConfig[]
+    >([])
 
     // Interface state
     const [closeProtection, setCloseProtection] = useState(true)
@@ -70,20 +86,32 @@ export function SettingsDialog({
     // Cloud sync hook
     const cloudSync = useCloudSync({
         provider,
+        connectionName,
+        isDefault: connectionIsDefault,
         apiKey,
         baseUrl,
         modelId,
         onConfigRestored: (config) => {
             if (config.baseUrl) {
                 setBaseUrl(config.baseUrl)
-                localStorage.setItem(STORAGE_KEYS.aiBaseUrl, config.baseUrl)
+                // Only save to localStorage for non-logged-in users
+                if (!isLoggedIn) {
+                    localStorage.setItem(STORAGE_KEYS.aiBaseUrl, config.baseUrl)
+                }
             }
             if (config.modelId) {
                 setModelId(config.modelId)
-                localStorage.setItem(STORAGE_KEYS.aiModel, config.modelId)
+                if (!isLoggedIn) {
+                    localStorage.setItem(STORAGE_KEYS.aiModel, config.modelId)
+                }
             }
         },
     })
+
+    // Check if current provider has cloud config
+    const providerHasCloudConfig = allCloudConnections.some(
+        (conn) => conn.provider === provider,
+    )
 
     // Model selector hook
     const modelSelector = useModelSelector({
@@ -91,7 +119,12 @@ export function SettingsDialog({
         apiKey,
         baseUrl,
         isDialogOpen: open,
+        isLoggedIn,
+        hasCloudConfig: providerHasCloudConfig,
     })
+
+    // Provider catalog hook (数据库驱动)
+    const providerCatalog = useProviderCatalog()
 
     // Fetch access code requirement on mount
     useEffect(() => {
@@ -119,133 +152,290 @@ export function SettingsDialog({
     useEffect(() => {
         if (!open) return
 
-        // Load from localStorage
+        // Access code and interface settings always use localStorage
         setAccessCode(localStorage.getItem(STORAGE_KEYS.accessCode) || "")
         setCloseProtection(
             localStorage.getItem(STORAGE_KEYS.closeProtection) !== "false",
         )
-
-        const localProvider =
-            localStorage.getItem(STORAGE_KEYS.aiProvider) || ""
-        const localBaseUrl = localStorage.getItem(STORAGE_KEYS.aiBaseUrl) || ""
-        const localApiKey = localStorage.getItem(STORAGE_KEYS.aiApiKey) || ""
-        const localModelId = localStorage.getItem(STORAGE_KEYS.aiModel) || ""
-
-        setProvider(localProvider)
-        setBaseUrl(localBaseUrl)
-        setApiKey(localApiKey)
-        setModelId(localModelId)
         setAccessCodeError("")
 
-        // Load cloud config
-        cloudSync.clearCloudConfigState()
-        if (localProvider && localProvider !== "default") {
-            cloudSync.loadCloudConfig(localProvider).then((config) => {
-                if (config) {
-                    // Auto-fill from cloud if local is empty
-                    if (!localBaseUrl && config.baseUrl) {
-                        setBaseUrl(config.baseUrl)
-                        localStorage.setItem(
-                            STORAGE_KEYS.aiBaseUrl,
-                            config.baseUrl,
-                        )
+        if (isLoggedIn) {
+            // Logged-in users: Load from cloud only
+            setIsLoadingConfig(true)
+            cloudSync.clearCloudConfigState()
+
+            // Load all connections first
+            cloudSync
+                .loadConnections()
+                .then(async (connections) => {
+                    // Save all connections for provider switching
+                    setAllCloudConnections(connections)
+
+                    // Find default connection or first connection
+                    const defaultConn = connections.find((c) => c.isDefault)
+                    const firstConn = connections[0]
+                    const targetConn = defaultConn || firstConn
+
+                    if (targetConn) {
+                        setProvider(targetConn.provider || "")
+                        setConnectionName(targetConn.name || "default")
+                        setConnectionIsDefault(!!targetConn.isDefault)
+                        setBaseUrl(targetConn.baseUrl || "")
+                        setModelId(targetConn.modelId || "")
+                        // API key is not returned from cloud for security
+                        setApiKey("")
+
+                        // Load full config and filtered connections for this provider
+                        if (targetConn.provider) {
+                            await cloudSync.loadConnections(targetConn.provider)
+                            await cloudSync.loadCloudConfig(
+                                targetConn.provider,
+                                targetConn.name,
+                            )
+                        }
+                    } else {
+                        // No cloud config, reset to defaults
+                        setProvider("")
+                        setConnectionName("default")
+                        setConnectionIsDefault(true)
+                        setBaseUrl("")
+                        setApiKey("")
+                        setModelId("")
                     }
-                    if (!localModelId && config.modelId) {
-                        setModelId(config.modelId)
-                        localStorage.setItem(
-                            STORAGE_KEYS.aiModel,
-                            config.modelId,
-                        )
-                    }
-                }
-            })
+                })
+                .finally(() => {
+                    setIsLoadingConfig(false)
+                })
+        } else {
+            // Non-logged-in users: Load from localStorage
+            const localProvider =
+                localStorage.getItem(STORAGE_KEYS.aiProvider) || ""
+            const localConnection =
+                localStorage.getItem(STORAGE_KEYS.aiProviderConnection) ||
+                "default"
+            const localBaseUrl =
+                localStorage.getItem(STORAGE_KEYS.aiBaseUrl) || ""
+            const localApiKey =
+                localStorage.getItem(STORAGE_KEYS.aiApiKey) || ""
+            const localModelId =
+                localStorage.getItem(STORAGE_KEYS.aiModel) || ""
+
+            setProvider(localProvider)
+            setConnectionName(localConnection)
+            setConnectionIsDefault(localConnection === "default")
+            setBaseUrl(localBaseUrl)
+            setApiKey(localApiKey)
+            setModelId(localModelId)
         }
-    }, [open])
+    }, [open, isLoggedIn])
 
     // Handle provider change
     const handleProviderChange = useCallback(
         async (value: string) => {
             setProvider(value)
-            localStorage.setItem(STORAGE_KEYS.aiProvider, value)
+            setConnectionName("default")
+            setConnectionIsDefault(true)
 
-            cloudSync.clearCloudConfigState()
-            if (value && cloudSync.isLoggedIn) {
-                const config = await cloudSync.loadCloudConfig(value)
-                if (config) {
-                    if (!baseUrl && config.baseUrl) {
-                        setBaseUrl(config.baseUrl)
-                        localStorage.setItem(
-                            STORAGE_KEYS.aiBaseUrl,
-                            config.baseUrl,
-                        )
+            // Clear form fields first
+            setApiKey("")
+            setBaseUrl("")
+            setModelId("")
+
+            if (isLoggedIn) {
+                // Logged-in: Load cloud config for new provider
+                cloudSync.clearCloudConfigState()
+                if (value) {
+                    // Find config from all saved connections
+                    const providerConnections = allCloudConnections.filter(
+                        (conn) => conn.provider === value,
+                    )
+                    const defaultConfig =
+                        providerConnections.find((c) => c.isDefault) ||
+                        providerConnections.find((c) => c.name === "default") ||
+                        providerConnections[0]
+
+                    if (defaultConfig) {
+                        // Fill form from existing connection
+                        setConnectionName(defaultConfig.name || "default")
+                        setConnectionIsDefault(!!defaultConfig.isDefault)
+                        setBaseUrl(defaultConfig.baseUrl || "")
+                        setModelId(defaultConfig.modelId || "")
                     }
-                    if (!modelId && config.modelId) {
-                        setModelId(config.modelId)
-                        localStorage.setItem(
-                            STORAGE_KEYS.aiModel,
-                            config.modelId,
-                        )
-                    }
+
+                    // Load connections for this provider (for advanced options)
+                    await cloudSync.loadConnections(value)
+                    await cloudSync.loadCloudConfig(
+                        value,
+                        defaultConfig?.name || "default",
+                    )
                 }
+            } else {
+                // Non-logged-in: Save to localStorage and clear AI config
+                localStorage.setItem(STORAGE_KEYS.aiProvider, value)
+                localStorage.setItem(
+                    STORAGE_KEYS.aiProviderConnection,
+                    "default",
+                )
+                localStorage.removeItem(STORAGE_KEYS.aiApiKey)
+                localStorage.removeItem(STORAGE_KEYS.aiBaseUrl)
+                localStorage.removeItem(STORAGE_KEYS.aiModel)
             }
         },
-        [baseUrl, modelId, cloudSync],
+        [isLoggedIn, cloudSync, allCloudConnections],
     )
 
-    // Handle field changes with auto-sync
+    const handleConnectionNameChange = useCallback(
+        (value: string) => {
+            setConnectionName(value)
+            if (value === "default") {
+                setConnectionIsDefault(true)
+            }
+
+            if (!isLoggedIn) {
+                localStorage.setItem(STORAGE_KEYS.aiProviderConnection, value)
+            }
+            cloudSync.clearCloudConfigState()
+        },
+        [isLoggedIn, cloudSync],
+    )
+
+    const handleSelectCloudConnection = useCallback(
+        async (value: string) => {
+            if (!value) return
+            setConnectionName(value)
+
+            const selected = cloudSync.connections.find(
+                (config) => config.name === value,
+            )
+            if (selected) {
+                setConnectionIsDefault(!!selected.isDefault)
+                if (selected.baseUrl) {
+                    setBaseUrl(selected.baseUrl)
+                }
+                if (selected.modelId) {
+                    setModelId(selected.modelId)
+                }
+            }
+
+            if (!isLoggedIn) {
+                localStorage.setItem(STORAGE_KEYS.aiProviderConnection, value)
+                if (selected?.baseUrl) {
+                    localStorage.setItem(
+                        STORAGE_KEYS.aiBaseUrl,
+                        selected.baseUrl,
+                    )
+                }
+                if (selected?.modelId) {
+                    localStorage.setItem(STORAGE_KEYS.aiModel, selected.modelId)
+                }
+            }
+
+            if (provider) {
+                cloudSync.loadCloudConfig(provider, value)
+            }
+        },
+        [cloudSync, provider, isLoggedIn],
+    )
+
+    const handleConnectionDefaultChange = useCallback((value: boolean) => {
+        setConnectionIsDefault(value)
+    }, [])
+
+    // Handle field changes - auto-sync for logged-in users
     const handleApiKeyChange = useCallback(
         (value: string) => {
             setApiKey(value)
-            localStorage.setItem(STORAGE_KEYS.aiApiKey, value)
-            if (value && baseUrl && provider && cloudSync.isLoggedIn) {
-                cloudSync.syncOnChange()
+
+            if (isLoggedIn) {
+                // Logged-in: Auto-sync to cloud when we have required fields
+                if (value && provider) {
+                    cloudSync.syncOnChange()
+                }
+            } else {
+                // Non-logged-in: Save to localStorage
+                localStorage.setItem(STORAGE_KEYS.aiApiKey, value)
             }
         },
-        [baseUrl, provider, cloudSync],
+        [isLoggedIn, provider, cloudSync],
     )
 
     const handleBaseUrlChange = useCallback(
         (value: string) => {
             setBaseUrl(value)
-            localStorage.setItem(STORAGE_KEYS.aiBaseUrl, value)
-            if (apiKey && value && provider && cloudSync.isLoggedIn) {
-                cloudSync.syncOnChange()
+
+            if (isLoggedIn) {
+                // Logged-in: Auto-sync to cloud
+                if (apiKey && provider) {
+                    cloudSync.syncOnChange()
+                }
+            } else {
+                // Non-logged-in: Save to localStorage
+                localStorage.setItem(STORAGE_KEYS.aiBaseUrl, value)
             }
         },
-        [apiKey, provider, cloudSync],
+        [isLoggedIn, apiKey, provider, cloudSync],
     )
 
-    const handleModelIdChange = useCallback((value: string) => {
-        setModelId(value)
-        localStorage.setItem(STORAGE_KEYS.aiModel, value)
-    }, [])
+    const handleModelIdChange = useCallback(
+        (value: string) => {
+            setModelId(value)
+
+            if (isLoggedIn) {
+                // Logged-in: Auto-sync to cloud
+                if (apiKey && provider) {
+                    cloudSync.syncOnChange()
+                }
+            } else {
+                // Non-logged-in: Save to localStorage
+                localStorage.setItem(STORAGE_KEYS.aiModel, value)
+            }
+        },
+        [isLoggedIn, apiKey, provider, cloudSync],
+    )
 
     const handleSelectModel = useCallback(
         (id: string) => {
             setModelId(id)
-            localStorage.setItem(STORAGE_KEYS.aiModel, id)
+
+            if (isLoggedIn) {
+                if (apiKey && provider) {
+                    cloudSync.syncOnChange()
+                }
+            } else {
+                localStorage.setItem(STORAGE_KEYS.aiModel, id)
+            }
+
             modelSelector.closeModelMenu()
         },
-        [modelSelector],
+        [isLoggedIn, apiKey, provider, cloudSync, modelSelector],
     )
 
     // Clear all config
     const handleClearConfig = useCallback(() => {
-        localStorage.removeItem(STORAGE_KEYS.aiProvider)
-        localStorage.removeItem(STORAGE_KEYS.aiBaseUrl)
-        localStorage.removeItem(STORAGE_KEYS.aiApiKey)
-        localStorage.removeItem(STORAGE_KEYS.aiModel)
-
         const currentProvider = provider
+
+        // Reset state
         setProvider("")
+        setConnectionName("default")
+        setConnectionIsDefault(true)
         setBaseUrl("")
         setApiKey("")
         setModelId("")
 
-        if (cloudSync.isLoggedIn && currentProvider) {
-            cloudSync.deleteCloudConfig()
+        if (isLoggedIn) {
+            // Logged-in: Delete from cloud only
+            if (currentProvider) {
+                cloudSync.deleteCloudConfig()
+            }
+        } else {
+            // Non-logged-in: Clear localStorage
+            localStorage.removeItem(STORAGE_KEYS.aiProvider)
+            localStorage.removeItem(STORAGE_KEYS.aiProviderConnection)
+            localStorage.removeItem(STORAGE_KEYS.aiBaseUrl)
+            localStorage.removeItem(STORAGE_KEYS.aiApiKey)
+            localStorage.removeItem(STORAGE_KEYS.aiModel)
         }
-    }, [provider, cloudSync])
+    }, [provider, isLoggedIn, cloudSync])
 
     // Access code save
     const handleAccessCodeSave = async () => {
@@ -329,6 +519,25 @@ export function SettingsDialog({
                             accessCodeError={accessCodeError}
                             provider={provider}
                             onProviderChange={handleProviderChange}
+                            providerOptions={providerCatalog.providerOptions}
+                            isLoadingProviders={
+                                providerCatalog.isLoading || isLoadingConfig
+                            }
+                            getModelPlaceholder={
+                                providerCatalog.getModelPlaceholder
+                            }
+                            getBaseUrlPlaceholder={
+                                providerCatalog.getBaseUrlPlaceholder
+                            }
+                            connectionName={connectionName}
+                            onConnectionNameChange={handleConnectionNameChange}
+                            onSelectCloudConnection={
+                                handleSelectCloudConnection
+                            }
+                            connectionIsDefault={connectionIsDefault}
+                            onConnectionDefaultChange={
+                                handleConnectionDefaultChange
+                            }
                             baseUrl={baseUrl}
                             onBaseUrlChange={handleBaseUrlChange}
                             apiKey={apiKey}
@@ -337,12 +546,17 @@ export function SettingsDialog({
                             onModelIdChange={handleModelIdChange}
                             onClearConfig={handleClearConfig}
                             cloudConfig={cloudSync.cloudConfig}
-                            isLoggedIn={cloudSync.isLoggedIn}
+                            isLoggedIn={isLoggedIn}
                             syncSuccess={cloudSync.syncSuccess}
                             restoreSuccess={cloudSync.restoreSuccess}
                             isRestoring={cloudSync.isRestoring}
                             isSyncing={cloudSync.isSyncing}
                             isDeleting={cloudSync.isDeleting}
+                            isLoadingConnections={
+                                cloudSync.isLoadingConnections
+                            }
+                            cloudConnections={cloudSync.connections}
+                            allCloudConnections={allCloudConnections}
                             hasCloudConfig={cloudSync.hasCloudConfig}
                             onSyncToCloud={cloudSync.syncToCloud}
                             onRestoreFromCloud={cloudSync.restoreFromCloud}

@@ -11,6 +11,9 @@ export interface AIProviderConfig {
 }
 
 export interface CloudConfig {
+    provider?: string
+    name?: string
+    isDefault?: boolean
     apiKeyPreview?: string
     baseUrl?: string
     modelId?: string
@@ -24,6 +27,7 @@ export type ProviderType =
     | "openrouter"
     | "deepseek"
     | "siliconflow"
+    | "openai_compatible"
 
 export function useAIProviderConfig() {
     const { data: session } = useSession()

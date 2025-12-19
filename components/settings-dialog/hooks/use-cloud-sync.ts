@@ -13,37 +13,45 @@ export interface CloudSyncState {
 
 export interface UseCloudSyncOptions {
     provider: string
+    connectionName: string
+    isDefault: boolean
     apiKey: string
     baseUrl: string
     modelId: string
     onConfigRestored?: (config: { baseUrl?: string; modelId?: string }) => void
     onCloudConfigLoaded?: (config: CloudConfig) => void
+    onConnectionsLoaded?: (configs: CloudConfig[]) => void
 }
 
 export function useCloudSync(options: UseCloudSyncOptions) {
     const {
         provider,
+        connectionName,
+        isDefault,
         apiKey,
         baseUrl,
         modelId,
         onConfigRestored,
         onCloudConfigLoaded,
+        onConnectionsLoaded,
     } = options
 
     const { data: session } = useSession()
     const utils = api.useUtils()
 
     const [cloudConfig, setCloudConfig] = useState<CloudConfig>({})
+    const [connections, setConnections] = useState<CloudConfig[]>([])
     const [syncSuccess, setSyncSuccess] = useState(false)
     const [restoreSuccess, setRestoreSuccess] = useState(false)
     const [isRestoring, setIsRestoring] = useState(false)
+    const [isLoadingConnections, setIsLoadingConnections] = useState(false)
 
     const upsertConfigMutation = api.providerConfig.upsert.useMutation()
     const deleteConfigMutation = api.providerConfig.delete.useMutation()
 
     // Load cloud config for a provider
     const loadCloudConfig = useCallback(
-        async (targetProvider: string) => {
+        async (targetProvider: string, targetName?: string) => {
             if (!session?.user || !targetProvider) {
                 setCloudConfig({})
                 return null
@@ -52,10 +60,14 @@ export function useCloudSync(options: UseCloudSyncOptions) {
             try {
                 const config = await utils.providerConfig.get.fetch({
                     provider: targetProvider as ProviderType,
+                    ...(targetName ? { name: targetName } : {}),
                 })
 
                 if (config) {
                     const newCloudConfig: CloudConfig = {
+                        provider: config.provider,
+                        name: config.name,
+                        isDefault: config.isDefault,
                         apiKeyPreview: config.hasApiKey
                             ? config.apiKeyPreview
                             : undefined,
@@ -78,37 +90,80 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         [session, utils, onCloudConfigLoaded],
     )
 
+    const loadConnections = useCallback(
+        async (targetProvider?: string) => {
+            if (!session?.user) {
+                setConnections([])
+                return []
+            }
+            setIsLoadingConnections(true)
+            try {
+                const configs = await utils.providerConfig.getAll.fetch()
+                const filtered = targetProvider
+                    ? configs.filter(
+                          (config) => config.provider === targetProvider,
+                      )
+                    : configs
+                setConnections(filtered)
+                onConnectionsLoaded?.(filtered)
+                return filtered
+            } catch (error) {
+                console.error("Failed to load cloud connections:", error)
+                setConnections([])
+                return []
+            } finally {
+                setIsLoadingConnections(false)
+            }
+        },
+        [session, utils, onConnectionsLoaded],
+    )
+
     // Sync current config to cloud
     const syncToCloud = useCallback(() => {
-        if (!session?.user || !provider || !apiKey || !baseUrl) {
+        if (!session?.user || !provider || !apiKey) {
             return
         }
 
         upsertConfigMutation.mutate(
             {
                 provider: provider as ProviderType,
+                name: connectionName || "default",
+                isDefault,
                 apiKey,
-                baseUrl,
+                baseUrl: baseUrl || undefined,
                 modelId: modelId || undefined,
             },
             {
                 onSuccess: () => {
                     console.log("[settings] Synced to cloud:", provider)
+                    loadConnections(provider)
                     setSyncSuccess(true)
                     setTimeout(() => setSyncSuccess(false), 2000)
                 },
             },
         )
-    }, [session, provider, apiKey, baseUrl, modelId, upsertConfigMutation])
+    }, [
+        session,
+        provider,
+        connectionName,
+        isDefault,
+        apiKey,
+        baseUrl,
+        modelId,
+        upsertConfigMutation,
+        loadConnections,
+    ])
 
-    // Sync on field change (auto-sync when both apiKey and baseUrl present)
+    // Sync on field change (auto-sync when apiKey is present)
     const syncOnChange = useCallback(() => {
-        if (session?.user && provider && apiKey && baseUrl) {
+        if (session?.user && provider && apiKey) {
             upsertConfigMutation.mutate(
                 {
                     provider: provider as ProviderType,
+                    name: connectionName || "default",
+                    isDefault,
                     apiKey,
-                    baseUrl,
+                    baseUrl: baseUrl || undefined,
                     modelId: modelId || undefined,
                 },
                 {
@@ -116,11 +171,22 @@ export function useCloudSync(options: UseCloudSyncOptions) {
                         console.log(
                             "[settings] Config synced to cloud (apiKey + baseUrl)",
                         )
+                        loadConnections(provider)
                     },
                 },
             )
         }
-    }, [session, provider, apiKey, baseUrl, modelId, upsertConfigMutation])
+    }, [
+        session,
+        provider,
+        connectionName,
+        isDefault,
+        apiKey,
+        baseUrl,
+        modelId,
+        upsertConfigMutation,
+        loadConnections,
+    ])
 
     // Restore config from cloud
     const restoreFromCloud = useCallback(async () => {
@@ -132,6 +198,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         try {
             const config = await utils.providerConfig.get.fetch({
                 provider: provider as ProviderType,
+                ...(connectionName ? { name: connectionName } : {}),
             })
 
             if (config) {
@@ -156,7 +223,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         } finally {
             setIsRestoring(false)
         }
-    }, [session, provider, utils, onConfigRestored])
+    }, [session, provider, connectionName, utils, onConfigRestored])
 
     // Delete cloud config
     const deleteCloudConfig = useCallback(() => {
@@ -167,13 +234,17 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         setCloudConfig({})
 
         deleteConfigMutation.mutate(
-            { provider: provider as ProviderType },
+            {
+                provider: provider as ProviderType,
+                ...(connectionName ? { name: connectionName } : {}),
+            },
             {
                 onSuccess: () => {
                     console.log(
                         "[settings] Cloud config cleared for provider:",
                         provider,
                     )
+                    loadConnections(provider)
                 },
                 onError: (error) => {
                     console.error(
@@ -183,7 +254,13 @@ export function useCloudSync(options: UseCloudSyncOptions) {
                 },
             },
         )
-    }, [session, provider, deleteConfigMutation])
+    }, [
+        session,
+        provider,
+        connectionName,
+        deleteConfigMutation,
+        loadConnections,
+    ])
 
     // Clear cloud config state (without deleting from server)
     const clearCloudConfigState = useCallback(() => {
@@ -198,9 +275,12 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         isRestoring,
         isSyncing: upsertConfigMutation.isPending,
         isDeleting: deleteConfigMutation.isPending,
+        isLoadingConnections,
+        connections,
 
         // Actions
         loadCloudConfig,
+        loadConnections,
         syncToCloud,
         syncOnChange,
         restoreFromCloud,

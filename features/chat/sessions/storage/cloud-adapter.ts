@@ -62,11 +62,27 @@ export function createCloudStorageAdapter(
 ): ConversationStorageAdapter {
     const {
         userId,
-        pushMutate,
+        pushMutate: originalPushMutate,
         getConversations,
         setConversationsCache,
         invalidateConversation,
     } = config
+
+    // 包装 pushMutate 添加调试日志
+    const pushMutate: typeof originalPushMutate = (data) => {
+        console.log("[cloud-adapter] pushMutate called:", {
+            count: data.conversations.length,
+            conversations: data.conversations.map((c) => ({
+                id: c.id,
+                title: c.title,
+                createdAt: c.createdAt,
+                updatedAt: c.updatedAt,
+                deleted: c.deleted,
+                hasPayload: !!c.payload,
+            })),
+        })
+        return originalPushMutate(data)
+    }
 
     // 内存缓存
     let cachedConversations: ConversationMeta[] = []
@@ -188,6 +204,7 @@ export function createCloudStorageAdapter(
                 // 2. 更新本地元数据
                 const metas = readConversationMetasFromStorage(userId)
                 const now = Date.now()
+                const existing = metas.find((m) => m.id === id)
                 const nextMetas = metas.map((m) =>
                     m.id === id
                         ? {
@@ -202,19 +219,27 @@ export function createCloudStorageAdapter(
                 writeConversationMetasToStorage(userId, nextMetas)
 
                 // 3. 使用 sendBeacon 同步到云端（即使页面即将关闭也能发送）
+                // tRPC batch 格式: {"0":{"json":{input}}}
                 if (navigator.sendBeacon) {
                     const beaconPayload = JSON.stringify({
-                        conversations: [
-                            {
-                                id,
-                                payload,
-                                updatedAt: now,
+                        "0": {
+                            json: {
+                                conversations: [
+                                    {
+                                        id,
+                                        payload,
+                                        createdAt: existing?.createdAt ?? now,
+                                        updatedAt: now,
+                                    },
+                                ],
                             },
-                        ],
+                        },
                     })
                     navigator.sendBeacon(
-                        "/api/trpc/conversation.push",
-                        beaconPayload,
+                        "/api/trpc/conversation.push?batch=1",
+                        new Blob([beaconPayload], {
+                            type: "application/json",
+                        }),
                     )
                 }
             } catch (error) {
@@ -224,6 +249,11 @@ export function createCloudStorageAdapter(
 
         deleteConversation(id: string): void {
             try {
+                // 获取原始时间戳
+                const metas = readConversationMetasFromStorage(userId)
+                const existing = metas.find((m) => m.id === id)
+                const now = Date.now()
+
                 // 1. 乐观更新 React Query 缓存
                 setConversationsCache((prev) =>
                     (prev || []).filter((m) => m.id !== id),
@@ -231,11 +261,17 @@ export function createCloudStorageAdapter(
 
                 // 2. 同步删除到云端
                 pushMutate({
-                    conversations: [{ id, deleted: true }],
+                    conversations: [
+                        {
+                            id,
+                            deleted: true,
+                            createdAt: existing?.createdAt ?? now,
+                            updatedAt: now,
+                        },
+                    ],
                 })
 
                 // 3. 删除本地缓存
-                const metas = readConversationMetasFromStorage(userId)
                 const nextMetas = metas.filter((m) => m.id !== id)
                 writeConversationMetasToStorage(userId, nextMetas)
                 cachedConversations = nextMetas
@@ -250,6 +286,8 @@ export function createCloudStorageAdapter(
         updateTitle(id: string, title: string): void {
             try {
                 const now = Date.now()
+                const metas = readConversationMetasFromStorage(userId)
+                const existing = metas.find((m) => m.id === id)
 
                 // 1. 乐观更新 React Query 缓存
                 setConversationsCache((prev) =>
@@ -259,7 +297,6 @@ export function createCloudStorageAdapter(
                 )
 
                 // 2. 更新本地缓存
-                const metas = readConversationMetasFromStorage(userId)
                 const nextMetas = metas.map((m) =>
                     m.id === id ? { ...m, title, updatedAt: now } : m,
                 )
@@ -268,7 +305,14 @@ export function createCloudStorageAdapter(
 
                 // 3. 同步到云端
                 pushMutate({
-                    conversations: [{ id, title, updatedAt: now }],
+                    conversations: [
+                        {
+                            id,
+                            title,
+                            createdAt: existing?.createdAt ?? now,
+                            updatedAt: now,
+                        },
+                    ],
                 })
 
                 // 4. 使详情缓存失效以便下次获取最新数据

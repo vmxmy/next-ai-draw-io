@@ -76,12 +76,20 @@ export type I18nKey =
     | "settings.aiProvider.note"
     | "settings.aiProvider.providerLabel"
     | "settings.aiProvider.useServerDefault"
+    | "settings.aiProvider.connectionNameLabel"
+    | "settings.aiProvider.connectionNamePlaceholder"
+    | "settings.aiProvider.connectionSelectLabel"
+    | "settings.aiProvider.connectionSelectPlaceholder"
+    | "settings.aiProvider.setAsDefault"
+    | "settings.aiProvider.defaultTag"
     | "settings.aiProvider.modelIdLabel"
     | "settings.aiProvider.apiKeyLabel"
     | "settings.aiProvider.apiKeyPlaceholder"
     | "settings.aiProvider.overrides"
     | "settings.aiProvider.baseUrlLabel"
     | "settings.aiProvider.baseUrlPlaceholder"
+    | "settings.aiProvider.baseUrlDefault"
+    | "settings.aiProvider.advancedOptions"
     | "settings.aiProvider.clear"
     | "settings.tabs.model"
     | "settings.tabs.interface"
@@ -271,6 +279,8 @@ export type I18nKey =
     | "userCenter.tier.upgradeDescription"
     | "settings.aiProvider.modelsLoading"
     | "settings.aiProvider.modelsCount"
+    | "settings.aiProvider.connectionsLoading"
+    | "settings.aiProvider.connectionsCount"
     | "settings.aiProvider.modelIdSelectPlaceholder"
     | "settings.aiProvider.modelsHint"
     | "settings.aiProvider.syncToCloud"
@@ -391,6 +401,14 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "Use your own API key to bypass usage limits. Your key is stored locally and can optionally be synced to the cloud if you sign in.",
         "settings.aiProvider.providerLabel": "Provider",
         "settings.aiProvider.useServerDefault": "Use Server Default",
+        "settings.aiProvider.connectionNameLabel": "Connection Name",
+        "settings.aiProvider.connectionNamePlaceholder":
+            "e.g., default / company gateway",
+        "settings.aiProvider.connectionSelectLabel": "Cloud Connections",
+        "settings.aiProvider.connectionSelectPlaceholder":
+            "Select a connection",
+        "settings.aiProvider.setAsDefault": "Set as default connection",
+        "settings.aiProvider.defaultTag": "Default",
         "settings.aiProvider.modelIdLabel": "Model ID",
         "settings.aiProvider.apiKeyLabel": "API Key",
         "settings.aiProvider.apiKeyPlaceholder": "Your API key",
@@ -398,7 +416,9 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.baseUrlLabel": "Base URL (optional)",
         "settings.aiProvider.baseUrlPlaceholder":
             "e.g., https://api.example.com/v1",
-        "settings.aiProvider.clear": "Clear Settings",
+        "settings.aiProvider.baseUrlDefault": "Default: {url}",
+        "settings.aiProvider.advancedOptions": "Advanced Options",
+        "settings.aiProvider.clear": "Clear",
         "settings.tabs.model": "Model",
         "settings.tabs.interface": "Interface",
         "settings.tabs.about": "About",
@@ -608,6 +628,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "Enjoy higher quotas and priority support with Pro tier.",
         "settings.aiProvider.modelsLoading": "Loading models…",
         "settings.aiProvider.modelsCount": "{count} models",
+        "settings.aiProvider.connectionsLoading": "Loading connections…",
+        "settings.aiProvider.connectionsCount": "{count} connections",
         "settings.aiProvider.modelIdSelectPlaceholder": "Select a model",
         "settings.aiProvider.modelsHint": "Enter API key to load models",
         "settings.aiProvider.syncToCloud": "Sync to Cloud",
@@ -722,6 +744,13 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "填写你自己的 API Key 以绕过使用限制。你的 Key 保存在浏览器本地，登录后可选择同步到云端。",
         "settings.aiProvider.providerLabel": "提供商",
         "settings.aiProvider.useServerDefault": "使用服务器默认值",
+        "settings.aiProvider.connectionNameLabel": "连接名称",
+        "settings.aiProvider.connectionNamePlaceholder":
+            "例如：default / 公司网关",
+        "settings.aiProvider.connectionSelectLabel": "云端连接",
+        "settings.aiProvider.connectionSelectPlaceholder": "选择一个连接",
+        "settings.aiProvider.setAsDefault": "设为默认连接",
+        "settings.aiProvider.defaultTag": "默认",
         "settings.aiProvider.modelIdLabel": "模型 ID",
         "settings.aiProvider.apiKeyLabel": "API Key",
         "settings.aiProvider.apiKeyPlaceholder": "你的 API Key",
@@ -729,7 +758,9 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.aiProvider.baseUrlLabel": "Base URL（可选）",
         "settings.aiProvider.baseUrlPlaceholder":
             "例如：https://api.example.com/v1",
-        "settings.aiProvider.clear": "清除设置",
+        "settings.aiProvider.baseUrlDefault": "默认：{url}",
+        "settings.aiProvider.advancedOptions": "高级选项",
+        "settings.aiProvider.clear": "清除",
         "settings.tabs.model": "模型配置",
         "settings.tabs.interface": "界面配置",
         "settings.tabs.about": "关于",
@@ -927,6 +958,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "专业版用户享受更高配额和优先支持。",
         "settings.aiProvider.modelsLoading": "正在加载模型列表…",
         "settings.aiProvider.modelsCount": "共 {count} 个模型",
+        "settings.aiProvider.connectionsLoading": "正在加载连接列表…",
+        "settings.aiProvider.connectionsCount": "共 {count} 个连接",
         "settings.aiProvider.modelIdSelectPlaceholder": "选择一个模型",
         "settings.aiProvider.modelsHint": "填写 API Key 后可加载模型列表",
         "settings.aiProvider.syncToCloud": "同步到云端",

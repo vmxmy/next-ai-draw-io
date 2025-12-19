@@ -1125,30 +1125,42 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             forceDisplayNextRef.current = false
 
             const config = getAIConfig()
-            console.log("[Chat] AI Config from localStorage:", {
+            const isLoggedIn = !!authSession?.user
+
+            // 登录用户：不发送 localStorage 中的 API Key，让服务端从云端配置读取
+            // 匿名用户：使用 localStorage 中的配置
+            console.log("[Chat] AI Config:", {
+                isLoggedIn,
                 provider: config.aiProvider,
                 baseUrl: config.aiBaseUrl
                     ? `${config.aiBaseUrl.substring(0, 30)}...`
                     : null,
-                apiKey: config.aiApiKey
-                    ? `${config.aiApiKey.substring(0, 10)}...`
-                    : null,
+                apiKey: isLoggedIn
+                    ? "(using cloud config)"
+                    : config.aiApiKey
+                      ? `${config.aiApiKey.substring(0, 10)}...`
+                      : null,
                 model: config.aiModel,
             })
 
             const requestId = createRequestId()
             activeRequestIdRef.current = requestId
 
+            // 登录用户只发送 provider hint（帮助服务端选择正确的云端配置）
+            // API Key 由服务端从 ProviderConfig 表读取
             const headers = {
                 "x-access-code": config.accessCode,
                 ...(config.aiProvider && {
                     "x-ai-provider": config.aiProvider,
-                    ...(config.aiBaseUrl && {
-                        "x-ai-base-url": config.aiBaseUrl,
-                    }),
-                    ...(config.aiApiKey && {
-                        "x-ai-api-key": config.aiApiKey,
-                    }),
+                    // 登录用户不发送 API Key 和 Base URL（使用云端配置）
+                    ...(!isLoggedIn &&
+                        config.aiBaseUrl && {
+                            "x-ai-base-url": config.aiBaseUrl,
+                        }),
+                    ...(!isLoggedIn &&
+                        config.aiApiKey && {
+                            "x-ai-api-key": config.aiApiKey,
+                        }),
                     ...(config.aiModel && {
                         "x-ai-model": config.aiModel,
                     }),
@@ -1159,7 +1171,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 ...headers,
                 "x-ai-api-key": headers["x-ai-api-key"]
                     ? `${headers["x-ai-api-key"].substring(0, 10)}...`
-                    : undefined,
+                    : "(not sent - using cloud config)",
             })
 
             sendMessage(
@@ -1180,7 +1192,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             )
             quotaManager.incrementRequestCount()
         },
-        [quotaManager, sendMessage],
+        [quotaManager, sendMessage, authSession],
     )
 
     // Process files and append content to user text (handles PDF, text, and optionally images)

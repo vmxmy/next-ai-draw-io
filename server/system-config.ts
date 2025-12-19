@@ -73,7 +73,7 @@ export async function getDefaultAIConfig(): Promise<{
     const envApiKey =
         provider === "openrouter"
             ? process.env.OPENROUTER_API_KEY
-            : provider === "openai"
+            : provider === "openai" || provider === "openai_compatible"
               ? process.env.OPENAI_API_KEY
               : provider === "anthropic"
                 ? process.env.ANTHROPIC_API_KEY

@@ -71,7 +71,7 @@ export interface EncryptedData {
  * @param plaintext - 明文字符串
  * @returns 包含密文、IV、authTag 和密钥版本的对象
  */
-export function encryptApiKey(plaintext: string): EncryptedData {
+function encryptSecret(plaintext: string): EncryptedData {
     const key = getEncryptionKey(CURRENT_KEY_VERSION)
     const iv = randomBytes(IV_LENGTH)
 
@@ -99,7 +99,7 @@ export function encryptApiKey(plaintext: string): EncryptedData {
  * @returns 明文字符串
  * @throws 如果认证失败、密文被篡改或密钥版本不存在
  */
-export function decryptApiKey(data: EncryptedData): string {
+function decryptSecret(data: EncryptedData): string {
     const keyVersion = data.keyVersion || 1 // 向后兼容旧数据
     const key = getEncryptionKey(keyVersion)
     const iv = Buffer.from(data.iv, "base64")
@@ -113,3 +113,21 @@ export function decryptApiKey(data: EncryptedData): string {
 
     return decrypted
 }
+
+/**
+ * 加密凭证（支持 JSON 字符串）
+ */
+export function encryptCredentials(plaintext: string): EncryptedData {
+    return encryptSecret(plaintext)
+}
+
+/**
+ * 解密凭证（返回 JSON 字符串）
+ */
+export function decryptCredentials(data: EncryptedData): string {
+    return decryptSecret(data)
+}
+
+// 兼容旧调用名
+export const encryptApiKey = encryptCredentials
+export const decryptApiKey = decryptCredentials

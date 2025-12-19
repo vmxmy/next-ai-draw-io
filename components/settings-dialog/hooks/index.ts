@@ -12,9 +12,12 @@ export {
 } from "./use-cloud-sync"
 
 export {
-    getBaseUrlPlaceholder,
-    getModelPlaceholder,
     type ModelOption,
     type UseModelSelectorOptions,
     useModelSelector,
 } from "./use-model-selector"
+
+export {
+    type ProviderCatalogItem,
+    useProviderCatalog,
+} from "./use-provider-catalog"

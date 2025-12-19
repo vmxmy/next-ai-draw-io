@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc"
-import { decryptApiKey, encryptApiKey } from "@/server/encryption"
+import { decryptCredentials, encryptCredentials } from "@/server/encryption"
 
 // Provider 枚举（与 lib/ai-providers.ts 对齐）
 const providerEnum = z.enum([
@@ -13,6 +13,7 @@ const providerEnum = z.enum([
     "openrouter",
     "deepseek",
     "siliconflow",
+    "openai_compatible",
 ])
 
 // Base URL 白名单配置（防止 SSRF 攻击）
@@ -28,6 +29,8 @@ const ALLOWED_BASE_URLS: Record<string, string[] | RegExp> = {
     openrouter: ["https://openrouter.ai"],
     deepseek: ["https://api.deepseek.com"],
     siliconflow: ["https://api.siliconflow.com", "https://api.siliconflow.cn"],
+    // OpenAI 兼容模式：允许任意 HTTPS（仍受内部网段拦截）
+    openai_compatible: /.*/,
 }
 
 /**
@@ -39,20 +42,25 @@ function validateBaseUrl(provider: string, baseUrl: string): boolean {
 
     const allowed = ALLOWED_BASE_URLS[provider]
     if (!allowed) {
-        // Provider 不在白名单中，拒绝自定义 base URL
         return false
     }
 
     try {
         const url = new URL(baseUrl)
 
-        // 安全检查：禁止非 HTTPS（除了 localhost 的 ollama）
+        // 安全检查：禁止非 HTTPS（除了 localhost 的 ollama/openai_compatible）
         if (url.protocol !== "https:") {
             const isLocalhost =
                 url.hostname === "localhost" ||
                 url.hostname === "127.0.0.1" ||
                 url.hostname === "::1"
-            if (!(provider === "ollama" && isLocalhost)) {
+            if (
+                !(
+                    (provider === "ollama" ||
+                        provider === "openai_compatible") &&
+                    isLocalhost
+                )
+            ) {
                 return false
             }
         }
@@ -70,10 +78,11 @@ function validateBaseUrl(provider: string, baseUrl: string): boolean {
 
         for (const pattern of forbiddenPatterns) {
             if (pattern.test(hostname)) {
-                // 例外：ollama 允许 localhost
+                // 例外：ollama/openai_compatible 允许 localhost
                 if (
                     !(
-                        provider === "ollama" &&
+                        (provider === "ollama" ||
+                            provider === "openai_compatible") &&
                         hostname.match(/^(localhost|127\.0\.0\.1|::1)$/)
                     )
                 ) {
@@ -92,10 +101,60 @@ function validateBaseUrl(provider: string, baseUrl: string): boolean {
     }
 }
 
+const DEFAULT_CONNECTION_NAME = "default"
+
+type CredentialPayload = Record<string, string>
+
+function normalizeCredentialsPayload(
+    payload: Record<string, unknown>,
+): CredentialPayload {
+    const normalized: CredentialPayload = {}
+    for (const [key, value] of Object.entries(payload)) {
+        if (value === undefined || value === null) continue
+        normalized[key] = String(value)
+    }
+    return normalized
+}
+
+function parseCredentialsPayload(raw: string): CredentialPayload {
+    try {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return normalizeCredentialsPayload(
+                parsed as Record<string, unknown>,
+            )
+        }
+    } catch {
+        // 兼容旧版（纯 API Key 字符串）
+    }
+
+    return { apiKey: raw }
+}
+
+function resolveCredentialType(
+    provider: string,
+    inputType: string | undefined,
+    credentials: CredentialPayload | null,
+): string {
+    if (inputType) return inputType
+    if (provider === "ollama") return "none"
+    if (provider === "bedrock") return "aws"
+    if (!credentials) return "none"
+    if (credentials.apiKey) return "apiKey"
+    return "custom"
+}
+
 // 输入验证 Schema（增强安全性）
 const upsertInputSchema = z
     .object({
         provider: providerEnum,
+        name: z.string().min(1).max(100).optional(),
+        isDefault: z.boolean().optional(),
+        isDisabled: z.boolean().optional(),
+        credentialType: z
+            .enum(["apiKey", "aws", "oauth", "none", "custom"])
+            .optional(),
+        credentials: z.record(z.string(), z.string()).optional(),
         apiKey: z
             .string()
             .min(1)
@@ -107,6 +166,12 @@ const upsertInputSchema = z
             .optional(),
         baseUrl: z.string().url().max(500).optional().or(z.literal("")),
         modelId: z.string().max(200).optional(),
+        headers: z.record(z.string(), z.any()).nullish(),
+        extraConfig: z.record(z.string(), z.any()).nullish(),
+        orgId: z.string().max(200).optional(),
+        apiVersion: z.string().max(100).optional(),
+        region: z.string().max(100).optional(),
+        resourceName: z.string().max(200).optional(),
     })
     .refine(
         (data) => {
@@ -117,6 +182,18 @@ const upsertInputSchema = z
         },
         {
             message: "Base URL not allowed for this provider",
+            path: ["baseUrl"],
+        },
+    )
+    .refine(
+        (data) => {
+            if (data.provider === "openai_compatible") {
+                return !!(data.baseUrl && data.baseUrl !== "")
+            }
+            return true
+        },
+        {
+            message: "Base URL is required for openai_compatible",
             path: ["baseUrl"],
         },
     )
@@ -139,52 +216,109 @@ export const providerConfigRouter = createTRPCRouter({
      * 获取特定 provider 的配置
      */
     get: protectedProcedure
-        .input(z.object({ provider: providerEnum }))
+        .input(
+            z.object({
+                provider: providerEnum,
+                name: z.string().max(100).optional(),
+            }),
+        )
         .query(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
 
-            const config = await ctx.db.providerConfig.findUnique({
-                where: {
-                    userId_provider: {
-                        userId,
-                        provider: input.provider,
-                    },
-                },
-                select: {
-                    provider: true,
-                    encryptedApiKey: true,
-                    encryptionIv: true,
-                    authTag: true,
-                    keyVersion: true,
-                    baseUrl: true,
-                    modelId: true,
-                    updatedAt: true,
-                },
-            })
+            const name = (input.name || "").trim()
+            const config =
+                name.length > 0
+                    ? await ctx.db.providerConfig.findUnique({
+                          where: {
+                              userId_provider_name: {
+                                  userId,
+                                  provider: input.provider,
+                                  name,
+                              },
+                          },
+                          select: {
+                              id: true,
+                              provider: true,
+                              name: true,
+                              isDefault: true,
+                              isDisabled: true,
+                              encryptedCredentials: true,
+                              credentialsIv: true,
+                              credentialsAuthTag: true,
+                              credentialsVersion: true,
+                              credentialType: true,
+                              baseUrl: true,
+                              modelId: true,
+                              headers: true,
+                              extraConfig: true,
+                              orgId: true,
+                              apiVersion: true,
+                              region: true,
+                              resourceName: true,
+                              updatedAt: true,
+                          },
+                      })
+                    : await ctx.db.providerConfig.findFirst({
+                          where: {
+                              userId,
+                              provider: input.provider,
+                          },
+                          orderBy: [
+                              { isDefault: "desc" },
+                              { updatedAt: "desc" },
+                          ],
+                          select: {
+                              id: true,
+                              provider: true,
+                              name: true,
+                              isDefault: true,
+                              isDisabled: true,
+                              encryptedCredentials: true,
+                              credentialsIv: true,
+                              credentialsAuthTag: true,
+                              credentialsVersion: true,
+                              credentialType: true,
+                              baseUrl: true,
+                              modelId: true,
+                              headers: true,
+                              extraConfig: true,
+                              orgId: true,
+                              apiVersion: true,
+                              region: true,
+                              resourceName: true,
+                              updatedAt: true,
+                          },
+                      })
 
             if (!config) {
                 return null
             }
 
-            // 解密 API Key 用于生成预览（不返回完整密钥）
+            // 解密凭证用于生成预览（不返回完整密钥）
             let apiKeyPreview: string | undefined
             let decryptionFailed = false
+            let credentials: CredentialPayload | null = null
             if (
-                config.encryptedApiKey &&
-                config.encryptionIv &&
-                config.authTag
+                config.encryptedCredentials &&
+                config.credentialsIv &&
+                config.credentialsAuthTag
             ) {
                 try {
-                    const decrypted = decryptApiKey({
-                        encryptedData: config.encryptedApiKey,
-                        iv: config.encryptionIv,
-                        authTag: config.authTag,
-                        keyVersion: config.keyVersion,
+                    const decrypted = decryptCredentials({
+                        encryptedData: config.encryptedCredentials,
+                        iv: config.credentialsIv,
+                        authTag: config.credentialsAuthTag,
+                        keyVersion: config.credentialsVersion,
                     })
-                    apiKeyPreview = generateApiKeyPreview(decrypted)
+                    credentials = parseCredentialsPayload(decrypted)
+                    if (credentials.apiKey) {
+                        apiKeyPreview = generateApiKeyPreview(
+                            credentials.apiKey,
+                        )
+                    }
                 } catch (error) {
                     console.error(
-                        "[provider-config] Failed to decrypt API key:",
+                        "[provider-config] Failed to decrypt credentials:",
                         error,
                     )
                     decryptionFailed = true
@@ -193,11 +327,21 @@ export const providerConfigRouter = createTRPCRouter({
 
             return {
                 provider: config.provider,
-                hasApiKey: !!config.encryptedApiKey,
+                name: config.name,
+                isDefault: config.isDefault,
+                isDisabled: config.isDisabled,
+                credentialType: config.credentialType,
+                hasApiKey: !!credentials?.apiKey,
                 decryptionFailed,
                 apiKeyPreview,
                 baseUrl: config.baseUrl || undefined,
                 modelId: config.modelId || undefined,
+                headers: config.headers || undefined,
+                extraConfig: config.extraConfig || undefined,
+                orgId: config.orgId || undefined,
+                apiVersion: config.apiVersion || undefined,
+                region: config.region || undefined,
+                resourceName: config.resourceName || undefined,
                 updatedAt: config.updatedAt,
             }
         }),
@@ -212,12 +356,22 @@ export const providerConfigRouter = createTRPCRouter({
             where: { userId },
             select: {
                 provider: true,
-                encryptedApiKey: true,
-                encryptionIv: true,
-                authTag: true,
-                keyVersion: true,
+                name: true,
+                isDefault: true,
+                isDisabled: true,
+                encryptedCredentials: true,
+                credentialsIv: true,
+                credentialsAuthTag: true,
+                credentialsVersion: true,
+                credentialType: true,
                 baseUrl: true,
                 modelId: true,
+                headers: true,
+                extraConfig: true,
+                orgId: true,
+                apiVersion: true,
+                region: true,
+                resourceName: true,
                 updatedAt: true,
             },
             orderBy: { updatedAt: "desc" },
@@ -226,19 +380,25 @@ export const providerConfigRouter = createTRPCRouter({
         return configs.map((config) => {
             let apiKeyPreview: string | undefined
             let decryptionFailed = false
+            let credentials: CredentialPayload | null = null
             if (
-                config.encryptedApiKey &&
-                config.encryptionIv &&
-                config.authTag
+                config.encryptedCredentials &&
+                config.credentialsIv &&
+                config.credentialsAuthTag
             ) {
                 try {
-                    const decrypted = decryptApiKey({
-                        encryptedData: config.encryptedApiKey,
-                        iv: config.encryptionIv,
-                        authTag: config.authTag,
-                        keyVersion: config.keyVersion,
+                    const decrypted = decryptCredentials({
+                        encryptedData: config.encryptedCredentials,
+                        iv: config.credentialsIv,
+                        authTag: config.credentialsAuthTag,
+                        keyVersion: config.credentialsVersion,
                     })
-                    apiKeyPreview = generateApiKeyPreview(decrypted)
+                    credentials = parseCredentialsPayload(decrypted)
+                    if (credentials.apiKey) {
+                        apiKeyPreview = generateApiKeyPreview(
+                            credentials.apiKey,
+                        )
+                    }
                 } catch (error) {
                     console.error(
                         "[provider-config] Decryption failed for provider:",
@@ -251,11 +411,21 @@ export const providerConfigRouter = createTRPCRouter({
 
             return {
                 provider: config.provider,
-                hasApiKey: !!config.encryptedApiKey,
+                name: config.name,
+                isDefault: config.isDefault,
+                isDisabled: config.isDisabled,
+                credentialType: config.credentialType,
+                hasApiKey: !!credentials?.apiKey,
                 decryptionFailed,
                 apiKeyPreview,
                 baseUrl: config.baseUrl || undefined,
                 modelId: config.modelId || undefined,
+                headers: config.headers || undefined,
+                extraConfig: config.extraConfig || undefined,
+                orgId: config.orgId || undefined,
+                apiVersion: config.apiVersion || undefined,
+                region: config.region || undefined,
+                resourceName: config.resourceName || undefined,
                 updatedAt: config.updatedAt,
             }
         })
@@ -269,50 +439,123 @@ export const providerConfigRouter = createTRPCRouter({
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
 
-            // 加密 API Key（如果提供）
+            const connectionName =
+                (input.name || "").trim() || DEFAULT_CONNECTION_NAME
+            const shouldSetDefault =
+                input.isDefault === true ||
+                (input.isDefault === undefined &&
+                    connectionName === DEFAULT_CONNECTION_NAME)
+
+            if (shouldSetDefault) {
+                await ctx.db.providerConfig.updateMany({
+                    where: {
+                        userId,
+                        provider: input.provider,
+                        name: { not: connectionName },
+                        isDefault: true,
+                    },
+                    data: { isDefault: false },
+                })
+            }
+
+            const credentialsPayload: CredentialPayload | null =
+                input.credentials && Object.keys(input.credentials).length > 0
+                    ? (input.credentials as CredentialPayload)
+                    : input.apiKey
+                      ? { apiKey: input.apiKey }
+                      : null
+
+            const credentialType = resolveCredentialType(
+                input.provider,
+                input.credentialType,
+                credentialsPayload,
+            )
+            const shouldUpdateCredentialType =
+                input.credentialType !== undefined || !!credentialsPayload
+
+            // 加密凭证（如果提供）
             let encryptedData: {
-                encryptedApiKey?: string
-                encryptionIv?: string
-                authTag?: string
-                keyVersion?: number
+                encryptedCredentials?: string
+                credentialsIv?: string
+                credentialsAuthTag?: string
+                credentialsVersion?: number
             } = {}
 
-            if (input.apiKey) {
-                const encrypted = encryptApiKey(input.apiKey)
+            if (credentialsPayload) {
+                const encrypted = encryptCredentials(
+                    JSON.stringify(credentialsPayload),
+                )
                 encryptedData = {
-                    encryptedApiKey: encrypted.encryptedData,
-                    encryptionIv: encrypted.iv,
-                    authTag: encrypted.authTag,
-                    keyVersion: encrypted.keyVersion,
+                    encryptedCredentials: encrypted.encryptedData,
+                    credentialsIv: encrypted.iv,
+                    credentialsAuthTag: encrypted.authTag,
+                    credentialsVersion: encrypted.keyVersion,
                 }
             }
 
             const config = await ctx.db.providerConfig.upsert({
                 where: {
-                    userId_provider: {
+                    userId_provider_name: {
                         userId,
                         provider: input.provider,
+                        name: connectionName,
                     },
                 },
                 create: {
                     userId,
                     provider: input.provider,
+                    name: connectionName,
+                    isDefault: shouldSetDefault,
+                    isDisabled: input.isDisabled || false,
+                    credentialType,
                     ...encryptedData,
                     baseUrl: input.baseUrl || null,
                     modelId: input.modelId || null,
+                    headers: input.headers ?? undefined,
+                    extraConfig: input.extraConfig ?? undefined,
+                    orgId: input.orgId || null,
+                    apiVersion: input.apiVersion || null,
+                    region: input.region || null,
+                    resourceName: input.resourceName || null,
                 },
                 update: {
                     // 只更新提供的字段
-                    ...(input.apiKey ? encryptedData : {}),
+                    ...(credentialsPayload ? encryptedData : {}),
                     ...(input.baseUrl !== undefined
                         ? { baseUrl: input.baseUrl || null }
                         : {}),
                     ...(input.modelId !== undefined
                         ? { modelId: input.modelId || null }
                         : {}),
+                    ...(input.headers !== undefined
+                        ? { headers: input.headers ?? undefined }
+                        : {}),
+                    ...(input.extraConfig !== undefined
+                        ? { extraConfig: input.extraConfig ?? undefined }
+                        : {}),
+                    ...(input.orgId !== undefined
+                        ? { orgId: input.orgId || null }
+                        : {}),
+                    ...(input.apiVersion !== undefined
+                        ? { apiVersion: input.apiVersion || null }
+                        : {}),
+                    ...(input.region !== undefined
+                        ? { region: input.region || null }
+                        : {}),
+                    ...(input.resourceName !== undefined
+                        ? { resourceName: input.resourceName || null }
+                        : {}),
+                    ...(input.isDefault !== undefined
+                        ? { isDefault: input.isDefault }
+                        : {}),
+                    ...(input.isDisabled !== undefined
+                        ? { isDisabled: input.isDisabled }
+                        : {}),
+                    ...(shouldUpdateCredentialType ? { credentialType } : {}),
                 },
                 select: {
                     provider: true,
+                    name: true,
                     updatedAt: true,
                 },
             })
@@ -320,6 +563,7 @@ export const providerConfigRouter = createTRPCRouter({
             return {
                 ok: true,
                 provider: config.provider,
+                name: config.name,
                 updatedAt: config.updatedAt,
             }
         }),
@@ -328,18 +572,46 @@ export const providerConfigRouter = createTRPCRouter({
      * 删除 provider 配置
      */
     delete: protectedProcedure
-        .input(z.object({ provider: providerEnum }))
+        .input(
+            z.object({
+                provider: providerEnum,
+                name: z.string().max(100).optional(),
+            }),
+        )
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
 
-            await ctx.db.providerConfig.delete({
-                where: {
-                    userId_provider: {
-                        userId,
-                        provider: input.provider,
+            const name = (input.name || "").trim()
+            if (name.length > 0) {
+                await ctx.db.providerConfig.delete({
+                    where: {
+                        userId_provider_name: {
+                            userId,
+                            provider: input.provider,
+                            name,
+                        },
                     },
-                },
+                })
+                return { ok: true }
+            }
+
+            const fallback = await ctx.db.providerConfig.findFirst({
+                where: { userId, provider: input.provider },
+                orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+                select: { name: true },
             })
+
+            if (fallback) {
+                await ctx.db.providerConfig.delete({
+                    where: {
+                        userId_provider_name: {
+                            userId,
+                            provider: input.provider,
+                            name: fallback.name,
+                        },
+                    },
+                })
+            }
 
             return { ok: true }
         }),

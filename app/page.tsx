@@ -194,6 +194,9 @@ export default function Home() {
                                     key={`${drawioUi}-${darkMode}`}
                                     ref={drawioRef}
                                     autosave={true}
+                                    configuration={{
+                                        sidebarWidth: 0,
+                                    }}
                                     onExport={handleDiagramExport}
                                     onLoad={onDrawioLoad}
                                     onAutoSave={(data) => {
@@ -210,7 +213,7 @@ export default function Home() {
                                     urlParameters={{
                                         ui: drawioUi,
                                         spin: true,
-                                        libraries: false,
+                                        libraries: true,
                                         noSaveBtn: true,
                                         saveAndExit: false,
                                         noExitBtn: true,

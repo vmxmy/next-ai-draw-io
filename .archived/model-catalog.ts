@@ -49,6 +49,9 @@ export function getModelOptions(provider: string): ModelOption[] {
                 { id: "deepseek-ai/DeepSeek-R1" },
                 { id: "Qwen/Qwen2.5-72B-Instruct" },
             ]
+        case "openai_compatible":
+            // 兼容模式由用户自行输入模型 ID
+            return []
         default:
             return []
     }

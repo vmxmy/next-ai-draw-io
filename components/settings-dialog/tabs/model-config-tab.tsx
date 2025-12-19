@@ -1,7 +1,22 @@
 "use client"
 
-import { Check, ChevronDown, Cloud, HardDrive, Search } from "lucide-react"
+import {
+    Check,
+    ChevronDown,
+    ChevronRight,
+    Cloud,
+    HardDrive,
+    Search,
+    Settings2,
+} from "lucide-react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -12,12 +27,12 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { useI18n } from "@/contexts/i18n-context"
-import {
-    type CloudConfig,
-    getBaseUrlPlaceholder,
-    getModelPlaceholder,
-    type ModelOption,
-} from "../hooks"
+import type { CloudConfig, ModelOption } from "../hooks"
+
+interface ProviderOption {
+    value: string
+    label: string
+}
 
 interface ModelConfigTabProps {
     // Access code
@@ -31,6 +46,15 @@ interface ModelConfigTabProps {
     // Provider config
     provider: string
     onProviderChange: (value: string) => void
+    providerOptions: ProviderOption[]
+    isLoadingProviders: boolean
+    getModelPlaceholder: (providerKey: string) => string
+    getBaseUrlPlaceholder: (providerKey: string) => string
+    connectionName: string
+    onConnectionNameChange: (value: string) => void
+    onSelectCloudConnection: (value: string) => void
+    connectionIsDefault: boolean
+    onConnectionDefaultChange: (value: boolean) => void
     baseUrl: string
     onBaseUrlChange: (value: string) => void
     apiKey: string
@@ -47,6 +71,9 @@ interface ModelConfigTabProps {
     isRestoring: boolean
     isSyncing: boolean
     isDeleting: boolean
+    isLoadingConnections: boolean
+    cloudConnections: CloudConfig[]
+    allCloudConnections: CloudConfig[]
     hasCloudConfig: boolean
     onSyncToCloud: () => void
     onRestoreFromCloud: () => void
@@ -71,6 +98,15 @@ export function ModelConfigTab({
     accessCodeError,
     provider,
     onProviderChange,
+    providerOptions,
+    isLoadingProviders,
+    getModelPlaceholder,
+    getBaseUrlPlaceholder,
+    connectionName,
+    onConnectionNameChange,
+    onSelectCloudConnection,
+    connectionIsDefault,
+    onConnectionDefaultChange,
     baseUrl,
     onBaseUrlChange,
     apiKey,
@@ -85,6 +121,9 @@ export function ModelConfigTab({
     isRestoring,
     isSyncing,
     isDeleting,
+    isLoadingConnections,
+    cloudConnections,
+    allCloudConnections,
     hasCloudConfig,
     onSyncToCloud,
     onRestoreFromCloud,
@@ -98,6 +137,7 @@ export function ModelConfigTab({
     filterModels,
 }: ModelConfigTabProps) {
     const { t } = useI18n()
+    const [advancedOpen, setAdvancedOpen] = useState(false)
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") {
@@ -107,12 +147,22 @@ export function ModelConfigTab({
     }
 
     const filteredModels = filterModels(modelId)
+    const baseUrlPlaceholder = getBaseUrlPlaceholder(provider)
+
+    // Get providers that have cloud config (from all connections)
+    const providersWithCloudConfig = new Set(
+        allCloudConnections.map((conn) => conn.provider).filter(Boolean),
+    )
+
+    // Check if advanced options have values (to show indicator)
+    const hasAdvancedValues =
+        baseUrl || (isLoggedIn && connectionName !== "default")
 
     return (
         <div className="space-y-4 py-2 overflow-y-auto flex-1">
             {/* Access Code Section */}
             {accessCodeRequired && (
-                <div className="space-y-2">
+                <div className="space-y-2 pb-3 border-b">
                     <Label htmlFor="access-code">
                         {t("settings.accessCode.label")}
                     </Label>
@@ -154,6 +204,8 @@ export function ModelConfigTab({
                 <p className="text-[0.8rem] text-muted-foreground">
                     {t("settings.aiProvider.note")}
                 </p>
+
+                {/* Basic Configuration */}
                 <div className="space-y-3 pt-2">
                     {/* Provider Select */}
                     <div className="space-y-2">
@@ -179,23 +231,28 @@ export function ModelConfigTab({
                                 <SelectItem value="default">
                                     {t("settings.aiProvider.useServerDefault")}
                                 </SelectItem>
-                                <SelectItem value="openai">OpenAI</SelectItem>
-                                <SelectItem value="anthropic">
-                                    Anthropic
-                                </SelectItem>
-                                <SelectItem value="google">Google</SelectItem>
-                                <SelectItem value="azure">
-                                    Azure OpenAI
-                                </SelectItem>
-                                <SelectItem value="openrouter">
-                                    OpenRouter
-                                </SelectItem>
-                                <SelectItem value="deepseek">
-                                    DeepSeek
-                                </SelectItem>
-                                <SelectItem value="siliconflow">
-                                    SiliconFlow
-                                </SelectItem>
+                                {isLoadingProviders ? (
+                                    <SelectItem value="_loading" disabled>
+                                        Loading...
+                                    </SelectItem>
+                                ) : (
+                                    providerOptions.map((option) => (
+                                        <SelectItem
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            <span className="flex items-center gap-1.5">
+                                                {option.label}
+                                                {isLoggedIn &&
+                                                    providersWithCloudConfig.has(
+                                                        option.value,
+                                                    ) && (
+                                                        <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                    )}
+                                            </span>
+                                        </SelectItem>
+                                    ))
+                                )}
                             </SelectContent>
                         </Select>
                     </div>
@@ -203,7 +260,36 @@ export function ModelConfigTab({
                     {/* Provider-specific fields */}
                     {provider && provider !== "default" && (
                         <>
-                            {/* Model ID */}
+                            {/* API Key - Most important, first */}
+                            <div className="space-y-2">
+                                <Label
+                                    htmlFor="ai-api-key"
+                                    className="flex items-center gap-1.5"
+                                >
+                                    {t("settings.aiProvider.apiKeyLabel")}
+                                    <span className="text-destructive">*</span>
+                                    {isLoggedIn &&
+                                        (apiKey ? (
+                                            <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                        ) : cloudConfig.apiKeyPreview ? (
+                                            <Cloud className="h-3 w-3 text-muted-foreground" />
+                                        ) : null)}
+                                </Label>
+                                <Input
+                                    id="ai-api-key"
+                                    type="password"
+                                    value={apiKey}
+                                    onChange={(e) =>
+                                        onApiKeyChange(e.target.value)
+                                    }
+                                    placeholder={t(
+                                        "settings.aiProvider.apiKeyPlaceholder",
+                                    )}
+                                    autoComplete="off"
+                                />
+                            </div>
+
+                            {/* Model ID - Second most important */}
                             <div className="space-y-2">
                                 <Label
                                     htmlFor="ai-model"
@@ -229,12 +315,12 @@ export function ModelConfigTab({
                                             }}
                                             onFocus={onOpenModelMenu}
                                             onBlur={onCloseModelMenuDelayed}
-                                            placeholder={getModelPlaceholder(
-                                                provider,
+                                            placeholder={
+                                                getModelPlaceholder(provider) ||
                                                 t(
                                                     "settings.aiProvider.modelIdLabel",
-                                                ),
-                                            )}
+                                                )
+                                            }
                                             className="pl-8 pr-9"
                                         />
                                         <Button
@@ -300,135 +386,281 @@ export function ModelConfigTab({
                                 </p>
                             </div>
 
-                            {/* API Key */}
-                            <div className="space-y-2">
-                                <Label
-                                    htmlFor="ai-api-key"
-                                    className="flex items-center gap-1.5"
-                                >
-                                    {t("settings.aiProvider.apiKeyLabel")}
-                                    {isLoggedIn &&
-                                        (apiKey ? (
-                                            <HardDrive className="h-3 w-3 text-muted-foreground" />
-                                        ) : cloudConfig.apiKeyPreview ? (
-                                            <Cloud className="h-3 w-3 text-muted-foreground" />
-                                        ) : null)}
-                                </Label>
-                                <Input
-                                    id="ai-api-key"
-                                    type="password"
-                                    value={apiKey}
-                                    onChange={(e) =>
-                                        onApiKeyChange(e.target.value)
-                                    }
-                                    placeholder={t(
-                                        "settings.aiProvider.apiKeyPlaceholder",
-                                    )}
-                                    autoComplete="off"
-                                />
-                            </div>
+                            {/* Action Buttons */}
+                            <div className="flex gap-2 pt-2">
+                                {/* Sync to Cloud Button - Only requires provider + apiKey */}
+                                {isLoggedIn && provider && apiKey && (
+                                    <Button
+                                        variant={
+                                            syncSuccess ? "outline" : "default"
+                                        }
+                                        size="sm"
+                                        className="flex-1"
+                                        disabled={isSyncing || syncSuccess}
+                                        onClick={onSyncToCloud}
+                                    >
+                                        {syncSuccess ? (
+                                            <>
+                                                <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                {t(
+                                                    "settings.aiProvider.synced",
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Cloud className="h-4 w-4 mr-2" />
+                                                {isSyncing
+                                                    ? t(
+                                                          "settings.aiProvider.syncing",
+                                                      )
+                                                    : t(
+                                                          "settings.aiProvider.syncToCloud",
+                                                      )}
+                                            </>
+                                        )}
+                                    </Button>
+                                )}
 
-                            {/* Base URL */}
-                            <div className="space-y-2">
-                                <Label
-                                    htmlFor="ai-base-url"
-                                    className="flex items-center gap-1.5"
-                                >
-                                    {t("settings.aiProvider.baseUrlLabel")}
-                                    {isLoggedIn &&
-                                        (baseUrl ? (
-                                            <HardDrive className="h-3 w-3 text-muted-foreground" />
-                                        ) : cloudConfig.baseUrl ? (
-                                            <Cloud className="h-3 w-3 text-muted-foreground" />
-                                        ) : null)}
-                                </Label>
-                                <Input
-                                    id="ai-base-url"
-                                    value={baseUrl}
-                                    onChange={(e) =>
-                                        onBaseUrlChange(e.target.value)
-                                    }
-                                    placeholder={getBaseUrlPlaceholder(
-                                        provider,
-                                        t(
-                                            "settings.aiProvider.baseUrlPlaceholder",
-                                        ),
-                                    )}
-                                />
-                            </div>
+                                {/* Restore from Cloud Button */}
+                                {isLoggedIn && provider && hasCloudConfig && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="flex-1"
+                                        disabled={isRestoring || restoreSuccess}
+                                        onClick={onRestoreFromCloud}
+                                    >
+                                        {restoreSuccess ? (
+                                            <>
+                                                <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                {t(
+                                                    "settings.aiProvider.restored",
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <HardDrive className="h-4 w-4 mr-2" />
+                                                {isRestoring
+                                                    ? t(
+                                                          "settings.aiProvider.restoring",
+                                                      )
+                                                    : t(
+                                                          "settings.aiProvider.restoreFromCloud",
+                                                      )}
+                                            </>
+                                        )}
+                                    </Button>
+                                )}
 
-                            {/* Sync to Cloud Button */}
-                            {isLoggedIn && provider && apiKey && baseUrl && (
-                                <Button
-                                    variant={
-                                        syncSuccess ? "outline" : "default"
-                                    }
-                                    size="sm"
-                                    className="w-full"
-                                    disabled={isSyncing || syncSuccess}
-                                    onClick={onSyncToCloud}
-                                >
-                                    {syncSuccess ? (
-                                        <>
-                                            <Check className="h-4 w-4 mr-2 text-green-600" />
-                                            {t("settings.aiProvider.synced")}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Cloud className="h-4 w-4 mr-2" />
-                                            {isSyncing
-                                                ? t(
-                                                      "settings.aiProvider.syncing",
-                                                  )
-                                                : t(
-                                                      "settings.aiProvider.syncToCloud",
-                                                  )}
-                                        </>
-                                    )}
-                                </Button>
-                            )}
-
-                            {/* Restore from Cloud Button */}
-                            {isLoggedIn && provider && hasCloudConfig && (
+                                {/* Clear Config Button */}
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="w-full"
-                                    disabled={isRestoring || restoreSuccess}
-                                    onClick={onRestoreFromCloud}
+                                    className={
+                                        isLoggedIn &&
+                                        provider &&
+                                        (apiKey || hasCloudConfig)
+                                            ? ""
+                                            : "flex-1"
+                                    }
+                                    onClick={onClearConfig}
                                 >
-                                    {restoreSuccess ? (
-                                        <>
-                                            <Check className="h-4 w-4 mr-2 text-green-600" />
-                                            {t("settings.aiProvider.restored")}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <HardDrive className="h-4 w-4 mr-2" />
-                                            {isRestoring
-                                                ? t(
-                                                      "settings.aiProvider.restoring",
-                                                  )
-                                                : t(
-                                                      "settings.aiProvider.restoreFromCloud",
-                                                  )}
-                                        </>
+                                    {t("settings.aiProvider.clear")}
+                                    {isLoggedIn && isDeleting && (
+                                        <Cloud className="ml-2 h-3 w-3 animate-pulse" />
                                     )}
                                 </Button>
-                            )}
+                            </div>
 
-                            {/* Clear Config Button */}
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="w-full"
-                                onClick={onClearConfig}
+                            {/* Advanced Options - Collapsible */}
+                            <Collapsible
+                                open={advancedOpen}
+                                onOpenChange={setAdvancedOpen}
+                                className="pt-2"
                             >
-                                {t("settings.aiProvider.clear")}
-                                {isLoggedIn && isDeleting && (
-                                    <Cloud className="ml-2 h-3 w-3 animate-pulse" />
-                                )}
-                            </Button>
+                                <CollapsibleTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+                                    >
+                                        {advancedOpen ? (
+                                            <ChevronDown className="h-4 w-4" />
+                                        ) : (
+                                            <ChevronRight className="h-4 w-4" />
+                                        )}
+                                        <Settings2 className="h-4 w-4" />
+                                        {t(
+                                            "settings.aiProvider.advancedOptions",
+                                        )}
+                                        {hasAdvancedValues && !advancedOpen && (
+                                            <span className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                                        )}
+                                    </Button>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="space-y-3 pt-3">
+                                    {/* Base URL */}
+                                    <div className="space-y-2">
+                                        <Label
+                                            htmlFor="ai-base-url"
+                                            className="flex items-center gap-1.5"
+                                        >
+                                            {t(
+                                                "settings.aiProvider.baseUrlLabel",
+                                            )}
+                                            {isLoggedIn &&
+                                                (baseUrl ? (
+                                                    <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                                ) : cloudConfig.baseUrl ? (
+                                                    <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                ) : null)}
+                                        </Label>
+                                        <Input
+                                            id="ai-base-url"
+                                            value={baseUrl}
+                                            onChange={(e) =>
+                                                onBaseUrlChange(e.target.value)
+                                            }
+                                            placeholder={
+                                                baseUrlPlaceholder ||
+                                                t(
+                                                    "settings.aiProvider.baseUrlPlaceholder",
+                                                )
+                                            }
+                                        />
+                                        {baseUrlPlaceholder && !baseUrl && (
+                                            <p className="text-[0.8rem] text-muted-foreground">
+                                                {t(
+                                                    "settings.aiProvider.baseUrlDefault",
+                                                    { url: baseUrlPlaceholder },
+                                                )}
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    {/* Connection Management - Only for logged in users */}
+                                    {isLoggedIn && (
+                                        <>
+                                            {/* Connection Name */}
+                                            <div className="space-y-2">
+                                                <Label htmlFor="ai-connection-name">
+                                                    {t(
+                                                        "settings.aiProvider.connectionNameLabel",
+                                                    )}
+                                                </Label>
+                                                <Input
+                                                    id="ai-connection-name"
+                                                    value={connectionName}
+                                                    onChange={(e) =>
+                                                        onConnectionNameChange(
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    placeholder={t(
+                                                        "settings.aiProvider.connectionNamePlaceholder",
+                                                    )}
+                                                />
+                                            </div>
+
+                                            {/* Cloud Connections */}
+                                            {cloudConnections.length > 0 && (
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="ai-connection-select">
+                                                        {t(
+                                                            "settings.aiProvider.connectionSelectLabel",
+                                                        )}
+                                                    </Label>
+                                                    <Select
+                                                        value={connectionName}
+                                                        onValueChange={
+                                                            onSelectCloudConnection
+                                                        }
+                                                    >
+                                                        <SelectTrigger id="ai-connection-select">
+                                                            <SelectValue
+                                                                placeholder={t(
+                                                                    "settings.aiProvider.connectionSelectPlaceholder",
+                                                                )}
+                                                            />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {cloudConnections.map(
+                                                                (conn) => {
+                                                                    const name =
+                                                                        conn.name ||
+                                                                        "default"
+                                                                    const key = `${
+                                                                        conn.provider ||
+                                                                        provider
+                                                                    }-${name}`
+                                                                    return (
+                                                                        <SelectItem
+                                                                            key={
+                                                                                key
+                                                                            }
+                                                                            value={
+                                                                                name
+                                                                            }
+                                                                        >
+                                                                            <span className="flex items-center gap-1.5">
+                                                                                <Cloud className="h-3 w-3 text-muted-foreground" />
+                                                                                {
+                                                                                    name
+                                                                                }
+                                                                                {conn.isDefault && (
+                                                                                    <span className="text-xs text-muted-foreground">
+                                                                                        (
+                                                                                        {t(
+                                                                                            "settings.aiProvider.defaultTag",
+                                                                                        )}
+                                                                                        )
+                                                                                    </span>
+                                                                                )}
+                                                                            </span>
+                                                                        </SelectItem>
+                                                                    )
+                                                                },
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <p className="text-[0.8rem] text-muted-foreground">
+                                                        {isLoadingConnections
+                                                            ? t(
+                                                                  "settings.aiProvider.connectionsLoading",
+                                                              )
+                                                            : t(
+                                                                  "settings.aiProvider.connectionsCount",
+                                                                  {
+                                                                      count: cloudConnections.length,
+                                                                  },
+                                                              )}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Default Connection */}
+                                            <div className="flex items-center gap-2">
+                                                <Checkbox
+                                                    id="ai-connection-default"
+                                                    checked={
+                                                        connectionIsDefault
+                                                    }
+                                                    onCheckedChange={(value) =>
+                                                        onConnectionDefaultChange(
+                                                            value === true,
+                                                        )
+                                                    }
+                                                />
+                                                <Label htmlFor="ai-connection-default">
+                                                    {t(
+                                                        "settings.aiProvider.setAsDefault",
+                                                    )}
+                                                </Label>
+                                            </div>
+                                        </>
+                                    )}
+                                </CollapsibleContent>
+                            </Collapsible>
                         </>
                     )}
                 </div>

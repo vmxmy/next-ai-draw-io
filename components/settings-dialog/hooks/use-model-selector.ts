@@ -10,23 +10,38 @@ export interface UseModelSelectorOptions {
     apiKey: string
     baseUrl: string
     isDialogOpen: boolean
+    isLoggedIn?: boolean
+    hasCloudConfig?: boolean
 }
 
 export function useModelSelector(options: UseModelSelectorOptions) {
-    const { provider, apiKey, baseUrl, isDialogOpen } = options
+    const {
+        provider,
+        apiKey,
+        baseUrl,
+        isDialogOpen,
+        isLoggedIn,
+        hasCloudConfig,
+    } = options
 
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
     const [isLoadingModels, setIsLoadingModels] = useState(false)
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
 
-    // Fetch models when dialog opens and apiKey is available
+    // Fetch models when dialog opens and credentials are available
+    // For logged-in users with cloud config, server will use cloud credentials
     useEffect(() => {
         if (!isDialogOpen) return
         if (!provider) {
             setModelOptions([])
             return
         }
-        if (!apiKey.trim()) {
+
+        // 有本地 apiKey 或 (已登录且有云端配置) 时获取模型列表
+        const hasLocalKey = apiKey.trim().length > 0
+        const canUseCloudKey = isLoggedIn && hasCloudConfig
+
+        if (!hasLocalKey && !canUseCloudKey) {
             setModelOptions([])
             return
         }
@@ -39,8 +54,9 @@ export function useModelSelector(options: UseModelSelectorOptions) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     provider,
-                    apiKey,
-                    baseUrl,
+                    // 如果有本地 key 就传，没有则让服务端从云端读取
+                    ...(hasLocalKey ? { apiKey } : {}),
+                    ...(baseUrl ? { baseUrl } : {}),
                 }),
                 signal: controller.signal,
             })
@@ -66,7 +82,7 @@ export function useModelSelector(options: UseModelSelectorOptions) {
             clearTimeout(timeout)
             controller.abort()
         }
-    }, [apiKey, baseUrl, isDialogOpen, provider])
+    }, [apiKey, baseUrl, isDialogOpen, provider, isLoggedIn, hasCloudConfig])
 
     // Filter models based on search query
     const filterModels = useCallback(
@@ -138,6 +154,8 @@ export function getModelPlaceholder(
             return "e.g., gemini-2.5-pro"
         case "deepseek":
             return "e.g., deepseek-chat"
+        case "openai_compatible":
+            return "e.g., your-model-id"
         default:
             return fallbackLabel
     }
@@ -153,6 +171,8 @@ export function getBaseUrlPlaceholder(
             return "https://api.anthropic.com/v1"
         case "siliconflow":
             return "https://api.siliconflow.com/v1"
+        case "openai_compatible":
+            return "https://your-gateway.example.com/v1"
         default:
             return fallbackLabel
     }

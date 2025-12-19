@@ -25,6 +25,25 @@ export const conversationPayloadSchema = z.object({
     sessionId: z.string(),
 })
 
+// 调试用：记录验证失败的详情
+const debugConversationMeta = z.preprocess(
+    (val) => {
+        console.log(
+            "[conversation.push] Raw conversation meta:",
+            JSON.stringify(val, null, 2).slice(0, 500),
+        )
+        return val
+    },
+    z.object({
+        id: z.string().min(1),
+        title: z.string().optional(),
+        createdAt: z.number().int(),
+        updatedAt: z.number().int(),
+        deleted: z.boolean().optional(),
+        payload: conversationPayloadSchema.optional(),
+    }),
+)
+
 export const conversationMetaSchema = z.object({
     id: z.string().min(1),
     title: z.string().optional(),
@@ -85,6 +104,10 @@ export const conversationRouter = createTRPCRouter({
         )
         .query(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
+            console.log("[conversation.getById] Request:", {
+                userId,
+                id: input.id,
+            })
 
             return withDbRetry(async () => {
                 const conversation = await ctx.db.conversation.findUnique({
@@ -103,7 +126,17 @@ export const conversationRouter = createTRPCRouter({
                     },
                 })
 
+                console.log("[conversation.getById] Found:", {
+                    found: !!conversation,
+                    id: conversation?.id,
+                    title: conversation?.title,
+                })
+
                 if (!conversation) {
+                    console.error("[conversation.getById] Not found:", {
+                        userId,
+                        id: input.id,
+                    })
                     throw new Error("Conversation not found")
                 }
 
@@ -122,7 +155,7 @@ export const conversationRouter = createTRPCRouter({
             z
                 .object({
                     conversations: z
-                        .array(conversationMetaSchema)
+                        .array(debugConversationMeta) // 临时使用调试 schema
                         .max(50, "批量上传最多 50 个会话"),
                 })
                 .refine(
@@ -131,11 +164,27 @@ export const conversationRouter = createTRPCRouter({
                         return totalSize < 20_000_000 // 20MB 限制
                     },
                     { message: "请求数据过大，超过 20MB 限制" },
-                ),
+                )
+                .transform((data) => {
+                    // 调试日志：查看接收到的数据
+                    console.log("[conversation.push] Input received:", {
+                        count: data.conversations.length,
+                        conversations: data.conversations.map((c) => ({
+                            id: c.id,
+                            title: c.title,
+                            createdAt: c.createdAt,
+                            updatedAt: c.updatedAt,
+                            deleted: c.deleted,
+                            hasPayload: !!c.payload,
+                        })),
+                    })
+                    return data
+                }),
         )
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
             const now = new Date()
+            console.log("[conversation.push] Processing for user:", userId)
 
             return withDbRetry(async () => {
                 const upserts = input.conversations.map((c) => {
