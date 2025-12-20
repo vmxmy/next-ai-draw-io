@@ -295,10 +295,9 @@ export function useLocalConversations({
                 )
             } catch (error) {
                 console.error("[session-debug] loadConversation FAILED", error)
-                setMessages([])
-                setSessionId(createSessionId())
-                clearDiagram()
-                diagramHistory.clearHistory()
+                // 注意：不设置空消息，避免触发自动保存覆盖云端数据
+                // 保持 UI 状态不变，让用户知道加载失败
+                toast.error("会话加载失败，请刷新页面重试")
             }
         },
         [
@@ -781,6 +780,22 @@ export function useLocalConversations({
         if (!enabled) return
         if (!hasRestored) return
         if (!currentConversationId) return
+
+        // 保护机制：空消息时不触发保存，避免异常情况覆盖原有数据
+        const messageArray = messages as any[]
+        if (!messageArray || messageArray.length === 0) {
+            // 检查存储中是否已有消息，如果有则不用空消息覆盖
+            const existing = readConversationPayloadFromStorage(
+                userId,
+                currentConversationId,
+            )
+            if (existing?.messages && existing.messages.length > 0) {
+                console.log(
+                    "[session-debug] Skipping auto-save: empty messages would overwrite existing data",
+                )
+                return
+            }
+        }
 
         if (persistDebounceTimerRef.current) {
             clearTimeout(persistDebounceTimerRef.current)

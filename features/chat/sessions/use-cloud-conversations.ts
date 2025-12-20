@@ -324,6 +324,15 @@ export function useCloudConversations({
         // 正在恢复数据时不触发保存
         if (isRestoringRef.current) return
 
+        // 保护机制：空消息时不触发保存，避免异常情况覆盖原有数据
+        const messageArray = messagesRef.current as any[]
+        if (!messageArray || messageArray.length === 0) {
+            console.log(
+                "[session-debug] Skipping cloud auto-save: empty messages",
+            )
+            return
+        }
+
         // 创建数据指纹，用于检测实际变化
         // 使用 chartXML 而非 chartXMLRef.current 确保时序正确
         const currentXml = chartXML || ""
