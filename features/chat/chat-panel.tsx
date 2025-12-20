@@ -37,7 +37,7 @@ import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import { api } from "@/lib/trpc/client"
 import { type FileData, useFileProcessor } from "@/lib/use-file-processor"
 import { useQuotaManager } from "@/lib/use-quota-manager"
-import { formatXML, wrapWithMxFile } from "@/lib/utils"
+import { autoFixXml, formatXML, wrapWithMxFile } from "@/lib/utils"
 
 interface ChatPanelProps {
     isVisible: boolean
@@ -269,8 +269,17 @@ export default function ChatPanel({
                     )
                 }
 
+                // Auto-fix common XML issues before wrapping
+                const { fixed: fixedXml, fixes } = autoFixXml(xml)
+                if (fixes.length > 0) {
+                    console.log(
+                        `[display_diagram] Auto-fixed ${fixes.length} issue(s):`,
+                        fixes,
+                    )
+                }
+
                 // Wrap raw XML with full mxfile structure for draw.io
-                const fullXml = wrapWithMxFile(xml)
+                const fullXml = wrapWithMxFile(fixedXml)
 
                 // loadDiagram validates and returns error if invalid
                 const _previousXml = chartXMLRef.current

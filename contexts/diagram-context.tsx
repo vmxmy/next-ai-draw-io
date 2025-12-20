@@ -13,7 +13,11 @@ import {
 import type { DrawIoEmbedRef } from "react-drawio"
 import type { ExportFormat } from "@/components/save-dialog"
 import { STORAGE_DIAGRAM_XML_KEY } from "@/lib/storage-keys"
-import { extractDiagramXML, validateMxCellStructure } from "@/lib/utils"
+import {
+    autoFixXml,
+    extractDiagramXML,
+    validateMxCellStructure,
+} from "@/lib/utils"
 
 interface DiagramContextType {
     chartXML: string
@@ -104,25 +108,51 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
 
     const loadDiagram = useCallback(
         (chart: string, skipValidation?: boolean): string | null => {
+            let xmlToLoad = chart
+
             // Validate XML structure before loading (unless skipped for internal use)
             if (!skipValidation) {
                 const validationError = validateMxCellStructure(chart)
                 if (validationError) {
                     console.warn(
-                        "[loadDiagram] Validation error:",
+                        "[loadDiagram] Validation error, attempting auto-fix:",
                         validationError,
                     )
-                    return validationError
+
+                    // Try auto-fix before failing
+                    const { fixed, fixes } = autoFixXml(chart)
+                    if (fixes.length > 0) {
+                        console.log(
+                            `[loadDiagram] Auto-fixed ${fixes.length} issue(s):`,
+                            fixes,
+                        )
+                    }
+
+                    // Re-validate after fix
+                    const postFixError = validateMxCellStructure(fixed)
+                    if (postFixError) {
+                        console.warn(
+                            "[loadDiagram] Still invalid after auto-fix:",
+                            postFixError,
+                        )
+                        return postFixError
+                    }
+
+                    // Use fixed XML
+                    xmlToLoad = fixed
+                    console.log(
+                        "[loadDiagram] Auto-fix successful, loading fixed XML",
+                    )
                 }
             }
 
             // Keep chartXML in sync even when diagrams are injected (e.g., display_diagram tool)
-            setChartXML(chart)
+            setChartXML(xmlToLoad)
 
             if (drawioRef.current) {
                 try {
                     drawioRef.current.load({
-                        xml: chart,
+                        xml: xmlToLoad,
                     })
                 } catch (error) {
                     console.error(

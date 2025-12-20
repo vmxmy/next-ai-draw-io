@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { sanitizeMessagesForToolCalling } from "@/features/chat/ai/sanitize-messages"
 import type { ChatMessage } from "@/features/chat/ai/types"
 import {
     readConversationMetasFromStorage,
@@ -219,7 +220,11 @@ export function useLocalConversations({
                     diagramVersionCount: payload.diagramVersions?.length ?? 0,
                 })
 
-                setMessages((payload.messages || []) as any)
+                // 清理消息历史，确保 tool-call/tool-result 配对完整
+                const sanitizedMessages = sanitizeMessagesForToolCalling(
+                    (payload.messages || []) as any,
+                )
+                setMessages(sanitizedMessages as any)
                 setSessionId(payload.sessionId || createSessionId())
 
                 processedToolCallsRef.current = new Set()

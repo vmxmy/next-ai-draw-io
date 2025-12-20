@@ -953,6 +953,575 @@ export function validateMxCellStructure(xml: string): string | null {
     return `Invalid XML [${detailed.code}]: ${detailed.message}${ids}${hint}`
 }
 
+// ============================================================================
+// XML Auto-Fix Engine (from upstream DayuanJiang/next-ai-draw-io)
+// 99% fix rate for common LLM output issues
+// ============================================================================
+
+const STRUCTURAL_ATTRS = [
+    "edge",
+    "parent",
+    "source",
+    "target",
+    "vertex",
+    "connectable",
+]
+const MAX_DROP_ITERATIONS = 10
+
+interface ParsedTag {
+    tagName: string
+    isClosing: boolean
+    isSelfClosing: boolean
+}
+
+function parseXmlTags(xml: string): ParsedTag[] {
+    const tags: ParsedTag[] = []
+    const tagPattern = /<\/?([a-zA-Z][a-zA-Z0-9]*)[^>]*\/?>/g
+    let match
+    while ((match = tagPattern.exec(xml)) !== null) {
+        const fullMatch = match[0]
+        const tagName = match[1]
+        const isClosing = fullMatch.startsWith("</")
+        const isSelfClosing = fullMatch.endsWith("/>")
+        tags.push({ tagName, isClosing, isSelfClosing })
+    }
+    return tags
+}
+
+/**
+ * Comprehensive XML auto-fix engine with 23+ repair strategies.
+ * Achieves ~99% fix rate for common LLM output issues.
+ */
+export function autoFixXml(xml: string): { fixed: string; fixes: string[] } {
+    let fixed = xml
+    const fixes: string[] = []
+
+    // 0. Fix JSON-escaped XML
+    if (/=\\"/.test(fixed)) {
+        fixed = fixed.replace(/\\"/g, '"')
+        fixed = fixed.replace(/\\n/g, "\n")
+        fixes.push("Fixed JSON-escaped XML")
+    }
+
+    // 1. Remove CDATA wrapper
+    if (/^\s*<!\[CDATA\[/.test(fixed)) {
+        fixed = fixed.replace(/^\s*<!\[CDATA\[/, "").replace(/\]\]>\s*$/, "")
+        fixes.push("Removed CDATA wrapper")
+    }
+
+    // 2. Remove text before XML declaration
+    const xmlStart = fixed.search(/<(\?xml|mxGraphModel|mxfile)/i)
+    if (xmlStart > 0 && !/^<[a-zA-Z]/.test(fixed.trim())) {
+        fixed = fixed.substring(xmlStart)
+        fixes.push("Removed text before XML root")
+    }
+
+    // 3. Fix duplicate attributes
+    let dupAttrFixed = false
+    fixed = fixed.replace(/<[^>]+>/g, (tag) => {
+        let newTag = tag
+        for (const attr of STRUCTURAL_ATTRS) {
+            const attrRegex = new RegExp(
+                `\\s${attr}\\s*=\\s*["'][^"']*["']`,
+                "gi",
+            )
+            const matches = tag.match(attrRegex)
+            if (matches && matches.length > 1) {
+                let firstKept = false
+                newTag = newTag.replace(attrRegex, (m) => {
+                    if (!firstKept) {
+                        firstKept = true
+                        return m
+                    }
+                    dupAttrFixed = true
+                    return ""
+                })
+            }
+        }
+        return newTag
+    })
+    if (dupAttrFixed) {
+        fixes.push("Removed duplicate structural attributes")
+    }
+
+    // 4. Escape unescaped ampersands
+    const ampersandPattern =
+        /&(?!(?:lt|gt|amp|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/g
+    if (ampersandPattern.test(fixed)) {
+        fixed = fixed.replace(
+            /&(?!(?:lt|gt|amp|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/g,
+            "&amp;",
+        )
+        fixes.push("Escaped unescaped & characters")
+    }
+
+    // 5. Fix invalid entity names (double-escaped)
+    const invalidEntities = [
+        { pattern: /&ampquot;/g, replacement: "&quot;", name: "&ampquot;" },
+        { pattern: /&amplt;/g, replacement: "&lt;", name: "&amplt;" },
+        { pattern: /&ampgt;/g, replacement: "&gt;", name: "&ampgt;" },
+        { pattern: /&ampapos;/g, replacement: "&apos;", name: "&ampapos;" },
+        { pattern: /&ampamp;/g, replacement: "&amp;", name: "&ampamp;" },
+    ]
+    for (const { pattern, replacement, name } of invalidEntities) {
+        if (pattern.test(fixed)) {
+            fixed = fixed.replace(pattern, replacement)
+            fixes.push(`Fixed double-escaped entity ${name}`)
+        }
+    }
+
+    // 6. Fix malformed attribute quotes
+    const malformedQuotePattern = /(\s[a-zA-Z][a-zA-Z0-9_:-]*)=&quot;/
+    if (malformedQuotePattern.test(fixed)) {
+        fixed = fixed.replace(
+            /(\s[a-zA-Z][a-zA-Z0-9_:-]*)=&quot;([^&]*?)&quot;/g,
+            '$1="$2"',
+        )
+        fixes.push(
+            'Fixed malformed attribute quotes (=&quot;...&quot; to ="...")',
+        )
+    }
+
+    // 7. Fix malformed closing tags
+    if (/<\/([a-zA-Z][a-zA-Z0-9]*)\s*\/>/.test(fixed)) {
+        fixed = fixed.replace(/<\/([a-zA-Z][a-zA-Z0-9]*)\s*\/>/g, "</$1>")
+        fixes.push("Fixed malformed closing tags (</tag/> to </tag>)")
+    }
+
+    // 8. Fix missing space between attributes
+    if (/("[^"]*")([a-zA-Z][a-zA-Z0-9_:-]*=)/.test(fixed)) {
+        fixed = fixed.replace(/("[^"]*")([a-zA-Z][a-zA-Z0-9_:-]*=)/g, "$1 $2")
+        fixes.push("Added missing space between attributes")
+    }
+
+    // 9. Fix unescaped quotes in style color values
+    if (/;([a-zA-Z]*[Cc]olor)="#/.test(fixed)) {
+        fixed = fixed.replace(/;([a-zA-Z]*[Cc]olor)="#/g, ";$1=#")
+        fixes.push("Removed quotes around color values in style")
+    }
+
+    // 10. Fix unescaped < in attribute values
+    const attrLtPattern = /(=\s*")([^"]*?)(<)([^"]*?)(")/
+    if (attrLtPattern.test(fixed)) {
+        fixed = fixed.replace(/=\s*"([^"]*)"/g, (_match, value) => {
+            const escaped = value.replace(/</g, "&lt;")
+            return `="${escaped}"`
+        })
+        fixes.push("Escaped < characters in attribute values")
+    }
+
+    // 11. Fix invalid hex character references
+    const invalidHexRefs: string[] = []
+    fixed = fixed.replace(/&#x([^;]*);/g, (match, hex) => {
+        if (/^[0-9a-fA-F]+$/.test(hex) && hex.length > 0) {
+            return match
+        }
+        invalidHexRefs.push(match)
+        return ""
+    })
+    if (invalidHexRefs.length > 0) {
+        fixes.push(
+            `Removed ${invalidHexRefs.length} invalid hex character reference(s)`,
+        )
+    }
+
+    // 12. Fix invalid decimal character references
+    const invalidDecRefs: string[] = []
+    fixed = fixed.replace(/&#([^x][^;]*);/g, (match, dec) => {
+        if (/^[0-9]+$/.test(dec) && dec.length > 0) {
+            return match
+        }
+        invalidDecRefs.push(match)
+        return ""
+    })
+    if (invalidDecRefs.length > 0) {
+        fixes.push(
+            `Removed ${invalidDecRefs.length} invalid decimal character reference(s)`,
+        )
+    }
+
+    // 13. Fix invalid comment syntax
+    fixed = fixed.replace(/<!--([\s\S]*?)-->/g, (match, content) => {
+        if (/--/.test(content)) {
+            let fixedContent = content
+            while (/--/.test(fixedContent)) {
+                fixedContent = fixedContent.replace(/--/g, "-")
+            }
+            fixes.push("Fixed invalid comment syntax (removed double hyphens)")
+            return `<!--${fixedContent}-->`
+        }
+        return match
+    })
+
+    // 14. Fix <Cell> tags to <mxCell>
+    if (/<\/?Cell[\s>]/i.test(fixed)) {
+        fixed = fixed.replace(/<Cell(\s)/gi, "<mxCell$1")
+        fixed = fixed.replace(/<Cell>/gi, "<mxCell>")
+        fixed = fixed.replace(/<\/Cell>/gi, "</mxCell>")
+        fixes.push("Fixed <Cell> tags to <mxCell>")
+    }
+
+    // 15. Remove non-draw.io tags
+    const validDrawioTags = new Set([
+        "mxfile",
+        "diagram",
+        "mxGraphModel",
+        "root",
+        "mxCell",
+        "mxGeometry",
+        "mxPoint",
+        "Array",
+        "Object",
+        "mxRectangle",
+    ])
+    const foreignTagPattern = /<\/?([a-zA-Z][a-zA-Z0-9_]*)[^>]*>/g
+    const foreignTags = new Set<string>()
+    let foreignMatch
+    while ((foreignMatch = foreignTagPattern.exec(fixed)) !== null) {
+        const tagName = foreignMatch[1]
+        if (!validDrawioTags.has(tagName)) {
+            foreignTags.add(tagName)
+        }
+    }
+    if (foreignTags.size > 0) {
+        for (const tag of foreignTags) {
+            fixed = fixed.replace(new RegExp(`<${tag}[^>]*>`, "gi"), "")
+            fixed = fixed.replace(new RegExp(`</${tag}>`, "gi"), "")
+        }
+        fixes.push(
+            `Removed foreign tags: ${Array.from(foreignTags).join(", ")}`,
+        )
+    }
+
+    // 16. Fix closing tag typos
+    const tagTypos = [
+        { wrong: /<\/mxElement>/gi, right: "</mxCell>", name: "</mxElement>" },
+        { wrong: /<\/mxcell>/g, right: "</mxCell>", name: "</mxcell>" },
+        {
+            wrong: /<\/mxgeometry>/g,
+            right: "</mxGeometry>",
+            name: "</mxgeometry>",
+        },
+        { wrong: /<\/mxpoint>/g, right: "</mxPoint>", name: "</mxpoint>" },
+        {
+            wrong: /<\/mxgraphmodel>/gi,
+            right: "</mxGraphModel>",
+            name: "</mxgraphmodel>",
+        },
+    ]
+    for (const { wrong, right, name } of tagTypos) {
+        if (wrong.test(fixed)) {
+            fixed = fixed.replace(wrong, right)
+            fixes.push(`Fixed typo ${name} to ${right}`)
+        }
+    }
+
+    // 17. Fix unclosed tags
+    const tagStack: string[] = []
+    const parsedTags = parseXmlTags(fixed)
+    for (const { tagName, isClosing, isSelfClosing } of parsedTags) {
+        if (isClosing) {
+            const lastIdx = tagStack.lastIndexOf(tagName)
+            if (lastIdx !== -1) {
+                tagStack.splice(lastIdx, 1)
+            }
+        } else if (!isSelfClosing) {
+            tagStack.push(tagName)
+        }
+    }
+
+    if (tagStack.length > 0) {
+        const tagsToClose: string[] = []
+        for (const tagName of tagStack.reverse()) {
+            const openCount = (
+                fixed.match(new RegExp(`<${tagName}[\\s>]`, "gi")) || []
+            ).length
+            const closeCount = (
+                fixed.match(new RegExp(`</${tagName}>`, "gi")) || []
+            ).length
+            if (openCount > closeCount) {
+                tagsToClose.push(tagName)
+            }
+        }
+        if (tagsToClose.length > 0) {
+            const closingTags = tagsToClose.map((t) => `</${t}>`).join("\n")
+            fixed = fixed.trimEnd() + "\n" + closingTags
+            fixes.push(
+                `Closed ${tagsToClose.length} unclosed tag(s): ${tagsToClose.join(", ")}`,
+            )
+        }
+    }
+
+    // 18. Remove extra closing tags
+    const tagCounts = new Map<
+        string,
+        { opens: number; closes: number; selfClosing: number }
+    >()
+    const fullTagPattern = /<(\/?[a-zA-Z][a-zA-Z0-9]*)[^>]*>/g
+    let tagCountMatch
+    while ((tagCountMatch = fullTagPattern.exec(fixed)) !== null) {
+        const fullMatch = tagCountMatch[0]
+        const tagPart = tagCountMatch[1]
+        const isClosing = tagPart.startsWith("/")
+        const isSelfClosing = fullMatch.endsWith("/>")
+        const tagName = isClosing ? tagPart.slice(1) : tagPart
+
+        let counts = tagCounts.get(tagName)
+        if (!counts) {
+            counts = { opens: 0, closes: 0, selfClosing: 0 }
+            tagCounts.set(tagName, counts)
+        }
+        if (isClosing) {
+            counts.closes++
+        } else if (isSelfClosing) {
+            counts.selfClosing++
+        } else {
+            counts.opens++
+        }
+    }
+
+    for (const [tagName, counts] of tagCounts) {
+        const extraCloses = counts.closes - counts.opens
+        if (extraCloses > 0) {
+            let removed = 0
+            const closeTagPattern = new RegExp(`</${tagName}>`, "g")
+            const matches = [...fixed.matchAll(closeTagPattern)]
+            for (
+                let i = matches.length - 1;
+                i >= 0 && removed < extraCloses;
+                i--
+            ) {
+                const match = matches[i]
+                const idx = match.index ?? 0
+                fixed = fixed.slice(0, idx) + fixed.slice(idx + match[0].length)
+                removed++
+            }
+            if (removed > 0) {
+                fixes.push(
+                    `Removed ${removed} extra </${tagName}> closing tag(s)`,
+                )
+            }
+        }
+    }
+
+    // 19. Remove trailing garbage
+    const closingTagPattern = /<\/[a-zA-Z][a-zA-Z0-9]*>|\/>/g
+    let lastValidTagEnd = -1
+    let closingMatch
+    while ((closingMatch = closingTagPattern.exec(fixed)) !== null) {
+        lastValidTagEnd = closingMatch.index + closingMatch[0].length
+    }
+    if (lastValidTagEnd > 0 && lastValidTagEnd < fixed.length) {
+        const trailing = fixed.slice(lastValidTagEnd).trim()
+        if (trailing) {
+            fixed = fixed.slice(0, lastValidTagEnd)
+            fixes.push("Removed trailing garbage after last XML tag")
+        }
+    }
+
+    // 20. Fix nested mxCell with duplicate IDs
+    let lines = fixed.split("\n")
+    let newLines: string[] = []
+    let nestedFixed = 0
+    let extraClosingToRemove = 0
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        const nextLine = lines[i + 1]
+
+        if (
+            nextLine &&
+            /<mxCell\s/.test(line) &&
+            /<mxCell\s/.test(nextLine) &&
+            !line.includes("/>") &&
+            !nextLine.includes("/>")
+        ) {
+            const id1 = line.match(/\bid\s*=\s*["']([^"']+)["']/)?.[1]
+            const id2 = nextLine.match(/\bid\s*=\s*["']([^"']+)["']/)?.[1]
+
+            if (id1 && id1 === id2) {
+                nestedFixed++
+                extraClosingToRemove++
+                continue
+            }
+        }
+
+        if (extraClosingToRemove > 0 && /^\s*<\/mxCell>\s*$/.test(line)) {
+            extraClosingToRemove--
+            continue
+        }
+
+        newLines.push(line)
+    }
+
+    if (nestedFixed > 0) {
+        fixed = newLines.join("\n")
+        fixes.push(`Flattened ${nestedFixed} duplicate-ID nested mxCell(s)`)
+    }
+
+    // 21. Fix true nesting (different IDs)
+    const lines2 = fixed.split("\n")
+    newLines = []
+    let trueNestedFixed = 0
+    let cellDepth = 0
+    let pendingCloseRemoval = 0
+
+    for (let i = 0; i < lines2.length; i++) {
+        const line = lines2[i]
+        const trimmed = line.trim()
+
+        const isOpenCell = /<mxCell\s/.test(trimmed) && !trimmed.endsWith("/>")
+        const isCloseCell = trimmed === "</mxCell>"
+
+        if (isOpenCell) {
+            if (cellDepth > 0) {
+                const indent = line.match(/^(\s*)/)?.[1] || ""
+                newLines.push(indent + "</mxCell>")
+                trueNestedFixed++
+                pendingCloseRemoval++
+            }
+            cellDepth = 1
+            newLines.push(line)
+        } else if (isCloseCell) {
+            if (pendingCloseRemoval > 0) {
+                pendingCloseRemoval--
+            } else {
+                cellDepth = Math.max(0, cellDepth - 1)
+                newLines.push(line)
+            }
+        } else {
+            newLines.push(line)
+        }
+    }
+
+    if (trueNestedFixed > 0) {
+        fixed = newLines.join("\n")
+        fixes.push(`Fixed ${trueNestedFixed} true nested mxCell(s)`)
+    }
+
+    // 22. Fix duplicate IDs by appending suffix
+    const seenIds = new Map<string, number>()
+    const duplicateIds: string[] = []
+
+    const idPattern = /\bid\s*=\s*["']([^"']+)["']/gi
+    let idMatch
+    while ((idMatch = idPattern.exec(fixed)) !== null) {
+        const id = idMatch[1]
+        seenIds.set(id, (seenIds.get(id) || 0) + 1)
+    }
+
+    for (const [id, count] of seenIds) {
+        if (count > 1) duplicateIds.push(id)
+    }
+
+    if (duplicateIds.length > 0) {
+        const idCounters = new Map<string, number>()
+        fixed = fixed.replace(/\bid\s*=\s*["']([^"']+)["']/gi, (match, id) => {
+            if (!duplicateIds.includes(id)) return match
+
+            const count = idCounters.get(id) || 0
+            idCounters.set(id, count + 1)
+
+            if (count === 0) return match
+
+            const newId = `${id}_dup${count}`
+            return match.replace(id, newId)
+        })
+        fixes.push(`Renamed ${duplicateIds.length} duplicate ID(s)`)
+    }
+
+    // 23. Fix empty id attributes
+    let emptyIdCount = 0
+    fixed = fixed.replace(
+        /<mxCell([^>]*)\sid\s*=\s*["']\s*["']([^>]*)>/g,
+        (_match, before, after) => {
+            emptyIdCount++
+            const newId = `cell_${Date.now()}_${emptyIdCount}`
+            return `<mxCell${before} id="${newId}"${after}>`
+        },
+    )
+    if (emptyIdCount > 0) {
+        fixes.push(`Generated ${emptyIdCount} missing ID(s)`)
+    }
+
+    // 24. Aggressive: drop broken mxCell elements
+    if (typeof DOMParser !== "undefined") {
+        let droppedCells = 0
+        let maxIterations = MAX_DROP_ITERATIONS
+        while (maxIterations-- > 0) {
+            const parser = new DOMParser()
+            const doc = parser.parseFromString(fixed, "text/xml")
+            const parseError = doc.querySelector("parsererror")
+            if (!parseError) break
+
+            const errText = parseError.textContent || ""
+            const match = errText.match(/(\d+):\d+:/)
+            if (!match) break
+
+            const errLine = parseInt(match[1], 10) - 1
+            lines = fixed.split("\n")
+
+            let cellStart = errLine
+            let cellEnd = errLine
+
+            while (cellStart > 0 && !lines[cellStart].includes("<mxCell")) {
+                cellStart--
+            }
+
+            while (cellEnd < lines.length - 1) {
+                if (
+                    lines[cellEnd].includes("</mxCell>") ||
+                    lines[cellEnd].trim().endsWith("/>")
+                ) {
+                    break
+                }
+                cellEnd++
+            }
+
+            lines.splice(cellStart, cellEnd - cellStart + 1)
+            fixed = lines.join("\n")
+            droppedCells++
+        }
+        if (droppedCells > 0) {
+            fixes.push(`Dropped ${droppedCells} unfixable mxCell element(s)`)
+        }
+    }
+
+    return { fixed, fixes }
+}
+
+/**
+ * Validate XML and attempt auto-fix if invalid.
+ * Returns validation result with applied fixes.
+ */
+export function validateAndFixXml(xml: string): {
+    valid: boolean
+    error: string | null
+    fixed: string | null
+    fixes: string[]
+} {
+    let error = validateMxCellStructure(xml)
+
+    if (!error) {
+        return { valid: true, error: null, fixed: null, fixes: [] }
+    }
+
+    const { fixed, fixes } = autoFixXml(xml)
+
+    error = validateMxCellStructure(fixed)
+
+    if (!error) {
+        return { valid: true, error: null, fixed, fixes }
+    }
+
+    return {
+        valid: false,
+        error,
+        fixed: fixes.length > 0 ? fixed : null,
+        fixes,
+    }
+}
+
 export function extractDiagramXML(xml_svg_string: string): string {
     try {
         // 1. Parse the SVG string (using built-in DOMParser in a browser-like environment)

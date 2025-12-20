@@ -32,6 +32,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { type I18nKey, useI18n } from "@/contexts/i18n-context"
 import {
+    autoFixXml,
     convertToLegalXml,
     replaceNodes,
     validateMxCellStructure,
@@ -480,16 +481,43 @@ export function ChatMessageDisplay({
                         : baseCandidate
                     const replacedXML = replaceNodes(baseXML, convertedXml)
 
-                    const validationError = validateMxCellStructure(replacedXML)
+                    let validationError = validateMxCellStructure(replacedXML)
+                    let xmlToLoad = replacedXML
+
+                    // If validation fails, try auto-fix
+                    if (validationError) {
+                        console.warn(
+                            "[ChatMessageDisplay] XML validation failed, attempting auto-fix:",
+                            validationError,
+                        )
+                        const { fixed, fixes } = autoFixXml(replacedXML)
+                        if (fixes.length > 0) {
+                            console.log(
+                                `[ChatMessageDisplay] Auto-fixed ${fixes.length} issue(s):`,
+                                fixes,
+                            )
+                        }
+                        // Re-validate after fix
+                        const postFixError = validateMxCellStructure(fixed)
+                        if (!postFixError) {
+                            validationError = null
+                            xmlToLoad = fixed
+                            console.log(
+                                "[ChatMessageDisplay] Auto-fix successful",
+                            )
+                        } else {
+                            console.warn(
+                                "[ChatMessageDisplay] Still invalid after auto-fix:",
+                                postFixError,
+                            )
+                        }
+                    }
+
                     if (!validationError) {
                         previousXML.current = convertedXml
                         // Skip validation in loadDiagram since we already validated above
-                        onDisplayChart(replacedXML, true)
+                        onDisplayChart(xmlToLoad, true)
                     } else {
-                        console.warn(
-                            "[ChatMessageDisplay] XML validation failed:",
-                            validationError,
-                        )
                         // Only show toast if this is the final XML (not during streaming)
                         if (showToast) {
                             toast.error(t("toast.diagramValidationFailed"))
