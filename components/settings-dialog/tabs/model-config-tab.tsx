@@ -26,7 +26,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { useI18n } from "@/contexts/i18n-context"
+import { type AIMode, useAIMode } from "@/lib/use-ai-mode"
 import type { CloudConfig, ModelOption } from "../hooks"
 
 interface ProviderOption {
@@ -139,6 +141,25 @@ export function ModelConfigTab({
     const { t } = useI18n()
     const [advancedOpen, setAdvancedOpen] = useState(false)
 
+    // AI Mode toggle (for logged-in users)
+    const {
+        mode: aiMode,
+        hasByokConfig,
+        isLoading: isModeLoading,
+        setMode,
+    } = useAIMode()
+    const [isSwitchingMode, setIsSwitchingMode] = useState(false)
+
+    const handleModeToggle = async (checked: boolean) => {
+        if (!isLoggedIn) return
+        setIsSwitchingMode(true)
+        try {
+            await setMode(checked ? "byok" : "system_default")
+        } finally {
+            setIsSwitchingMode(false)
+        }
+    }
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") {
             e.preventDefault()
@@ -160,6 +181,44 @@ export function ModelConfigTab({
 
     return (
         <div className="space-y-4 py-2 overflow-y-auto flex-1">
+            {/* AI Mode Toggle (for logged-in users) */}
+            {isLoggedIn && (
+                <div className="space-y-2 pb-3 border-b">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <Label htmlFor="ai-mode">
+                                {t("settings.aiMode.label")}
+                            </Label>
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                {aiMode === "byok"
+                                    ? t("settings.aiMode.byokDescription")
+                                    : t("settings.aiMode.systemDescription")}
+                            </p>
+                        </div>
+                        <Switch
+                            id="ai-mode"
+                            checked={aiMode === "byok"}
+                            disabled={
+                                !hasByokConfig ||
+                                isModeLoading ||
+                                isSwitchingMode
+                            }
+                            onCheckedChange={handleModeToggle}
+                        />
+                    </div>
+                    {aiMode === "byok" && (
+                        <p className="text-sm text-emerald-600">
+                            {t("settings.aiMode.byokActive")}
+                        </p>
+                    )}
+                    {!hasByokConfig && aiMode !== "byok" && (
+                        <p className="text-sm text-muted-foreground">
+                            {t("settings.aiMode.noConfig")}
+                        </p>
+                    )}
+                </div>
+            )}
+
             {/* Access Code Section */}
             {accessCodeRequired && (
                 <div className="space-y-2 pb-3 border-b">

@@ -9,7 +9,6 @@ import {
 } from "ai"
 import { getServerSession } from "next-auth/next"
 import { z } from "zod"
-import { sanitizeClientOverrides } from "@/lib/ai-client-overrides"
 import {
     getAIModel,
     supportsHistoryXmlReplace,
@@ -36,8 +35,6 @@ import { analyzeDiagramXml } from "@/lib/xml-analyzer"
 import { generateXmlDiff } from "@/lib/xml-diff"
 import { buildDiagramSummary } from "@/lib/xml-summary"
 import { authOptions } from "@/server/auth"
-import { db } from "@/server/db"
-import { decryptCredentials } from "@/server/encryption"
 import {
     enforceQuotaLimit,
     QuotaExceededError,
@@ -577,149 +574,36 @@ async function handleChatRequest(req: Request): Promise<Response> {
     }
     // === CACHE CHECK END ===
 
-    // Read and sanitize client AI provider overrides from headers (BYOK)
-    const clientOverrides = sanitizeClientOverrides(req.headers)
-
     // 获取用户 session（如果已登录）
     const session = await getServerSession(authOptions)
     const userId = session?.user?.id
 
-    // 获取用户云端配置（登录用户，从 ProviderConfig 读取）
-    let userCloudConfig: {
-        provider?: string
-        apiKey?: string
-        baseUrl?: string
-        modelId?: string
-    } = {}
+    // 使用统一的配置解析器 (单一数据源)
+    const { resolveAIConfig } = await import("@/server/ai-config-resolver")
+    const aiConfig = await resolveAIConfig({ userId, headers: req.headers })
 
-    // 如果用户已登录且客户端没有传 API Key，尝试从云端获取配置
-    if (userId && !clientOverrides.apiKey) {
-        // 直接从 headers 读取 provider（sanitizeClientOverrides 在无 apiKey 时返回 null）
-        const requestedProvider =
-            req.headers.get("x-ai-provider") ||
-            req.headers.get("x-ai-provider-hint") ||
-            null
+    console.log("[AI Config] Resolved:", {
+        source: aiConfig.source,
+        provider: aiConfig.provider,
+        modelId: aiConfig.modelId,
+        bypassQuota: aiConfig.bypassQuota,
+        hasApiKey: !!aiConfig.apiKey,
+    })
 
-        // 查询用户的 ProviderConfig
-        // 如果指定了 provider，按 provider 查询（优先 isDefault）
-        // 如果没有指定 provider，只查询 isDefault=true 的配置（避免使用用户不期望的配置）
-        const userConfig = await db.providerConfig.findFirst({
-            where: {
-                userId,
-                ...(requestedProvider
-                    ? { provider: requestedProvider }
-                    : { isDefault: true }),
-                isDisabled: false,
-            },
-            orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
-        })
-
-        if (userConfig?.encryptedCredentials) {
-            try {
-                const decrypted = decryptCredentials({
-                    encryptedData: userConfig.encryptedCredentials,
-                    iv: userConfig.credentialsIv!,
-                    authTag: userConfig.credentialsAuthTag!,
-                    keyVersion: userConfig.credentialsVersion,
-                })
-                const credentials = JSON.parse(decrypted)
-
-                userCloudConfig = {
-                    provider: userConfig.provider,
-                    apiKey: credentials.apiKey,
-                    baseUrl: userConfig.baseUrl || undefined,
-                    modelId: userConfig.modelId || undefined,
-                }
-
-                console.log("[User Cloud Config] Loaded from database:", {
-                    provider: userCloudConfig.provider,
-                    hasApiKey: !!userCloudConfig.apiKey,
-                    baseUrl: userCloudConfig.baseUrl
-                        ? `${userCloudConfig.baseUrl.substring(0, 30)}...`
-                        : null,
-                    modelId: userCloudConfig.modelId,
-                })
-            } catch (error) {
-                console.error(
-                    "[User Cloud Config] Failed to decrypt credentials:",
-                    error,
-                )
-            }
-        }
-    }
-
-    // 配额限额检查：统一处理匿名和已认证用户，BYOK 用户绕过
-    const hasBYOK = !!(clientOverrides.provider && clientOverrides.apiKey)
-    const hasUserCloudConfig = !!userCloudConfig.apiKey
+    // 配额限额检查：根据 aiConfig.bypassQuota 决定是否绕过
     const quotaContext = await enforceQuotaLimit({
         headers: req.headers,
         userId,
-        bypassBYOK: hasBYOK || hasUserCloudConfig,
+        bypassBYOK: aiConfig.bypassQuota,
     })
 
-    // 获取系统默认 AI 配置（数据库优先，fallback 到环境变量）
-    const { getDefaultAIConfig } = await import("@/server/system-config")
-    const defaultConfig = await getDefaultAIConfig()
-
-    // 合并配置优先级：客户端 BYOK > 用户云端配置 > 系统默认配置
-    const finalOverrides = {
-        provider:
-            clientOverrides.provider ||
-            userCloudConfig.provider ||
-            defaultConfig.provider,
-        modelId:
-            clientOverrides.modelId ||
-            userCloudConfig.modelId ||
-            defaultConfig.model,
-        apiKey:
-            clientOverrides.apiKey ||
-            userCloudConfig.apiKey ||
-            defaultConfig.apiKey,
-        baseUrl:
-            clientOverrides.baseUrl ||
-            userCloudConfig.baseUrl ||
-            defaultConfig.baseUrl,
-    }
-
-    // 确定配置来源
-    const configSource = {
-        provider: clientOverrides.provider
-            ? "client"
-            : userCloudConfig.provider
-              ? "user-cloud"
-              : "system",
-        modelId: clientOverrides.modelId
-            ? "client"
-            : userCloudConfig.modelId
-              ? "user-cloud"
-              : "system",
-        apiKey: clientOverrides.apiKey
-            ? "client"
-            : userCloudConfig.apiKey
-              ? "user-cloud"
-              : "system",
-        baseUrl: clientOverrides.baseUrl
-            ? "client"
-            : userCloudConfig.baseUrl
-              ? "user-cloud"
-              : "system",
-    }
-
-    console.log("[Final Config] Using configuration:", {
-        provider: finalOverrides.provider,
-        modelId: finalOverrides.modelId,
-        apiKey: finalOverrides.apiKey
-            ? `${finalOverrides.apiKey.substring(0, 10)}...`
-            : null,
-        baseUrl: finalOverrides.baseUrl
-            ? `${finalOverrides.baseUrl.substring(0, 30)}...`
-            : null,
-        source: configSource,
+    // Get AI model with resolved configuration
+    const { model, providerOptions, headers, modelId } = getAIModel({
+        provider: aiConfig.provider,
+        apiKey: aiConfig.apiKey,
+        baseUrl: aiConfig.baseUrl,
+        modelId: aiConfig.modelId,
     })
-
-    // Get AI model with merged configuration
-    const { model, providerOptions, headers, modelId } =
-        getAIModel(finalOverrides)
 
     // Check if model supports prompt caching
     const shouldCache = supportsPromptCaching(modelId)
@@ -782,8 +666,7 @@ ${lastMessageText}
     // - @ai-sdk/google 在构造 functionCall parts 时读取 part.providerOptions.google.thoughtSignature
     //   因此这里做一次“元数据 → providerOptions”的兼容映射，避免历史消息回放时缺少签名而报错。
     const isGoogleProvider =
-        clientOverrides.provider === "google" ||
-        process.env.AI_PROVIDER === "google"
+        aiConfig.provider === "google" || process.env.AI_PROVIDER === "google"
     if (isGoogleProvider) {
         for (const msg of modelMessages as any[]) {
             if (!Array.isArray(msg?.content)) continue
@@ -905,8 +788,7 @@ ${lastMessageText}
         },
     )
 
-    const providerForSanitize =
-        clientOverrides.provider || process.env.AI_PROVIDER || null
+    const providerForSanitize = aiConfig.provider || null
     const isGeminiModel = modelId.toLowerCase().includes("gemini")
     const isOpenRouterGemini =
         providerForSanitize === "openrouter" && isGeminiModel
@@ -935,15 +817,14 @@ ${lastMessageText}
     // Record safe trace metadata for observability
     setTraceMetadata({
         modelId,
-        provider: clientOverrides.provider || process.env.AI_PROVIDER || null,
+        provider: aiConfig.provider,
         promptCaching: shouldCache,
         historyXmlReplace: enableHistoryReplace,
         xmlSummary: enableXmlSummary,
         analyzeTool: enableAnalyzeTool,
         maxNonSystemMessages,
-        hasClientOverride: !!(
-            clientOverrides.provider && clientOverrides.apiKey
-        ),
+        isBYOK: aiConfig.bypassQuota,
+        configSource: aiConfig.source,
         conversationId: validConversationId,
         requestId: validRequestId,
     })

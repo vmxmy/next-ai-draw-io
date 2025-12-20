@@ -1,11 +1,8 @@
 import { generateText } from "ai"
 import { getServerSession } from "next-auth/next"
 import { z } from "zod"
-import { sanitizeClientOverrides } from "@/lib/ai-client-overrides"
 import { getAIModel } from "@/lib/ai-providers"
 import { authOptions } from "@/server/auth"
-import { db } from "@/server/db"
-import { decryptCredentials } from "@/server/encryption"
 import {
     enforceQuotaLimit,
     QuotaExceededError,
@@ -84,73 +81,21 @@ export async function POST(req: Request) {
     // 控制输入长度，避免将大文件文本传给模型
     const promptSnippet = rawPrompt.slice(0, 500)
 
-    // 解析客户端 BYOK 覆写
-    const clientOverrides = sanitizeClientOverrides(req.headers)
-
-    // 登录用户：读取云端 Provider 配置（无 BYOK 时才读取）
+    // 获取用户 session
     const session = await getServerSession(authOptions)
     const userId = session?.user?.id
-    let userCloudConfig: {
-        provider?: string | null
-        apiKey?: string | null
-        baseUrl?: string | null
-        modelId?: string | null
-    } = {}
 
-    if (userId && !clientOverrides.apiKey) {
-        // 直接从 headers 读取 provider（sanitizeClientOverrides 在无 apiKey 时返回 null）
-        const requestedProvider =
-            req.headers.get("x-ai-provider") ||
-            req.headers.get("x-ai-provider-hint") ||
-            null
+    // 使用统一的配置解析器
+    const { resolveAIConfig } = await import("@/server/ai-config-resolver")
+    const aiConfig = await resolveAIConfig({ userId, headers: req.headers })
 
-        // 如果指定了 provider，按 provider 查询（优先 isDefault）
-        // 如果没有指定 provider，只查询 isDefault=true 的配置
-        const userConfig = await db.providerConfig.findFirst({
-            where: {
-                userId,
-                ...(requestedProvider
-                    ? { provider: requestedProvider }
-                    : { isDefault: true }),
-                isDisabled: false,
-            },
-            orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
-        })
-
-        if (userConfig?.encryptedCredentials) {
-            try {
-                const decrypted = decryptCredentials({
-                    encryptedData: userConfig.encryptedCredentials,
-                    iv: userConfig.credentialsIv!,
-                    authTag: userConfig.credentialsAuthTag!,
-                    keyVersion: userConfig.credentialsVersion,
-                })
-                const credentials = JSON.parse(decrypted)
-
-                userCloudConfig = {
-                    provider: userConfig.provider,
-                    apiKey: credentials.apiKey,
-                    baseUrl: userConfig.baseUrl || undefined,
-                    modelId: userConfig.modelId || undefined,
-                }
-            } catch (error) {
-                console.error(
-                    "[/api/conversation/title] Failed to decrypt user credentials:",
-                    error,
-                )
-            }
-        }
-    }
-
-    // 配额限额检查：BYOK/用户云端配置绕过
-    const hasBYOK = !!(clientOverrides.provider && clientOverrides.apiKey)
-    const hasUserCloudConfig = !!userCloudConfig.apiKey
+    // 配额限额检查
     let quotaContext: Awaited<ReturnType<typeof enforceQuotaLimit>> = null
     try {
         quotaContext = await enforceQuotaLimit({
             headers: req.headers,
             userId,
-            bypassBYOK: hasBYOK || hasUserCloudConfig,
+            bypassBYOK: aiConfig.bypassQuota,
         })
     } catch (error) {
         if (error instanceof QuotaExceededError) {
@@ -159,33 +104,13 @@ export async function POST(req: Request) {
         throw error
     }
 
-    // 系统默认配置
-    const { getDefaultAIConfig } = await import("@/server/system-config")
-    const defaultConfig = await getDefaultAIConfig()
-
-    // 合并配置优先级：客户端 BYOK > 用户云端 > 系统默认
-    const finalOverrides = {
-        provider:
-            clientOverrides.provider ||
-            userCloudConfig.provider ||
-            defaultConfig.provider,
-        modelId:
-            clientOverrides.modelId ||
-            userCloudConfig.modelId ||
-            defaultConfig.model,
-        apiKey:
-            clientOverrides.apiKey ||
-            userCloudConfig.apiKey ||
-            defaultConfig.apiKey,
-        baseUrl:
-            clientOverrides.baseUrl ||
-            userCloudConfig.baseUrl ||
-            defaultConfig.baseUrl,
-    }
-
     try {
-        const { model, providerOptions, headers, modelId } =
-            getAIModel(finalOverrides)
+        const { model, providerOptions, headers, modelId } = getAIModel({
+            provider: aiConfig.provider,
+            apiKey: aiConfig.apiKey,
+            baseUrl: aiConfig.baseUrl,
+            modelId: aiConfig.modelId,
+        })
 
         console.log("[/api/conversation/title] Using model:", modelId, {
             promptLength: promptSnippet.length,

@@ -1,3 +1,4 @@
+import { aiModeRouter } from "@/server/api/routers/ai-mode"
 import { auditLogRouter } from "@/server/api/routers/audit-log"
 import { conversationRouter } from "@/server/api/routers/conversation"
 import { exampleRouter } from "@/server/api/routers/example"
@@ -10,6 +11,7 @@ import { userManagementRouter } from "@/server/api/routers/user-management"
 import { createTRPCRouter } from "@/server/api/trpc"
 
 export const appRouter = createTRPCRouter({
+    aiMode: aiModeRouter,
     auditLog: auditLogRouter,
     conversation: conversationRouter,
     example: exampleRouter,

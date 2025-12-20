@@ -242,6 +242,15 @@ export function SettingsDialog({
             setBaseUrl("")
             setModelId("")
 
+            // Always update localStorage for provider selection (both logged-in and non-logged-in)
+            // This ensures getAIConfig() returns correct value for building request headers
+            if (value) {
+                localStorage.setItem(STORAGE_KEYS.aiProvider, value)
+            } else {
+                localStorage.removeItem(STORAGE_KEYS.aiProvider)
+            }
+            localStorage.setItem(STORAGE_KEYS.aiProviderConnection, "default")
+
             if (isLoggedIn) {
                 // Logged-in: Load cloud config for new provider
                 cloudSync.clearCloudConfigState()
@@ -271,12 +280,7 @@ export function SettingsDialog({
                     )
                 }
             } else {
-                // Non-logged-in: Save to localStorage and clear AI config
-                localStorage.setItem(STORAGE_KEYS.aiProvider, value)
-                localStorage.setItem(
-                    STORAGE_KEYS.aiProviderConnection,
-                    "default",
-                )
+                // Non-logged-in: Also clear API key/baseUrl/model from localStorage
                 localStorage.removeItem(STORAGE_KEYS.aiApiKey)
                 localStorage.removeItem(STORAGE_KEYS.aiBaseUrl)
                 localStorage.removeItem(STORAGE_KEYS.aiModel)

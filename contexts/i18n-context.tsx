@@ -72,6 +72,11 @@ export type I18nKey =
     | "settings.accessCode.requiredNote"
     | "settings.accessCode.invalid"
     | "settings.accessCode.verifyFailed"
+    | "settings.aiMode.label"
+    | "settings.aiMode.byokDescription"
+    | "settings.aiMode.systemDescription"
+    | "settings.aiMode.byokActive"
+    | "settings.aiMode.noConfig"
     | "settings.aiProvider.title"
     | "settings.aiProvider.note"
     | "settings.aiProvider.providerLabel"
@@ -397,6 +402,13 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.accessCode.requiredNote": "Required to use this application.",
         "settings.accessCode.invalid": "Invalid access code",
         "settings.accessCode.verifyFailed": "Failed to verify access code",
+        "settings.aiMode.label": "AI Configuration Mode",
+        "settings.aiMode.byokDescription": "Using your own API key",
+        "settings.aiMode.systemDescription": "Using system default service",
+        "settings.aiMode.byokActive":
+            "BYOK mode active - No usage limits applied",
+        "settings.aiMode.noConfig":
+            "Configure your API key below to enable BYOK mode",
         "settings.aiProvider.title": "AI Provider Settings",
         "settings.aiProvider.note":
             "Use your own API key to bypass usage limits. Your key is stored locally and can optionally be synced to the cloud if you sign in.",
@@ -741,6 +753,11 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.accessCode.requiredNote": "使用本应用需要访问码。",
         "settings.accessCode.invalid": "访问码无效",
         "settings.accessCode.verifyFailed": "访问码验证失败",
+        "settings.aiMode.label": "AI 配置模式",
+        "settings.aiMode.byokDescription": "使用你自己的 API Key",
+        "settings.aiMode.systemDescription": "使用系统默认服务",
+        "settings.aiMode.byokActive": "BYOK 模式已启用 - 不受配额限制",
+        "settings.aiMode.noConfig": "请在下方配置 API Key 以启用 BYOK 模式",
         "settings.aiProvider.title": "AI 提供商设置",
         "settings.aiProvider.note":
             "填写你自己的 API Key 以绕过使用限制。你的 Key 保存在浏览器本地，登录后可选择同步到云端。",

@@ -254,18 +254,20 @@ export default function ChatPanel({
             const headers: Record<string, string> = {
                 "x-access-code": config.accessCode,
             }
-            if (config.aiProvider) {
+
+            // 匿名用户 BYOK: 通过 headers 传递配置
+            // 登录用户: 服务端从 aiMode + ProviderConfig 读取，无需传递
+            if (!isLoggedIn && config.aiProvider && config.aiApiKey) {
                 headers["x-ai-provider"] = config.aiProvider
-                if (!isLoggedIn && config.aiBaseUrl) {
+                headers["x-ai-api-key"] = config.aiApiKey
+                if (config.aiBaseUrl) {
                     headers["x-ai-base-url"] = config.aiBaseUrl
-                }
-                if (!isLoggedIn && config.aiApiKey) {
-                    headers["x-ai-api-key"] = config.aiApiKey
                 }
                 if (config.aiModel) {
                     headers["x-ai-model"] = config.aiModel
                 }
             }
+
             return headers
         },
         [authSession?.user],
