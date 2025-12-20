@@ -148,7 +148,34 @@ export function applyDiagramOps(
             if (op.type === "updateCell") {
                 const cell = findMxCellOrThrow(doc, op.id)
                 if (op.value !== undefined) {
-                    cell.setAttribute("value", escapeXmlAttrValue(op.value))
+                    const rawValue = String(op.value)
+                    const style = cell.getAttribute("style") || ""
+                    const htmlEnabled = /(\b|;)html=1\b/.test(style)
+                    const htmlIntent =
+                        htmlEnabled ||
+                        hasHtmlTag(rawValue) ||
+                        rawValue.includes("&lt;")
+
+                    if (htmlIntent) {
+                        ensureHtmlEnabledStyle(cell)
+                    }
+
+                    // 统一换行：HTML 模式用 <br>
+                    const normalizedValue = htmlIntent
+                        ? rawValue
+                              .replaceAll("\r\n", "\n")
+                              .replaceAll("\n", "<br>")
+                        : rawValue
+
+                    // 如果是已转义 HTML，先反转义再转义
+                    const valueForEscape = htmlIntent
+                        ? decodeCommonEntitiesOnce(normalizedValue)
+                        : normalizedValue
+
+                    cell.setAttribute(
+                        "value",
+                        escapeXmlAttrValue(valueForEscape),
+                    )
                 }
                 if (op.style !== undefined) {
                     cell.setAttribute("style", op.style)
@@ -193,8 +220,40 @@ export function applyDiagramOps(
                 const newCell = doc.createElement("mxCell")
                 newCell.setAttribute("id", op.id)
                 newCell.setAttribute("parent", op.parent)
-                if (op.value)
-                    newCell.setAttribute("value", escapeXmlAttrValue(op.value))
+                if (op.value) {
+                    const rawValue = String(op.value)
+                    const htmlIntent =
+                        hasHtmlTag(rawValue) || rawValue.includes("&lt;")
+
+                    // 统一换行：HTML 模式用 <br>
+                    const normalizedValue = htmlIntent
+                        ? rawValue
+                              .replaceAll("\r\n", "\n")
+                              .replaceAll("\n", "<br>")
+                        : rawValue
+
+                    // 如果是已转义 HTML，先反转义再转义
+                    const valueForEscape = htmlIntent
+                        ? decodeCommonEntitiesOnce(normalizedValue)
+                        : normalizedValue
+
+                    newCell.setAttribute(
+                        "value",
+                        escapeXmlAttrValue(valueForEscape),
+                    )
+
+                    // 如果有 HTML 意图，确保 style 包含 html=1
+                    if (htmlIntent && op.style) {
+                        const style = op.style
+                        if (!/(\b|;)html=1\b/.test(style)) {
+                            op.style = style.endsWith(";")
+                                ? `${style}html=1;`
+                                : `${style};html=1;`
+                        }
+                    } else if (htmlIntent && !op.style) {
+                        op.style = "html=1;"
+                    }
+                }
                 if (op.style) newCell.setAttribute("style", op.style)
                 if (op.vertex) newCell.setAttribute("vertex", "1")
                 if (op.edge) {
