@@ -53,6 +53,35 @@ export function cssColorToHex(cssColor: string): string {
 }
 
 /**
+ * Get computed color from CSS variable by applying it to a temp element
+ * This properly resolves var() references and converts OKLCH to RGB
+ */
+function getComputedColor(varName: string): string {
+    if (typeof document === "undefined") {
+        return "#808080"
+    }
+
+    const temp = document.createElement("div")
+    temp.style.color = `var(${varName})`
+    temp.style.display = "none"
+    document.body.appendChild(temp)
+
+    const computed = getComputedStyle(temp).color
+    document.body.removeChild(temp)
+
+    // Parse rgb(r, g, b) or rgba(r, g, b, a) format
+    const rgbMatch = computed.match(
+        /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/,
+    )
+    if (rgbMatch) {
+        const [, r, g, b] = rgbMatch.map(Number)
+        return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
+    }
+
+    return "#808080"
+}
+
+/**
  * Extract current theme colors from CSS variables
  */
 export function extractThemeColors(): ThemeColors {
@@ -68,21 +97,14 @@ export function extractThemeColors(): ThemeColors {
         }
     }
 
-    const styles = getComputedStyle(document.documentElement)
-
-    const getColor = (varName: string): string => {
-        const cssValue = styles.getPropertyValue(varName).trim()
-        return cssColorToHex(cssValue)
-    }
-
     return {
-        primary: getColor("--primary"),
-        secondary: getColor("--secondary"),
-        accent: getColor("--accent"),
-        background: getColor("--background"),
-        foreground: getColor("--foreground"),
-        muted: getColor("--muted"),
-        border: getColor("--border"),
+        primary: getComputedColor("--primary"),
+        secondary: getComputedColor("--secondary"),
+        accent: getComputedColor("--accent"),
+        background: getComputedColor("--background"),
+        foreground: getComputedColor("--foreground"),
+        muted: getComputedColor("--muted"),
+        border: getComputedColor("--border"),
     }
 }
 
