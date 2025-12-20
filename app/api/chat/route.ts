@@ -322,7 +322,30 @@ function sanitizeGoogleToolCallingHistory(messages: any[]): any[] {
         }
 
         if (hasToolCall(msg)) {
+            const prev = stripped[stripped.length - 1]
             const next = merged[i + 1]
+
+            // Gemini 要求：function call turn 必须紧跟在 user turn 或 function response turn 之后
+            const prevIsUserOrTool =
+                prev?.role === "user" || prev?.role === "tool"
+            // 孤儿 tool-call: 前面不是 user 或 tool
+            if (!prevIsUserOrTool) {
+                console.warn(
+                    "[Google/Gemini] Stripping tool-call from assistant message (must follow user or tool turn, got: " +
+                        (prev?.role ?? "none") +
+                        ")",
+                )
+                const keptParts = Array.isArray(msg.content)
+                    ? msg.content.filter((p: any) => p?.type !== "tool-call")
+                    : msg.content
+                if (Array.isArray(keptParts) && keptParts.length > 0) {
+                    stripped.push({ ...msg, content: keptParts })
+                } else if (!Array.isArray(keptParts) && keptParts) {
+                    stripped.push({ ...msg, content: keptParts })
+                }
+                continue
+            }
+
             // 孤儿 tool-call: 后面没有紧跟 tool 响应
             if (!next || next.role !== "tool") {
                 console.warn(
@@ -431,7 +454,7 @@ function stripOpenRouterGeminiToolCallsMissingThoughtSignature(
     // 中途切换模型时，历史 tool-call 常来自 Claude/OpenAI 等，不可能带该签名；
     // 这会导致 400（missing thought_signature）。
     //
-    // 保守策略：仅剥离“缺少签名”的 tool-call part，随后由 sanitizeGoogleToolCallingHistory
+    // 保守策略：仅剥离"缺少签名"的 tool-call part，随后由 sanitizeGoogleToolCallingHistory
     // 清理孤儿 tool 响应，避免整个请求被拒绝。
 
     const hasThoughtSignature = (details: any): boolean => {
@@ -492,6 +515,55 @@ function stripOpenRouterGeminiToolCallsMissingThoughtSignature(
     if (strippedCount > 0) {
         console.warn(
             `[OpenRouter/Gemini] Stripped ${strippedCount} historical tool-call parts missing thought_signature to avoid 400`,
+        )
+    }
+
+    return next
+}
+
+/**
+ * 为直接使用 Google provider 的情况剥离缺少 thought_signature 的 tool call。
+ * Google Gemini API 要求每个 functionCall 必须包含 thought_signature。
+ */
+function stripGoogleToolCallsMissingThoughtSignature(messages: any[]): any[] {
+    const hasThoughtSignature = (msg: any, part: any): boolean => {
+        // 检查 part 级别的签名
+        const partSig =
+            part?.providerOptions?.google?.thoughtSignature ??
+            part?.providerMetadata?.google?.thoughtSignature
+        if (partSig) return true
+
+        // 检查 message 级别的签名
+        const msgSig =
+            msg?.providerOptions?.google?.thoughtSignature ??
+            msg?.providerMetadata?.google?.thoughtSignature
+        if (msgSig) return true
+
+        return false
+    }
+
+    let strippedCount = 0
+    const next = messages.map((msg) => {
+        if (!msg || msg.role !== "assistant" || !Array.isArray(msg.content)) {
+            return msg
+        }
+        const filtered = msg.content.filter((part: any) => {
+            const isToolCall =
+                part?.type === "tool-call" || part?.type === "function-call"
+            if (!isToolCall) return true
+
+            const ok = hasThoughtSignature(msg, part)
+            if (!ok) strippedCount++
+            return ok
+        })
+        return filtered.length === msg.content.length
+            ? msg
+            : { ...msg, content: filtered }
+    })
+
+    if (strippedCount > 0) {
+        console.warn(
+            `[Google/Gemini] Stripped ${strippedCount} historical tool-call parts missing thought_signature to avoid 400`,
         )
     }
 
@@ -938,6 +1010,7 @@ ${lastMessageText}
     const isGeminiModel = modelId.toLowerCase().includes("gemini")
     const isOpenRouterGemini =
         providerForSanitize === "openrouter" && isGeminiModel
+    const isDirectGoogleProvider = providerForSanitize === "google"
 
     const preservedMessages = (() => {
         if (isOpenRouterGemini) {
@@ -946,6 +1019,10 @@ ${lastMessageText}
             return stripOpenRouterGeminiToolCallsMissingThoughtSignature(
                 withDetails,
             )
+        }
+        // 直接使用 Google provider 时，也需要剥离缺少 thought_signature 的 tool call
+        if (isDirectGoogleProvider) {
+            return stripGoogleToolCallsMissingThoughtSignature(windowedMessages)
         }
         return windowedMessages
     })()
