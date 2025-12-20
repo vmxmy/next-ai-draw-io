@@ -35,7 +35,7 @@ import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import {
-    extractThemeColors,
+    extractFullThemeConfig,
     formatThemeColorsForPrompt,
 } from "@/lib/theme-colors"
 import { api } from "@/lib/trpc/client"
@@ -1217,9 +1217,9 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         if (!checkAllQuotaLimits()) return
 
         try {
-            // Extract current theme colors and format prompt
-            const colors = extractThemeColors()
-            const themePrompt = formatThemeColorsForPrompt(colors)
+            // Extract full theme configuration (colors + style) and format prompt
+            const themeConfig = extractFullThemeConfig()
+            const themePrompt = formatThemeColorsForPrompt(themeConfig)
 
             // Fetch current diagram XML
             const chartXml = await onFetchChart()

@@ -4,13 +4,46 @@
  */
 
 export interface ThemeColors {
+    // Core colors
     primary: string
+    primaryForeground: string
     secondary: string
+    secondaryForeground: string
     accent: string
+    accentForeground: string
     background: string
     foreground: string
     muted: string
+    mutedForeground: string
     border: string
+    // Additional colors
+    card: string
+    cardForeground: string
+    destructive: string
+    success: string
+    // Chart colors for data visualization
+    chart1: string
+    chart2: string
+    chart3: string
+    chart4: string
+    chart5: string
+}
+
+export interface ThemeStyle {
+    // Border radius
+    radius: string
+    // Shadow settings
+    shadowColor: string
+    shadowOffsetX: string
+    shadowOffsetY: string
+    shadowBlur: string
+    // Font
+    fontFamily: string
+}
+
+export interface FullThemeConfig {
+    colors: ThemeColors
+    style: ThemeStyle
 }
 
 /**
@@ -57,50 +90,29 @@ export function cssColorToHex(cssColor: string): string {
  */
 function getComputedColor(varName: string): string {
     if (typeof document === "undefined") {
-        console.log(
-            `[getComputedColor] ${varName}: SSR environment, returning fallback`,
-        )
         return "#808080"
     }
 
     const root = document.documentElement
     const styles = getComputedStyle(root)
-
-    // Debug: log the root element's class list
-    console.log(`[getComputedColor] ${varName}: root classes =`, root.className)
-
-    // Try to get the value directly from computed styles
-    // This works for --ds-* variables defined in :root or theme classes
     const rawValue = styles.getPropertyValue(varName).trim()
 
-    console.log(`[getComputedColor] ${varName}: rawValue = "${rawValue}"`)
-
     if (!rawValue) {
-        console.log(
-            `[getComputedColor] ${varName}: empty rawValue, returning fallback`,
-        )
         return "#808080"
     }
 
     // If the value is already hex, return it
     if (rawValue.startsWith("#")) {
-        console.log(
-            `[getComputedColor] ${varName}: already hex, returning "${rawValue}"`,
-        )
         return rawValue
     }
 
     // For oklch/lab or other color formats, use a canvas to convert to RGB
-    // Canvas getImageData always returns RGB values
     const canvas = document.createElement("canvas")
     canvas.width = 1
     canvas.height = 1
     const ctx = canvas.getContext("2d")
 
     if (!ctx) {
-        console.log(
-            `[getComputedColor] ${varName}: Canvas context failed, returning fallback`,
-        )
         return "#808080"
     }
 
@@ -110,11 +122,22 @@ function getComputedColor(varName: string): string {
     const imageData = ctx.getImageData(0, 0, 1, 1).data
     const [r, g, b] = imageData
 
-    const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
-    console.log(
-        `[getComputedColor] ${varName}: canvas RGB = [${r}, ${g}, ${b}], hex = "${hex}"`,
-    )
-    return hex
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
+}
+
+/**
+ * Get computed CSS value (non-color) from document root
+ */
+function getComputedValue(varName: string, fallback: string): string {
+    if (typeof document === "undefined") {
+        return fallback
+    }
+
+    const root = document.documentElement
+    const styles = getComputedStyle(root)
+    const rawValue = styles.getPropertyValue(varName).trim()
+
+    return rawValue || fallback
 }
 
 /**
@@ -123,59 +146,178 @@ function getComputedColor(varName: string): string {
  * These are defined in design-tokens.css and overridden by theme classes in palettes.css
  */
 export function extractThemeColors(): ThemeColors {
-    console.log("[extractThemeColors] Starting extraction...")
+    const defaultColors: ThemeColors = {
+        primary: "#3B82F6",
+        primaryForeground: "#FFFFFF",
+        secondary: "#F3F4F6",
+        secondaryForeground: "#1F2937",
+        accent: "#FEF3C7",
+        accentForeground: "#1F2937",
+        background: "#FFFFFF",
+        foreground: "#1F2937",
+        muted: "#9CA3AF",
+        mutedForeground: "#6B7280",
+        border: "#E5E7EB",
+        card: "#FFFFFF",
+        cardForeground: "#1F2937",
+        destructive: "#EF4444",
+        success: "#22C55E",
+        chart1: "#3B82F6",
+        chart2: "#22C55E",
+        chart3: "#F59E0B",
+        chart4: "#EF4444",
+        chart5: "#8B5CF6",
+    }
 
     if (typeof document === "undefined") {
-        console.log(
-            "[extractThemeColors] SSR environment, returning default colors",
-        )
-        return {
-            primary: "#3B82F6",
-            secondary: "#F3F4F6",
-            accent: "#FEF3C7",
-            background: "#FFFFFF",
-            foreground: "#1F2937",
-            muted: "#9CA3AF",
-            border: "#E5E7EB",
-        }
+        return defaultColors
     }
 
     // Use --ds-* variables (design system tokens) as they contain the actual values
-    // The --primary etc. are @theme directive aliases that may not be accessible via getComputedStyle
-    const colors = {
+    return {
         primary: getComputedColor("--ds-primary"),
+        primaryForeground: getComputedColor("--ds-primary-foreground"),
         secondary: getComputedColor("--ds-secondary"),
+        secondaryForeground: getComputedColor("--ds-secondary-foreground"),
         accent: getComputedColor("--ds-accent"),
+        accentForeground: getComputedColor("--ds-accent-foreground"),
         background: getComputedColor("--ds-background"),
         foreground: getComputedColor("--ds-foreground"),
         muted: getComputedColor("--ds-muted"),
+        mutedForeground: getComputedColor("--ds-muted-foreground"),
         border: getComputedColor("--ds-border"),
+        card: getComputedColor("--ds-card"),
+        cardForeground: getComputedColor("--ds-card-foreground"),
+        destructive: getComputedColor("--ds-destructive"),
+        success: getComputedColor("--ds-success"),
+        chart1: getComputedColor("--ds-chart-1"),
+        chart2: getComputedColor("--ds-chart-2"),
+        chart3: getComputedColor("--ds-chart-3"),
+        chart4: getComputedColor("--ds-chart-4"),
+        chart5: getComputedColor("--ds-chart-5"),
     }
-
-    console.log("[extractThemeColors] Final colors:", colors)
-    return colors
 }
 
 /**
- * Format theme colors as a prompt for the AI agent
+ * Extract theme style settings (non-color values)
  */
-export function formatThemeColorsForPrompt(colors: ThemeColors): string {
-    return `Apply the following UI theme colors to the entire diagram. Update all shapes, containers, and connectors to create a cohesive color scheme matching the current page theme:
+export function extractThemeStyle(): ThemeStyle {
+    const defaultStyle: ThemeStyle = {
+        radius: "8px",
+        shadowColor: "#000000",
+        shadowOffsetX: "0px",
+        shadowOffsetY: "4px",
+        shadowBlur: "6px",
+        fontFamily: "sans-serif",
+    }
 
-[Theme Colors - HEX format for draw.io styles]
-- Primary: ${colors.primary} (use for main elements, headers, important shapes - as fillColor)
-- Secondary: ${colors.secondary} (use for secondary elements, container backgrounds)
-- Accent: ${colors.accent} (use for highlights, call-to-action elements)
-- Background: ${colors.background} (use for shape fill backgrounds - as fillColor for less prominent shapes)
-- Foreground: ${colors.foreground} (use for text, labels - as fontColor)
-- Muted: ${colors.muted} (use for less important elements, secondary text)
-- Border: ${colors.border} (use for borders, edges - as strokeColor)
+    if (typeof document === "undefined") {
+        return defaultStyle
+    }
 
-Instructions:
+    return {
+        radius: getComputedValue("--ds-radius", "8px"),
+        shadowColor: getComputedColor("--ds-shadow-color"),
+        shadowOffsetX: getComputedValue("--ds-shadow-offset-x", "0px"),
+        shadowOffsetY: getComputedValue("--ds-shadow-offset-y", "4px"),
+        shadowBlur: getComputedValue("--ds-shadow-blur", "6px"),
+        fontFamily: getComputedValue("--ds-font-sans", "sans-serif"),
+    }
+}
+
+/**
+ * Extract full theme configuration (colors + style)
+ */
+export function extractFullThemeConfig(): FullThemeConfig {
+    return {
+        colors: extractThemeColors(),
+        style: extractThemeStyle(),
+    }
+}
+
+/**
+ * Format full theme config as a prompt for the AI agent
+ */
+export function formatThemeColorsForPrompt(config: FullThemeConfig): string {
+    const { colors, style } = config
+
+    // Parse radius to get numeric value for draw.io
+    const radiusValue = Number.parseInt(style.radius, 10) || 8
+
+    return `Apply the following UI theme to the entire diagram. Update all shapes, containers, and connectors to create a cohesive design matching the current page theme.
+
+## Color Palette (HEX format for draw.io styles)
+
+### Primary Colors
+- Primary: ${colors.primary} (main elements, headers, important shapes - fillColor)
+- Primary Text: ${colors.primaryForeground} (text on primary backgrounds - fontColor)
+
+### Secondary Colors
+- Secondary: ${colors.secondary} (secondary elements, container backgrounds - fillColor)
+- Secondary Text: ${colors.secondaryForeground} (text on secondary backgrounds - fontColor)
+
+### Accent Colors
+- Accent: ${colors.accent} (highlights, call-to-action elements - fillColor)
+- Accent Text: ${colors.accentForeground} (text on accent backgrounds - fontColor)
+
+### Base Colors
+- Background: ${colors.background} (shape fill backgrounds - fillColor)
+- Foreground: ${colors.foreground} (default text color - fontColor)
+- Border: ${colors.border} (borders, edges, connectors - strokeColor)
+
+### Supporting Colors
+- Card: ${colors.card} (card/container backgrounds - fillColor)
+- Card Text: ${colors.cardForeground} (text in cards - fontColor)
+- Muted: ${colors.muted} (less important backgrounds - fillColor)
+- Muted Text: ${colors.mutedForeground} (secondary text - fontColor)
+
+### Status Colors
+- Success: ${colors.success} (success states, positive indicators)
+- Destructive: ${colors.destructive} (error states, warnings, negative indicators)
+
+### Chart/Data Visualization Colors
+- Chart 1: ${colors.chart1}
+- Chart 2: ${colors.chart2}
+- Chart 3: ${colors.chart3}
+- Chart 4: ${colors.chart4}
+- Chart 5: ${colors.chart5}
+
+## Style Settings
+
+### Border Radius
+- Radius: ${radiusValue}px (use rounded=${radiusValue > 0 ? 1 : 0};arcSize=${Math.min(radiusValue * 2, 50)} in draw.io styles)
+
+### Shadow Effect
+- Shadow Color: ${style.shadowColor}
+- Shadow Offset: ${style.shadowOffsetX} horizontal, ${style.shadowOffsetY} vertical
+- Shadow Blur: ${style.shadowBlur}
+- (Use shadow=1 in draw.io styles for shapes that need shadow)
+
+### Font
+- Font Family: ${style.fontFamily}
+
+## Instructions
+
 1. Apply these colors to ALL existing shapes using edit_diagram with updateCell operations
-2. Use Primary (${colors.primary}) for main/important shapes (fillColor)
-3. Use Foreground (${colors.foreground}) for all text labels (fontColor)
-4. Use Border (${colors.border}) for all shape borders and edges (strokeColor)
-5. Ensure text remains readable with appropriate contrast
-6. Apply consistent styling across the entire diagram`
+2. Color usage hierarchy:
+   - Primary (${colors.primary}) → Main/important shapes, headers
+   - Secondary (${colors.secondary}) → Container backgrounds, groups
+   - Accent (${colors.accent}) → Highlights, call-to-action elements
+   - Card (${colors.card}) → Content containers, boxes
+   - Muted (${colors.muted}) → Less important elements
+
+3. Text colors must contrast with backgrounds:
+   - On Primary → use ${colors.primaryForeground}
+   - On Secondary → use ${colors.secondaryForeground}
+   - On Accent → use ${colors.accentForeground}
+   - On Card → use ${colors.cardForeground}
+   - Default text → use ${colors.foreground}
+
+4. Borders and connectors → use ${colors.border}
+
+5. Apply rounded corners: rounded=1;arcSize=${Math.min(radiusValue * 2, 50)}
+
+6. For data visualizations, use chart colors in order: chart1→chart5
+
+7. Use Success (${colors.success}) for positive states, Destructive (${colors.destructive}) for errors/warnings`
 }
