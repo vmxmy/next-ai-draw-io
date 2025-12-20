@@ -18,6 +18,7 @@ export interface UseCloudSyncOptions {
     apiKey: string
     baseUrl: string
     modelId: string
+    hasCloudConfig: boolean
     onConfigRestored?: (config: { baseUrl?: string; modelId?: string }) => void
     onCloudConfigLoaded?: (config: CloudConfig) => void
     onConnectionsLoaded?: (configs: CloudConfig[]) => void
@@ -31,6 +32,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         apiKey,
         baseUrl,
         modelId,
+        hasCloudConfig: hasExistingCloudConfig,
         onConfigRestored,
         onCloudConfigLoaded,
         onConnectionsLoaded,
@@ -119,8 +121,13 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     )
 
     // Sync current config to cloud
+    // 允许两种情况：1) 有新的 apiKey  2) 云端已有配置，只更新其他字段
     const syncToCloud = useCallback(() => {
-        if (!session?.user || !provider || !apiKey) {
+        if (!session?.user || !provider) {
+            return
+        }
+        // 如果没有本地 apiKey 且云端也没有配置，则不允许同步
+        if (!apiKey && !hasExistingCloudConfig) {
             return
         }
 
@@ -129,7 +136,8 @@ export function useCloudSync(options: UseCloudSyncOptions) {
                 provider: provider as ProviderType,
                 name: connectionName || "default",
                 isDefault,
-                apiKey,
+                // 只有本地有 apiKey 时才发送，否则后端会保留原有的
+                ...(apiKey ? { apiKey } : {}),
                 baseUrl: baseUrl || undefined,
                 modelId: modelId || undefined,
             },
@@ -150,6 +158,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         apiKey,
         baseUrl,
         modelId,
+        hasExistingCloudConfig,
         upsertConfigMutation,
         loadConnections,
     ])

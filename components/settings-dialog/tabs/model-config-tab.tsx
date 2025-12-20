@@ -388,38 +388,42 @@ export function ModelConfigTab({
 
                             {/* Action Buttons */}
                             <div className="flex gap-2 pt-2">
-                                {/* Sync to Cloud Button - Only requires provider + apiKey */}
-                                {isLoggedIn && provider && apiKey && (
-                                    <Button
-                                        variant={
-                                            syncSuccess ? "outline" : "default"
-                                        }
-                                        size="sm"
-                                        className="flex-1"
-                                        disabled={isSyncing || syncSuccess}
-                                        onClick={onSyncToCloud}
-                                    >
-                                        {syncSuccess ? (
-                                            <>
-                                                <Check className="h-4 w-4 mr-2 text-green-600" />
-                                                {t(
-                                                    "settings.aiProvider.synced",
-                                                )}
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Cloud className="h-4 w-4 mr-2" />
-                                                {isSyncing
-                                                    ? t(
-                                                          "settings.aiProvider.syncing",
-                                                      )
-                                                    : t(
-                                                          "settings.aiProvider.syncToCloud",
-                                                      )}
-                                            </>
-                                        )}
-                                    </Button>
-                                )}
+                                {/* Sync to Cloud Button - 允许：1) 有新 apiKey  2) 云端已有配置，只更新其他字段 */}
+                                {isLoggedIn &&
+                                    provider &&
+                                    (apiKey || hasCloudConfig) && (
+                                        <Button
+                                            variant={
+                                                syncSuccess
+                                                    ? "outline"
+                                                    : "default"
+                                            }
+                                            size="sm"
+                                            className="flex-1"
+                                            disabled={isSyncing || syncSuccess}
+                                            onClick={onSyncToCloud}
+                                        >
+                                            {syncSuccess ? (
+                                                <>
+                                                    <Check className="h-4 w-4 mr-2 text-green-600" />
+                                                    {t(
+                                                        "settings.aiProvider.synced",
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Cloud className="h-4 w-4 mr-2" />
+                                                    {isSyncing
+                                                        ? t(
+                                                              "settings.aiProvider.syncing",
+                                                          )
+                                                        : t(
+                                                              "settings.aiProvider.syncToCloud",
+                                                          )}
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
 
                                 {/* Restore from Cloud Button */}
                                 {isLoggedIn && provider && hasCloudConfig && (

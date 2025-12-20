@@ -83,6 +83,11 @@ export function SettingsDialog({
     // Interface state
     const [closeProtection, setCloseProtection] = useState(true)
 
+    // Check if current provider has cloud config (for sync logic)
+    const providerHasCloudConfigRef = allCloudConnections.some(
+        (conn) => conn.provider === provider,
+    )
+
     // Cloud sync hook
     const cloudSync = useCloudSync({
         provider,
@@ -91,6 +96,7 @@ export function SettingsDialog({
         apiKey,
         baseUrl,
         modelId,
+        hasCloudConfig: providerHasCloudConfigRef,
         onConfigRestored: (config) => {
             if (config.baseUrl) {
                 setBaseUrl(config.baseUrl)
@@ -108,11 +114,6 @@ export function SettingsDialog({
         },
     })
 
-    // Check if current provider has cloud config
-    const providerHasCloudConfig = allCloudConnections.some(
-        (conn) => conn.provider === provider,
-    )
-
     // Model selector hook
     const modelSelector = useModelSelector({
         provider,
@@ -120,7 +121,7 @@ export function SettingsDialog({
         baseUrl,
         isDialogOpen: open,
         isLoggedIn,
-        hasCloudConfig: providerHasCloudConfig,
+        hasCloudConfig: providerHasCloudConfigRef,
     })
 
     // Provider catalog hook (数据库驱动)
