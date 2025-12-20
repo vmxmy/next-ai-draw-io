@@ -155,15 +155,6 @@ export function ModelConfigTab({
         (aiMode !== "byok" && !hasByokConfig) ||
         isModeLoading ||
         isSwitchingMode
-    console.log("[ModelConfigTab] BYOK Switch Debug:", {
-        isLoggedIn,
-        aiMode,
-        hasByokConfig,
-        isModeLoading,
-        isSwitchingMode,
-        switchDisabled,
-    })
-
     const handleModeToggle = async (checked: boolean) => {
         if (!isLoggedIn) return
         setIsSwitchingMode(true)

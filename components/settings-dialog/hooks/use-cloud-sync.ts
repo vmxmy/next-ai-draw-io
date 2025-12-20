@@ -164,40 +164,6 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         loadConnections,
     ])
 
-    // Sync on field change (auto-sync when apiKey is present)
-    const syncOnChange = useCallback(() => {
-        if (session?.user && provider && apiKey) {
-            upsertConfigMutation.mutate(
-                {
-                    provider: provider as ProviderType,
-                    name: connectionName || "default",
-                    isDefault,
-                    apiKey,
-                    baseUrl: baseUrl || undefined,
-                    modelId: modelId || undefined,
-                },
-                {
-                    onSuccess: () => {
-                        console.log(
-                            "[settings] Config synced to cloud (apiKey + baseUrl)",
-                        )
-                        loadConnections(provider)
-                    },
-                },
-            )
-        }
-    }, [
-        session,
-        provider,
-        connectionName,
-        isDefault,
-        apiKey,
-        baseUrl,
-        modelId,
-        upsertConfigMutation,
-        loadConnections,
-    ])
-
     // Restore config from cloud
     const restoreFromCloud = useCallback(async () => {
         if (!session?.user || !provider) {
@@ -292,7 +258,6 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         loadCloudConfig,
         loadConnections,
         syncToCloud,
-        syncOnChange,
         restoreFromCloud,
         deleteCloudConfig,
         clearCloudConfigState,

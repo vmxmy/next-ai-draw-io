@@ -100,17 +100,6 @@ export function useAIMode(): AIModeStat {
         ? data?.hasByokConfig || false
         : anonymousHasByok
 
-    // Debug logging
-    console.log("[useAIMode] Debug:", {
-        isAuthenticated,
-        isLoading,
-        mode,
-        hasByokConfig,
-        selectedConfigId: data?.selectedConfigId,
-        rawData: data,
-        anonymousHasByok,
-    })
-
     return {
         mode,
         isLoading: isAuthenticated ? isLoading : false,

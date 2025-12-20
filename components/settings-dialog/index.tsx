@@ -368,68 +368,49 @@ export function SettingsDialog({
         (value: string) => {
             setApiKey(value)
 
-            if (isLoggedIn) {
-                // Logged-in: Auto-sync to cloud when we have required fields
-                if (value && provider) {
-                    cloudSync.syncOnChange()
-                }
-            } else {
+            if (!isLoggedIn) {
                 // Non-logged-in: Save to localStorage
                 localStorage.setItem(STORAGE_KEYS.aiApiKey, value)
             }
         },
-        [isLoggedIn, provider, cloudSync],
+        [isLoggedIn],
     )
 
     const handleBaseUrlChange = useCallback(
         (value: string) => {
             setBaseUrl(value)
 
-            if (isLoggedIn) {
-                // Logged-in: Auto-sync to cloud
-                if (apiKey && provider) {
-                    cloudSync.syncOnChange()
-                }
-            } else {
+            if (!isLoggedIn) {
                 // Non-logged-in: Save to localStorage
                 localStorage.setItem(STORAGE_KEYS.aiBaseUrl, value)
             }
         },
-        [isLoggedIn, apiKey, provider, cloudSync],
+        [isLoggedIn],
     )
 
     const handleModelIdChange = useCallback(
         (value: string) => {
             setModelId(value)
 
-            if (isLoggedIn) {
-                // Logged-in: Auto-sync to cloud
-                if (apiKey && provider) {
-                    cloudSync.syncOnChange()
-                }
-            } else {
+            if (!isLoggedIn) {
                 // Non-logged-in: Save to localStorage
                 localStorage.setItem(STORAGE_KEYS.aiModel, value)
             }
         },
-        [isLoggedIn, apiKey, provider, cloudSync],
+        [isLoggedIn],
     )
 
     const handleSelectModel = useCallback(
         (id: string) => {
             setModelId(id)
 
-            if (isLoggedIn) {
-                if (apiKey && provider) {
-                    cloudSync.syncOnChange()
-                }
-            } else {
+            if (!isLoggedIn) {
                 localStorage.setItem(STORAGE_KEYS.aiModel, id)
             }
 
             modelSelector.closeModelMenu()
         },
-        [isLoggedIn, apiKey, provider, cloudSync, modelSelector],
+        [isLoggedIn, modelSelector],
     )
 
     // Clear all config
