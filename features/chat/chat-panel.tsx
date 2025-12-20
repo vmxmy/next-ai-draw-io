@@ -46,7 +46,7 @@ import { autoFixXml, formatXML, wrapWithMxFile } from "@/lib/utils"
 interface ChatPanelProps {
     isVisible: boolean
     onToggleVisibility: () => void
-    drawioUi: "min" | "sketch"
+    drawioUi: "kennedy" | "atlas"
     onToggleDrawioUi: () => void
     darkMode: boolean
     onToggleDarkMode: () => void

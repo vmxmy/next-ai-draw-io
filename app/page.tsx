@@ -25,7 +25,7 @@ export default function Home() {
     } = useDiagram()
     const [isMobile, setIsMobile] = useState(false)
     const [isChatVisible, setIsChatVisible] = useState(true)
-    const [drawioUi, setDrawioUi] = useState<"min" | "sketch">("min")
+    const [drawioUi, setDrawioUi] = useState<"kennedy" | "atlas">("kennedy")
     const [darkMode, setDarkMode] = useState(false)
     const [isLoaded, setIsLoaded] = useState(false)
     const [closeProtection, setCloseProtection] = useState(false)
@@ -38,7 +38,7 @@ export default function Home() {
     // Load preferences from localStorage after mount
     useEffect(() => {
         const savedUi = localStorage.getItem("drawio-theme")
-        if (savedUi === "min" || savedUi === "sketch") {
+        if (savedUi === "kennedy" || savedUi === "atlas") {
             setDrawioUi(savedUi)
         }
 
@@ -208,7 +208,7 @@ export default function Home() {
                             drawioUi={drawioUi}
                             onToggleDrawioUi={() => {
                                 const newUi =
-                                    drawioUi === "min" ? "sketch" : "min"
+                                    drawioUi === "kennedy" ? "atlas" : "kennedy"
                                 localStorage.setItem("drawio-theme", newUi)
                                 setDrawioUi(newUi)
                                 resetDrawioReady()

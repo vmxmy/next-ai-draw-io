@@ -121,8 +121,8 @@ export type I18nKey =
     | "settings.themeColor.note"
     | "settings.drawioStyle.label"
     | "settings.drawioStyle.note"
-    | "settings.drawioStyle.minimal"
-    | "settings.drawioStyle.sketch"
+    | "settings.drawioStyle.kennedy"
+    | "settings.drawioStyle.atlas"
     | "settings.drawioStyle.switchTo"
     | "settings.closeProtection.label"
     | "settings.closeProtection.note"
@@ -454,8 +454,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "Choose from official shadcn/ui themes. Customize UI colors.",
         "settings.drawioStyle.label": "DrawIO Style",
         "settings.drawioStyle.note": "Canvas style: {style}",
-        "settings.drawioStyle.minimal": "Minimal",
-        "settings.drawioStyle.sketch": "Sketch",
+        "settings.drawioStyle.kennedy": "Kennedy",
+        "settings.drawioStyle.atlas": "Atlas",
         "settings.drawioStyle.switchTo": "Switch to {style}",
         "settings.closeProtection.label": "Close Protection",
         "settings.closeProtection.note":
@@ -794,8 +794,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "从 shadcn/ui 官方主题中选择，自定义界面配色。",
         "settings.drawioStyle.label": "DrawIO 样式",
         "settings.drawioStyle.note": "画布风格：{style}",
-        "settings.drawioStyle.minimal": "简洁",
-        "settings.drawioStyle.sketch": "手绘",
+        "settings.drawioStyle.kennedy": "经典",
+        "settings.drawioStyle.atlas": "现代",
         "settings.drawioStyle.switchTo": "切换为 {style}",
         "settings.closeProtection.label": "关闭保护",
         "settings.closeProtection.note": "离开页面时弹出确认提示。",

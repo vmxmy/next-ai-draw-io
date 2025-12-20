@@ -34,7 +34,7 @@ interface SettingsDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     onCloseProtectionChange?: (enabled: boolean) => void
-    drawioUi: "min" | "sketch"
+    drawioUi: "kennedy" | "atlas"
     onToggleDrawioUi: () => void
     darkMode: boolean
     onToggleDarkMode: () => void

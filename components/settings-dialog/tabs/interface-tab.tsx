@@ -18,7 +18,7 @@ import { tweakcnThemes } from "@/lib/tweakcn-themes"
 interface InterfaceTabProps {
     darkMode: boolean
     onToggleDarkMode: () => void
-    drawioUi: "min" | "sketch"
+    drawioUi: "kennedy" | "atlas"
     onToggleDrawioUi: () => void
     closeProtection: boolean
     onCloseProtectionChange: (checked: boolean) => void
@@ -131,9 +131,9 @@ export function InterfaceTab({
                     <p className="text-[0.8rem] text-muted-foreground">
                         {t("settings.drawioStyle.note", {
                             style:
-                                drawioUi === "min"
-                                    ? t("settings.drawioStyle.minimal")
-                                    : t("settings.drawioStyle.sketch"),
+                                drawioUi === "kennedy"
+                                    ? t("settings.drawioStyle.kennedy")
+                                    : t("settings.drawioStyle.atlas"),
                         })}
                     </p>
                 </div>
@@ -145,9 +145,9 @@ export function InterfaceTab({
                 >
                     {t("settings.drawioStyle.switchTo", {
                         style:
-                            drawioUi === "min"
-                                ? t("settings.drawioStyle.sketch")
-                                : t("settings.drawioStyle.minimal"),
+                            drawioUi === "kennedy"
+                                ? t("settings.drawioStyle.atlas")
+                                : t("settings.drawioStyle.kennedy"),
                     })}
                 </Button>
             </div>
