@@ -220,7 +220,7 @@ async function incrementQuotaCount({
  * 主函数：强制执行配额限制
  * 返回配额上下文，供后续记录使用
  *
- * @param bypassBYOK - BYOK 用户：仅检查请求数限制，不检查 token 限制
+ * @param bypassBYOK - BYOK 用户：完全绕过所有配额限制
  */
 export async function enforceQuotaLimit({
     headers,
@@ -231,8 +231,11 @@ export async function enforceQuotaLimit({
     userId?: string
     bypassBYOK: boolean
 }): Promise<QuotaContext | null> {
-    // BYOK 用户：仍然检查请求数限制，防止滥用
-    // 但不检查 token 限制，因为 token 消耗在用户自己的 API Key 上
+    // BYOK 用户：完全绕过所有配额限制
+    // 因为请求和 token 消耗都在用户自己的 API Key 上
+    if (bypassBYOK) {
+        return null
+    }
 
     const ip = getClientIpFromHeaders(headers)
     const ipHash = hashIp(ip)
@@ -241,15 +244,8 @@ export async function enforceQuotaLimit({
     const { tier, limits } = await getUserQuotaLimits(userId)
     const { dailyRequestLimit, dailyTokenLimit, tpmLimit } = limits
 
-    // BYOK 用户只检查请求数，不检查 token 限制
-    const effectiveDailyTokenLimit = bypassBYOK ? 0 : dailyTokenLimit
-    const effectiveTpmLimit = bypassBYOK ? 0 : tpmLimit
-
     // 如果所有限额都为 0，表示无限制
-    const enabled =
-        dailyRequestLimit > 0 ||
-        effectiveDailyTokenLimit > 0 ||
-        effectiveTpmLimit > 0
+    const enabled = dailyRequestLimit > 0 || dailyTokenLimit > 0 || tpmLimit > 0
     if (!enabled) return null
 
     const dayKey = getUtcDayKey()
@@ -266,7 +262,7 @@ export async function enforceQuotaLimit({
                       bucketKey: dayKey,
                   })
                 : Promise.resolve(0n),
-            effectiveDailyTokenLimit > 0
+            dailyTokenLimit > 0
                 ? readQuotaCount({
                       userId,
                       ipHash,
@@ -274,7 +270,7 @@ export async function enforceQuotaLimit({
                       bucketKey: dayKey,
                   })
                 : Promise.resolve(0n),
-            effectiveTpmLimit > 0
+            tpmLimit > 0
                 ? readQuotaCount({
                       userId,
                       ipHash,
@@ -290,20 +286,14 @@ export async function enforceQuotaLimit({
                 `已达到今日请求次数上限（${dailyRequestLimit}），请明天再试或升级您的等级。`,
             )
         }
-        if (
-            effectiveDailyTokenLimit > 0 &&
-            dayTokens >= BigInt(effectiveDailyTokenLimit)
-        ) {
+        if (dailyTokenLimit > 0 && dayTokens >= BigInt(dailyTokenLimit)) {
             throw new QuotaExceededError(
-                `已达到今日 Token 上限（${effectiveDailyTokenLimit}），请明天再试或升级您的等级。`,
+                `已达到今日 Token 上限（${dailyTokenLimit}），请明天再试或升级您的等级。`,
             )
         }
-        if (
-            effectiveTpmLimit > 0 &&
-            minuteTokens >= BigInt(effectiveTpmLimit)
-        ) {
+        if (tpmLimit > 0 && minuteTokens >= BigInt(tpmLimit)) {
             throw new QuotaExceededError(
-                `触发 Token/分钟 限制（${effectiveTpmLimit}），请稍后 60 秒再试。`,
+                `触发 Token/分钟 限制（${tpmLimit}），请稍后 60 秒再试。`,
             )
         }
 
@@ -318,12 +308,7 @@ export async function enforceQuotaLimit({
             })
         }
 
-        // 返回的 limits 中，BYOK 用户的 token 限制已被清零，防止后续记录 token 使用
-        const effectiveLimits = bypassBYOK
-            ? { ...limits, dailyTokenLimit: 0, tpmLimit: 0 }
-            : limits
-
-        return { userId, ipHash, tier, limits: effectiveLimits }
+        return { userId, ipHash, tier, limits }
     } catch (error) {
         // Fail-open：避免数据库故障导致服务完全不可用
         const failOpen = process.env.RATE_LIMIT_FAIL_OPEN !== "false"
