@@ -150,6 +150,20 @@ export function ModelConfigTab({
     } = useAIMode()
     const [isSwitchingMode, setIsSwitchingMode] = useState(false)
 
+    // Debug logging for BYOK switch state
+    const switchDisabled =
+        (aiMode !== "byok" && !hasByokConfig) ||
+        isModeLoading ||
+        isSwitchingMode
+    console.log("[ModelConfigTab] BYOK Switch Debug:", {
+        isLoggedIn,
+        aiMode,
+        hasByokConfig,
+        isModeLoading,
+        isSwitchingMode,
+        switchDisabled,
+    })
+
     const handleModeToggle = async (checked: boolean) => {
         if (!isLoggedIn) return
         setIsSwitchingMode(true)
@@ -199,7 +213,9 @@ export function ModelConfigTab({
                             id="ai-mode"
                             checked={aiMode === "byok"}
                             disabled={
-                                !hasByokConfig ||
+                                // 如果已经是 byok 模式，允许关闭
+                                // 只有在非 byok 模式且没有配置时才禁用
+                                (aiMode !== "byok" && !hasByokConfig) ||
                                 isModeLoading ||
                                 isSwitchingMode
                             }

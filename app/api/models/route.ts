@@ -236,8 +236,7 @@ export async function POST(req: Request) {
                 return Response.json({
                     models: await listModelsFromOpenAICompatible({
                         baseUrl:
-                            effectiveBaseUrl ||
-                            "https://api.siliconflow.com/v1",
+                            effectiveBaseUrl || "https://api.siliconflow.cn/v1",
                         apiKey,
                     }),
                 })

@@ -170,7 +170,7 @@ export function getBaseUrlPlaceholder(
         case "anthropic":
             return "https://api.anthropic.com/v1"
         case "siliconflow":
-            return "https://api.siliconflow.com/v1"
+            return "https://api.siliconflow.cn/v1"
         case "openai_compatible":
             return "https://your-gateway.example.com/v1"
         default:

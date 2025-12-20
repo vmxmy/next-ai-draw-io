@@ -1002,6 +1002,7 @@ ${lastMessageText}
                 return {
                     inputTokens: totalInputTokens,
                     outputTokens: usage.outputTokens ?? 0,
+                    modelId,
                     ...(validConversationId && {
                         conversationId: validConversationId,
                     }),

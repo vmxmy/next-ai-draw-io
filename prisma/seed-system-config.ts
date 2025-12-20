@@ -197,7 +197,7 @@ async function main() {
             displayName: "SiliconFlow",
             compatibility: "openai_compat",
             authType: "apiKey",
-            defaultBaseUrl: "https://api.siliconflow.com/v1",
+            defaultBaseUrl: "https://api.siliconflow.cn/v1",
             suggestedModels: [
                 { id: "deepseek-ai/DeepSeek-V3" },
                 { id: "deepseek-ai/DeepSeek-R1" },

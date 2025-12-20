@@ -1,7 +1,7 @@
 "use client"
 
 import { useSession } from "next-auth/react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { STORAGE_KEYS } from "@/lib/storage"
 import { api } from "@/lib/trpc/client"
 
@@ -11,16 +11,19 @@ export interface AIModeStat {
     mode: AIMode
     isLoading: boolean
     hasByokConfig: boolean
+    selectedConfigId: string | null
     byokProvider: string | null
+    byokConnectionName: string | null
     byokModel: string | null
     setMode: (mode: AIMode) => Promise<void>
+    setSelectedConfig: (configId: string | null) => Promise<void>
     refresh: () => void
 }
 
 /**
  * Hook for managing AI mode selection
  *
- * - 登录用户: 从 tRPC 获取 aiMode 状态
+ * - 登录用户: 从 tRPC 获取 aiMode 状态和选中的配置
  * - 匿名用户: 从 localStorage 检测 BYOK 配置
  */
 export function useAIMode(): AIModeStat {
@@ -37,6 +40,7 @@ export function useAIMode(): AIModeStat {
     )
 
     const setModeMutation = api.aiMode.setMode.useMutation()
+    const setSelectedConfigMutation = api.aiMode.setSelectedConfig.useMutation()
 
     // 匿名用户: localStorage 检测
     const [anonymousHasByok, setAnonymousHasByok] = useState(false)
@@ -58,14 +62,32 @@ export function useAIMode(): AIModeStat {
         return () => window.removeEventListener("storage", handleStorage)
     }, [isAuthenticated])
 
-    const setMode = useCallback(
-        async (mode: AIMode) => {
-            if (!isAuthenticated) return
-            await setModeMutation.mutateAsync({ mode })
-            await refetch()
-        },
-        [isAuthenticated, setModeMutation, refetch],
-    )
+    const isAuthenticatedRef = useRef(isAuthenticated)
+    const setModeMutationRef = useRef(setModeMutation)
+    const setSelectedConfigMutationRef = useRef(setSelectedConfigMutation)
+    const refetchRef = useRef(refetch)
+
+    useEffect(() => {
+        isAuthenticatedRef.current = isAuthenticated
+    }, [isAuthenticated])
+
+    useEffect(() => {
+        setModeMutationRef.current = setModeMutation
+        setSelectedConfigMutationRef.current = setSelectedConfigMutation
+        refetchRef.current = refetch
+    }, [setModeMutation, setSelectedConfigMutation, refetch])
+
+    const setMode = useCallback(async (mode: AIMode) => {
+        if (!isAuthenticatedRef.current) return
+        await setModeMutationRef.current.mutateAsync({ mode })
+        await refetchRef.current()
+    }, [])
+
+    const setSelectedConfig = useCallback(async (configId: string | null) => {
+        if (!isAuthenticatedRef.current) return
+        await setSelectedConfigMutationRef.current.mutateAsync({ configId })
+        await refetchRef.current()
+    }, [])
 
     const mode = useMemo((): AIMode => {
         if (isAuthenticated) {
@@ -74,15 +96,31 @@ export function useAIMode(): AIModeStat {
         return anonymousHasByok ? "byok" : "system_default"
     }, [isAuthenticated, data?.aiMode, anonymousHasByok])
 
+    const hasByokConfig = isAuthenticated
+        ? data?.hasByokConfig || false
+        : anonymousHasByok
+
+    // Debug logging
+    console.log("[useAIMode] Debug:", {
+        isAuthenticated,
+        isLoading,
+        mode,
+        hasByokConfig,
+        selectedConfigId: data?.selectedConfigId,
+        rawData: data,
+        anonymousHasByok,
+    })
+
     return {
         mode,
         isLoading: isAuthenticated ? isLoading : false,
-        hasByokConfig: isAuthenticated
-            ? data?.hasByokConfig || false
-            : anonymousHasByok,
+        hasByokConfig,
+        selectedConfigId: data?.selectedConfigId || null,
         byokProvider: data?.byokProvider || null,
+        byokConnectionName: data?.byokConnectionName || null,
         byokModel: data?.byokModel || null,
         setMode,
+        setSelectedConfig,
         refresh: refetch,
     }
 }

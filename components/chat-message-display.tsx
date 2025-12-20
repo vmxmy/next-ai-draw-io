@@ -10,7 +10,6 @@ import {
     Cpu,
     FileCode,
     FileText,
-    Loader2,
     Minus,
     Pencil,
     Plus,
@@ -39,6 +38,7 @@ import {
 } from "@/lib/utils"
 import ExamplePanel from "./chat-example-panel"
 import { CodeBlock } from "./code-block"
+import { ThinkingBubble } from "./thinking-bubble"
 
 interface EditPair {
     search: string
@@ -634,7 +634,9 @@ export function ChatMessageDisplay({
         const callId = part.toolCallId
         const { state, input, output, errorText, result } = part
         const toolName = part.type?.replace("tool-", "")
-        const defaultExpanded = toolName !== "edit_diagram"
+        // 流式传输期间默认折叠，避免语法高亮阻塞主线程导致页面卡死
+        const isStreaming = state === "input-streaming"
+        const defaultExpanded = toolName !== "edit_diagram" && !isStreaming
         const isExpanded = expandedTools[callId] ?? defaultExpanded
 
         const hasInputDetails =
@@ -1300,121 +1302,145 @@ export function ChatMessageDisplay({
                                     )}
                                     {/* Action buttons for assistant messages */}
                                     {message.role === "assistant" && (
-                                        <div className="flex items-center gap-1 mt-2">
-                                            {/* Copy button */}
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    copyMessageToClipboard(
-                                                        message.id,
-                                                        getMessageTextContent(
-                                                            message,
-                                                        ),
-                                                    )
-                                                }
-                                                className={`p-1.5 rounded-lg transition-colors ${
-                                                    copiedMessageId ===
-                                                    message.id
-                                                        ? "text-green-600 bg-green-100"
-                                                        : "text-muted-foreground/60 hover:text-foreground hover:bg-muted"
-                                                }`}
-                                                title={
-                                                    copiedMessageId ===
-                                                    message.id
-                                                        ? t(
-                                                              "chat.tooltip.copied",
-                                                          )
-                                                        : t("chat.tooltip.copy")
-                                                }
-                                            >
-                                                {copiedMessageId ===
-                                                message.id ? (
-                                                    <Check className="h-3.5 w-3.5" />
-                                                ) : (
-                                                    <Copy className="h-3.5 w-3.5" />
-                                                )}
-                                            </button>
-                                            {/* Regenerate button - only on last assistant message, not for cached examples */}
-                                            {onRegenerate &&
-                                                isLastAssistantMessage &&
-                                                !message.parts?.some((p: any) =>
-                                                    p.toolCallId?.startsWith(
-                                                        "cached-",
-                                                    ),
-                                                ) && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            onRegenerate(
-                                                                messageIndex,
-                                                            )
-                                                        }
-                                                        className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
-                                                        title={t(
-                                                            "chat.tooltip.regenerate",
-                                                        )}
-                                                    >
-                                                        <RotateCcw className="h-3.5 w-3.5" />
-                                                    </button>
-                                                )}
-                                            {/* Divider */}
-                                            <div className="w-px h-4 bg-border mx-1" />
-                                            {/* Thumbs up */}
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    submitFeedback(
-                                                        message.id,
-                                                        "good",
-                                                    )
-                                                }
-                                                className={`p-1.5 rounded-lg transition-colors ${
-                                                    feedback[message.id] ===
-                                                    "good"
-                                                        ? "text-green-600 bg-green-100"
-                                                        : "text-muted-foreground/60 hover:text-green-600 hover:bg-green-50"
-                                                }`}
-                                                title={t("chat.tooltip.good")}
-                                            >
-                                                <ThumbsUp className="h-3.5 w-3.5" />
-                                            </button>
-                                            {/* Thumbs down */}
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    submitFeedback(
-                                                        message.id,
-                                                        "bad",
-                                                    )
-                                                }
-                                                className={`p-1.5 rounded-lg transition-colors ${
-                                                    feedback[message.id] ===
-                                                    "bad"
-                                                        ? "text-red-600 bg-red-100"
-                                                        : "text-muted-foreground/60 hover:text-red-600 hover:bg-red-50"
-                                                }`}
-                                                title={t("chat.tooltip.bad")}
-                                            >
-                                                <ThumbsDown className="h-3.5 w-3.5" />
-                                            </button>
+                                        <div className="flex items-center justify-between gap-2 mt-2">
+                                            {/* Model name label */}
+                                            <span className="text-[10px] text-muted-foreground/60 font-mono truncate max-w-[150px]">
+                                                {(() => {
+                                                    const metadata = (
+                                                        message as any
+                                                    )?.metadata as
+                                                        | Record<
+                                                              string,
+                                                              unknown
+                                                          >
+                                                        | undefined
+                                                    const modelId =
+                                                        metadata?.modelId as
+                                                            | string
+                                                            | undefined
+                                                    if (!modelId) return null
+                                                    // 简化模型名称显示（去掉 provider 前缀）
+                                                    const shortName =
+                                                        modelId.includes("/")
+                                                            ? modelId
+                                                                  .split("/")
+                                                                  .pop()
+                                                            : modelId
+                                                    return shortName
+                                                })()}
+                                            </span>
+                                            <div className="flex items-center gap-1">
+                                                {/* Copy button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        copyMessageToClipboard(
+                                                            message.id,
+                                                            getMessageTextContent(
+                                                                message,
+                                                            ),
+                                                        )
+                                                    }
+                                                    className={`p-1.5 rounded-lg transition-colors ${
+                                                        copiedMessageId ===
+                                                        message.id
+                                                            ? "text-green-600 bg-green-100"
+                                                            : "text-muted-foreground/60 hover:text-foreground hover:bg-muted"
+                                                    }`}
+                                                    title={
+                                                        copiedMessageId ===
+                                                        message.id
+                                                            ? t(
+                                                                  "chat.tooltip.copied",
+                                                              )
+                                                            : t(
+                                                                  "chat.tooltip.copy",
+                                                              )
+                                                    }
+                                                >
+                                                    {copiedMessageId ===
+                                                    message.id ? (
+                                                        <Check className="h-3.5 w-3.5" />
+                                                    ) : (
+                                                        <Copy className="h-3.5 w-3.5" />
+                                                    )}
+                                                </button>
+                                                {/* Regenerate button - only on last assistant message, not for cached examples */}
+                                                {onRegenerate &&
+                                                    isLastAssistantMessage &&
+                                                    !message.parts?.some(
+                                                        (p: any) =>
+                                                            p.toolCallId?.startsWith(
+                                                                "cached-",
+                                                            ),
+                                                    ) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                onRegenerate(
+                                                                    messageIndex,
+                                                                )
+                                                            }
+                                                            className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+                                                            title={t(
+                                                                "chat.tooltip.regenerate",
+                                                            )}
+                                                        >
+                                                            <RotateCcw className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    )}
+                                                {/* Divider */}
+                                                <div className="w-px h-4 bg-border mx-1" />
+                                                {/* Thumbs up */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        submitFeedback(
+                                                            message.id,
+                                                            "good",
+                                                        )
+                                                    }
+                                                    className={`p-1.5 rounded-lg transition-colors ${
+                                                        feedback[message.id] ===
+                                                        "good"
+                                                            ? "text-green-600 bg-green-100"
+                                                            : "text-muted-foreground/60 hover:text-green-600 hover:bg-green-50"
+                                                    }`}
+                                                    title={t(
+                                                        "chat.tooltip.good",
+                                                    )}
+                                                >
+                                                    <ThumbsUp className="h-3.5 w-3.5" />
+                                                </button>
+                                                {/* Thumbs down */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        submitFeedback(
+                                                            message.id,
+                                                            "bad",
+                                                        )
+                                                    }
+                                                    className={`p-1.5 rounded-lg transition-colors ${
+                                                        feedback[message.id] ===
+                                                        "bad"
+                                                            ? "text-red-600 bg-red-100"
+                                                            : "text-muted-foreground/60 hover:text-red-600 hover:bg-red-50"
+                                                    }`}
+                                                    title={t(
+                                                        "chat.tooltip.bad",
+                                                    )}
+                                                >
+                                                    <ThumbsDown className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
                             </div>
                         )
                     })}
-                    {showLoadingBubble && (
-                        <div className="flex w-full justify-start animate-message-in">
-                            <div className="max-w-[85%] min-w-0">
-                                <div className="px-4 py-3 text-sm leading-relaxed bg-muted/60 text-foreground rounded-2xl rounded-bl-md flex items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                    <span className="text-muted-foreground">
-                                        {t("chat.thinking")}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    {showLoadingBubble && <ThinkingBubble />}
                 </div>
             )}
             <div ref={messagesEndRef} />

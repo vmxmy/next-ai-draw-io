@@ -873,9 +873,16 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 toast.error("网络已断开，无法切换会话")
                 return
             }
+            // 流式响应期间切换会中断当前请求，但保存已收到的部分
+            const isStreaming = status === "streaming" || status === "submitted"
+            if (isStreaming) {
+                toast.info(t("toast.responseInterrupted"), {
+                    duration: 3000,
+                })
+            }
             _handleSelectConversation(id)
         },
-        [isAuthenticated, isOnline, _handleSelectConversation],
+        [isAuthenticated, isOnline, _handleSelectConversation, status, t],
     )
 
     const handleDeleteConversation = useCallback(

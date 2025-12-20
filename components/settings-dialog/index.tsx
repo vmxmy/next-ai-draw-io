@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/contexts/i18n-context"
 import { STORAGE_KEYS } from "@/lib/storage"
+import { useAIMode } from "@/lib/use-ai-mode"
 import {
     type CloudConfig,
     useCloudSync,
@@ -59,6 +60,7 @@ export function SettingsDialog({
     const { t } = useI18n()
     const { data: session } = useSession()
     const isLoggedIn = Boolean(session?.user)
+    const { setSelectedConfig } = useAIMode()
 
     // Access code state
     const [accessCode, setAccessCode] = useState("")
@@ -186,6 +188,11 @@ export function SettingsDialog({
                         // API key is not returned from cloud for security
                         setApiKey("")
 
+                        // Set as selected config in database
+                        if (targetConn.id) {
+                            setSelectedConfig(targetConn.id)
+                        }
+
                         // Load full config and filtered connections for this provider
                         if (targetConn.provider) {
                             await cloudSync.loadConnections(targetConn.provider)
@@ -228,7 +235,7 @@ export function SettingsDialog({
             setApiKey(localApiKey)
             setModelId(localModelId)
         }
-    }, [open, isLoggedIn])
+    }, [open, isLoggedIn, setSelectedConfig])
 
     // Handle provider change
     const handleProviderChange = useCallback(
@@ -270,6 +277,11 @@ export function SettingsDialog({
                         setConnectionIsDefault(!!defaultConfig.isDefault)
                         setBaseUrl(defaultConfig.baseUrl || "")
                         setModelId(defaultConfig.modelId || "")
+
+                        // Update selected config in database
+                        if (defaultConfig.id) {
+                            setSelectedConfig(defaultConfig.id)
+                        }
                     }
 
                     // Load connections for this provider (for advanced options)
@@ -286,7 +298,7 @@ export function SettingsDialog({
                 localStorage.removeItem(STORAGE_KEYS.aiModel)
             }
         },
-        [isLoggedIn, cloudSync, allCloudConnections],
+        [isLoggedIn, cloudSync, allCloudConnections, setSelectedConfig],
     )
 
     const handleConnectionNameChange = useCallback(
@@ -320,6 +332,11 @@ export function SettingsDialog({
                 if (selected.modelId) {
                     setModelId(selected.modelId)
                 }
+
+                // Update selected config in database (logged-in users only)
+                if (isLoggedIn && selected.id) {
+                    setSelectedConfig(selected.id)
+                }
             }
 
             if (!isLoggedIn) {
@@ -339,7 +356,7 @@ export function SettingsDialog({
                 cloudSync.loadCloudConfig(provider, value)
             }
         },
-        [cloudSync, provider, isLoggedIn],
+        [cloudSync, provider, isLoggedIn, setSelectedConfig],
     )
 
     const handleConnectionDefaultChange = useCallback((value: boolean) => {

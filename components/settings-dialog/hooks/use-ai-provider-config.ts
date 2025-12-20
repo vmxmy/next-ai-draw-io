@@ -11,6 +11,7 @@ export interface AIProviderConfig {
 }
 
 export interface CloudConfig {
+    id?: string
     provider?: string
     name?: string
     isDefault?: boolean

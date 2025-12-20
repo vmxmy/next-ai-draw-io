@@ -147,6 +147,7 @@ export type I18nKey =
     | "chat.sending"
     | "chat.thinking"
     | "chat.stop"
+    | "chat.slowResponseTip"
     | "examples.title"
     | "examples.subtitle"
     | "examples.quick"
@@ -197,6 +198,7 @@ export type I18nKey =
     | "chat.header.showTooltip"
     | "chat.header.aiChatLabel"
     | "toast.storageUpdateFailed"
+    | "toast.responseInterrupted"
     | "toast.imageNotSupported"
     | "diff.change"
     | "diff.remove"
@@ -488,6 +490,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.sending": "Sending...",
         "chat.thinking": "Thinking...",
         "chat.stop": "Stop",
+        "chat.slowResponseTip":
+            "Response is taking longer than usual. You can click Stop to cancel.",
         "examples.title": "Create diagrams with AI",
         "examples.subtitle":
             "Describe what you want to create or upload an image to replicate",
@@ -549,6 +553,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.header.aiChatLabel": "AI Chat",
         "toast.storageUpdateFailed":
             "Chat cleared but browser storage could not be updated",
+        "toast.responseInterrupted":
+            "Response interrupted - partial content saved",
         "toast.imageNotSupported": "This model doesn't support image input.",
         "diff.change": "Change {index}",
         "diff.remove": "Remove",
@@ -832,6 +838,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.sending": "发送中…",
         "chat.thinking": "思考中…",
         "chat.stop": "停止",
+        "chat.slowResponseTip": "响应时间较长，可点击停止按钮取消请求",
         "examples.title": "用 AI 创建图表",
         "examples.subtitle": "描述你想创建的内容，或上传图片进行复刻",
         "examples.quick": "快速示例",
@@ -889,6 +896,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.header.showTooltip": "显示聊天面板（Ctrl+B）",
         "chat.header.aiChatLabel": "AI 聊天",
         "toast.storageUpdateFailed": "对话已清空，但浏览器存储未能更新",
+        "toast.responseInterrupted": "响应已中断，已保存部分内容",
         "toast.imageNotSupported": "当前模型不支持图片输入。",
         "diff.change": "变更 {index}",
         "diff.remove": "删除",

@@ -25,11 +25,15 @@ model User {
   // AI 配置模式
   aiMode        String    @default("system_default") // system_default | byok
 
+  // 当前选中的 AI 配置（用户在设置里选择的 provider + 连接）
+  selectedProviderConfigId String?
+  selectedProviderConfig   ProviderConfig? @relation("SelectedConfig", fields: [selectedProviderConfigId], references: [id], onDelete: SetNull)
+
   accounts      Account[]
   sessions      Session[]
 
   conversations   Conversation[]
-  providerConfigs ProviderConfig[]
+  providerConfigs ProviderConfig[] @relation("UserConfigs")
   quotaUsage      UserQuotaUsage[]
   roles           UserRole[]
   auditLogs       AuditLog[]
@@ -41,6 +45,7 @@ model User {
   @@index([tierExpiresAt])
   @@index([status])
   @@index([aiMode])
+  @@index([selectedProviderConfigId])
 }
 
 model Account {
@@ -165,7 +170,8 @@ model ProviderConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User   @relation("UserConfigs", fields: [userId], references: [id], onDelete: Cascade)
+  selectedByUsers User[] @relation("SelectedConfig")
 
   @@unique([userId, provider, name])
   @@index([userId])

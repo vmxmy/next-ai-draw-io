@@ -67,6 +67,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
 
                 if (config) {
                     const newCloudConfig: CloudConfig = {
+                        id: config.id,
                         provider: config.provider,
                         name: config.name,
                         isDefault: config.isDefault,

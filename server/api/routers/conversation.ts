@@ -132,12 +132,16 @@ export const conversationRouter = createTRPCRouter({
                     title: conversation?.title,
                 })
 
+                // 新创建的对话可能还没有同步到服务器，返回 null 而不是抛出错误
                 if (!conversation) {
-                    console.error("[conversation.getById] Not found:", {
-                        userId,
-                        id: input.id,
-                    })
-                    throw new Error("Conversation not found")
+                    console.log(
+                        "[conversation.getById] Not found (may be new):",
+                        {
+                            userId,
+                            id: input.id,
+                        },
+                    )
+                    return null
                 }
 
                 return {

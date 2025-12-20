@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server"
 import { z } from "zod"
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc"
 import { decryptCredentials, encryptCredentials } from "@/server/encryption"
@@ -326,6 +327,7 @@ export const providerConfigRouter = createTRPCRouter({
             }
 
             return {
+                id: config.id,
                 provider: config.provider,
                 name: config.name,
                 isDefault: config.isDefault,
@@ -355,6 +357,7 @@ export const providerConfigRouter = createTRPCRouter({
         const configs = await ctx.db.providerConfig.findMany({
             where: { userId },
             select: {
+                id: true,
                 provider: true,
                 name: true,
                 isDefault: true,
@@ -410,6 +413,7 @@ export const providerConfigRouter = createTRPCRouter({
             }
 
             return {
+                id: config.id,
                 provider: config.provider,
                 name: config.name,
                 isDefault: config.isDefault,
@@ -464,6 +468,27 @@ export const providerConfigRouter = createTRPCRouter({
                     : input.apiKey
                       ? { apiKey: input.apiKey }
                       : null
+
+            // 检查是否是新建配置
+            const existingConfig = await ctx.db.providerConfig.findUnique({
+                where: {
+                    userId_provider_name: {
+                        userId,
+                        provider: input.provider,
+                        name: connectionName,
+                    },
+                },
+                select: { id: true, encryptedCredentials: true },
+            })
+
+            // 新建配置必须有 API Key
+            if (!existingConfig && !credentialsPayload) {
+                throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message:
+                        "API Key is required when creating a new configuration",
+                })
+            }
 
             const credentialType = resolveCredentialType(
                 input.provider,
