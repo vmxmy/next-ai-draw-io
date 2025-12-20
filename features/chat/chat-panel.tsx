@@ -5,7 +5,7 @@ import { DefaultChatTransport } from "ai"
 import { PanelRightOpen } from "lucide-react"
 import { useSession } from "next-auth/react"
 import type React from "react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Toaster, toast } from "sonner"
 import { AuthDialog } from "@/components/auth-dialog"
@@ -769,6 +769,33 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     // TRPC utils 和 API mutation（用于云端更新）
     const utils = api.useUtils()
     const pushMutation = api.conversation.push.useMutation()
+
+    // BYOK 检测：检查用户是否使用自己的 API Key（本地或云端）
+    const [currentProvider, setCurrentProvider] = useState("")
+    useEffect(() => {
+        const config = getAIConfig()
+        setCurrentProvider(config.aiProvider || "")
+    }, [])
+
+    // 查询当前 provider 的云端配置（仅登录用户）
+    const { data: cloudProviderConfig } = api.providerConfig.get.useQuery(
+        { provider: currentProvider as any },
+        {
+            enabled: isAuthenticated && !!currentProvider,
+            staleTime: 30_000, // 30 秒内不重新查询
+        },
+    )
+
+    // 计算是否使用 BYOK（本地 apiKey 或云端配置）
+    const isBYOK = useMemo(() => {
+        const config = getAIConfig()
+        // 匿名用户：检查本地 apiKey
+        if (!isAuthenticated) {
+            return !!config.aiApiKey
+        }
+        // 登录用户：检查云端配置是否有 apiKey
+        return !!cloudProviderConfig?.hasApiKey
+    }, [isAuthenticated, cloudProviderConfig?.hasApiKey])
 
     // 云端会话管理（仅登录用户）
     const cloudHook = useCloudConversations({
@@ -1665,6 +1692,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 quotaTooltip={t("chat.header.quotaTooltip")}
                 onShowQuota={() => setShowQuotaDialog(true)}
                 getCurrentMessages={() => messages}
+                isBYOK={isBYOK}
             />
             {/* Messages */}
             <main className="flex-1 w-full overflow-hidden">

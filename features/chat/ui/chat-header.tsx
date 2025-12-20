@@ -62,6 +62,7 @@ export function ChatHeader({
     quotaTooltip,
     onShowQuota,
     getCurrentMessages,
+    isBYOK,
 }: {
     isMobile: boolean
     isVisible: boolean
@@ -110,6 +111,8 @@ export function ChatHeader({
     onShowQuota: () => void
     /** 获取当前会话的消息列表（用于智能命名） */
     getCurrentMessages?: () => any[]
+    /** 是否使用 BYOK（用户自带密钥），影响配额按钮样式 */
+    isBYOK?: boolean
 }) {
     return (
         <header
@@ -181,7 +184,9 @@ export function ChatHeader({
                             aria-label={quotaTooltip}
                             onClick={onShowQuota}
                         >
-                            <ChartNoAxesColumn className="h-5 w-5 text-muted-foreground" />
+                            <ChartNoAxesColumn
+                                className={`h-5 w-5 ${isBYOK ? "text-emerald-500" : "text-muted-foreground"}`}
+                            />
                         </Button>
 
                         <Button
@@ -281,7 +286,9 @@ export function ChatHeader({
                             onClick={onShowQuota}
                             className="hover:bg-accent"
                         >
-                            <ChartNoAxesColumn className="h-5 w-5 text-muted-foreground" />
+                            <ChartNoAxesColumn
+                                className={`h-5 w-5 ${isBYOK ? "text-emerald-500" : "text-muted-foreground"}`}
+                            />
                         </ButtonWithTooltip>
 
                         <ButtonWithTooltip
