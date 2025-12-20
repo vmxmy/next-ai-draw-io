@@ -14,8 +14,8 @@ export interface ThemeColors {
 }
 
 /**
- * Convert OKLCH or other CSS color format to HEX
- * Uses a temporary DOM element to leverage browser's color parsing
+ * Convert OKLCH, LAB, or other CSS color format to HEX
+ * Uses a canvas to reliably convert any CSS color to RGB
  */
 export function cssColorToHex(cssColor: string): string {
     if (!cssColor || cssColor.trim() === "") {
@@ -27,29 +27,27 @@ export function cssColorToHex(cssColor: string): string {
         return cssColor
     }
 
-    // Use browser to compute the RGB value
+    // Use canvas to compute the RGB value (works in browser only)
     if (typeof document === "undefined") {
         return "#808080"
     }
 
-    const temp = document.createElement("div")
-    temp.style.color = cssColor
-    temp.style.display = "none"
-    document.body.appendChild(temp)
+    const canvas = document.createElement("canvas")
+    canvas.width = 1
+    canvas.height = 1
+    const ctx = canvas.getContext("2d")
 
-    const computed = getComputedStyle(temp).color
-    document.body.removeChild(temp)
-
-    // Parse rgb(r, g, b) or rgba(r, g, b, a) format
-    const rgbMatch = computed.match(
-        /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/,
-    )
-    if (rgbMatch) {
-        const [, r, g, b] = rgbMatch.map(Number)
-        return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
+    if (!ctx) {
+        return "#808080"
     }
 
-    return "#808080"
+    // Fill a pixel with the color and read it back as RGB
+    ctx.fillStyle = cssColor
+    ctx.fillRect(0, 0, 1, 1)
+    const imageData = ctx.getImageData(0, 0, 1, 1).data
+    const [r, g, b] = imageData
+
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
 }
 
 /**
@@ -59,44 +57,64 @@ export function cssColorToHex(cssColor: string): string {
  */
 function getComputedColor(varName: string): string {
     if (typeof document === "undefined") {
+        console.log(
+            `[getComputedColor] ${varName}: SSR environment, returning fallback`,
+        )
         return "#808080"
     }
 
     const root = document.documentElement
     const styles = getComputedStyle(root)
 
+    // Debug: log the root element's class list
+    console.log(`[getComputedColor] ${varName}: root classes =`, root.className)
+
     // Try to get the value directly from computed styles
     // This works for --ds-* variables defined in :root or theme classes
     const rawValue = styles.getPropertyValue(varName).trim()
 
+    console.log(`[getComputedColor] ${varName}: rawValue = "${rawValue}"`)
+
     if (!rawValue) {
+        console.log(
+            `[getComputedColor] ${varName}: empty rawValue, returning fallback`,
+        )
         return "#808080"
     }
 
     // If the value is already hex, return it
     if (rawValue.startsWith("#")) {
+        console.log(
+            `[getComputedColor] ${varName}: already hex, returning "${rawValue}"`,
+        )
         return rawValue
     }
 
-    // For oklch or other color formats, use a temp element to convert to RGB
-    const temp = document.createElement("div")
-    temp.style.color = rawValue
-    temp.style.display = "none"
-    document.body.appendChild(temp)
+    // For oklch/lab or other color formats, use a canvas to convert to RGB
+    // Canvas getImageData always returns RGB values
+    const canvas = document.createElement("canvas")
+    canvas.width = 1
+    canvas.height = 1
+    const ctx = canvas.getContext("2d")
 
-    const computed = getComputedStyle(temp).color
-    document.body.removeChild(temp)
-
-    // Parse rgb(r, g, b) or rgba(r, g, b, a) format
-    const rgbMatch = computed.match(
-        /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/,
-    )
-    if (rgbMatch) {
-        const [, r, g, b] = rgbMatch.map(Number)
-        return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
+    if (!ctx) {
+        console.log(
+            `[getComputedColor] ${varName}: Canvas context failed, returning fallback`,
+        )
+        return "#808080"
     }
 
-    return "#808080"
+    // Fill a pixel with the color and read it back as RGB
+    ctx.fillStyle = rawValue
+    ctx.fillRect(0, 0, 1, 1)
+    const imageData = ctx.getImageData(0, 0, 1, 1).data
+    const [r, g, b] = imageData
+
+    const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
+    console.log(
+        `[getComputedColor] ${varName}: canvas RGB = [${r}, ${g}, ${b}], hex = "${hex}"`,
+    )
+    return hex
 }
 
 /**
@@ -105,7 +123,12 @@ function getComputedColor(varName: string): string {
  * These are defined in design-tokens.css and overridden by theme classes in palettes.css
  */
 export function extractThemeColors(): ThemeColors {
+    console.log("[extractThemeColors] Starting extraction...")
+
     if (typeof document === "undefined") {
+        console.log(
+            "[extractThemeColors] SSR environment, returning default colors",
+        )
         return {
             primary: "#3B82F6",
             secondary: "#F3F4F6",
@@ -119,7 +142,7 @@ export function extractThemeColors(): ThemeColors {
 
     // Use --ds-* variables (design system tokens) as they contain the actual values
     // The --primary etc. are @theme directive aliases that may not be accessible via getComputedStyle
-    return {
+    const colors = {
         primary: getComputedColor("--ds-primary"),
         secondary: getComputedColor("--ds-secondary"),
         accent: getComputedColor("--ds-accent"),
@@ -128,6 +151,9 @@ export function extractThemeColors(): ThemeColors {
         muted: getComputedColor("--ds-muted"),
         border: getComputedColor("--ds-border"),
     }
+
+    console.log("[extractThemeColors] Final colors:", colors)
+    return colors
 }
 
 /**

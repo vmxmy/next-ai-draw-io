@@ -1,12 +1,8 @@
 "use client"
-import { Download } from "lucide-react"
-import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { DrawIoEmbed } from "react-drawio"
 import type { ImperativePanelHandle } from "react-resizable-panels"
-import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import ChatPanel from "@/components/chat-panel"
-import { SaveDialog } from "@/components/save-dialog"
 import { STORAGE_CLOSE_PROTECTION_KEY } from "@/components/settings-dialog"
 import {
     ResizableHandle,
@@ -14,28 +10,18 @@ import {
     ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { useDiagram } from "@/contexts/diagram-context"
-import { useI18n } from "@/contexts/i18n-context"
-import {
-    readConversationMetasFromStorage,
-    readCurrentConversationIdFromStorage,
-} from "@/features/chat/sessions/local-storage"
 import { useProviderMigration } from "@/hooks/use-provider-migration"
-import { buildDefaultDiagramFilename } from "@/lib/export-filename"
 
 const drawioBaseUrl =
     process.env.NEXT_PUBLIC_DRAWIO_BASE_URL || "https://embed.diagrams.net"
 
 export default function Home() {
-    const { t } = useI18n()
-    const { data: authSession } = useSession()
-    const userId = authSession?.user?.id || "anonymous"
     const {
         drawioRef,
         handleDiagramExport,
         onDrawioLoad,
         resetDrawioReady,
         syncDiagramXml,
-        saveDiagramToFile,
     } = useDiagram()
     const [isMobile, setIsMobile] = useState(false)
     const [isChatVisible, setIsChatVisible] = useState(true)
@@ -43,8 +29,6 @@ export default function Home() {
     const [darkMode, setDarkMode] = useState(false)
     const [isLoaded, setIsLoaded] = useState(false)
     const [closeProtection, setCloseProtection] = useState(false)
-    const [showDrawioSaveDialog, setShowDrawioSaveDialog] = useState(false)
-    const [exportTitle, setExportTitle] = useState<string>("")
 
     const chatPanelRef = useRef<ImperativePanelHandle>(null)
 
@@ -82,18 +66,6 @@ export default function Home() {
 
         setIsLoaded(true)
     }, [])
-
-    useEffect(() => {
-        if (!showDrawioSaveDialog) return
-        const currentId = readCurrentConversationIdFromStorage(userId)
-        if (!currentId) {
-            setExportTitle("")
-            return
-        }
-        const metas = readConversationMetasFromStorage(userId)
-        const meta = metas.find((m) => m.id === currentId)
-        setExportTitle(meta?.title || "")
-    }, [showDrawioSaveDialog, userId])
 
     const toggleDarkMode = () => {
         const newValue = !darkMode
@@ -174,20 +146,6 @@ export default function Home() {
                             isMobile ? "p-1" : "p-2"
                         }`}
                     >
-                        {/* Export button (right-middle, avoid draw.io corner toolbars) */}
-                        <div className="absolute top-3 right-3 z-20">
-                            <ButtonWithTooltip
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => setShowDrawioSaveDialog(true)}
-                                tooltipContent={t("canvas.exportTooltip")}
-                                className="shadow-sm"
-                            >
-                                <Download className="h-4 w-4 mr-1.5" />
-                                {t("canvas.export")}
-                            </ButtonWithTooltip>
-                        </div>
                         <div className="h-full rounded-xl overflow-hidden shadow-soft-lg border border-border/30">
                             {isLoaded ? (
                                 <DrawIoEmbed
@@ -263,18 +221,6 @@ export default function Home() {
                     </div>
                 </ResizablePanel>
             </ResizablePanelGroup>
-
-            {/* draw.io 自带 Save 按钮触发的导出弹窗 */}
-            <SaveDialog
-                open={showDrawioSaveDialog}
-                onOpenChange={setShowDrawioSaveDialog}
-                onSave={(filename, format) =>
-                    saveDiagramToFile(filename, format)
-                }
-                defaultFilename={buildDefaultDiagramFilename({
-                    title: exportTitle,
-                })}
-            />
         </div>
     )
 }

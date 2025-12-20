@@ -183,38 +183,29 @@ function buildProviderOptions(
             )
             const thinkingLevel = process.env.GOOGLE_THINKING_LEVEL
 
-            // Google Gemini 2.5/3 models think by default, but need includeThoughts: true
-            // to return the reasoning in the response.
-            // We only enable this if the user EXPLICITLY configures thinking params (budget/level),
-            // avoiding reliance on model names which can lead to "missing thought_signature" errors on standard models.
-            const isGemini2Or3 =
+            // Detect Gemini 2.5/3 thinking models
+            const isGemini25 =
+                modelId && (modelId.includes("2.5") || modelId.includes("2-5"))
+            const isGemini3 =
                 modelId &&
-                (modelId.includes("gemini-2") ||
-                    modelId.includes("gemini-3") ||
-                    modelId.includes("gemini2") ||
-                    modelId.includes("gemini3"))
+                (modelId.includes("gemini-3") || modelId.includes("gemini3"))
+            const isThinkingModel = isGemini25 || isGemini3
 
-            const hasThinkingConfig = !!(thinkingBudgetVal || thinkingLevel)
-
-            if (isGemini2Or3 && hasThinkingConfig) {
+            // Enable thinking by default for Gemini 2.5/3 models
+            // These models support thinking and we want to show the reasoning process
+            if (isThinkingModel) {
                 const thinkingConfig: Record<string, any> = {
                     includeThoughts: true,
                 }
 
-                // Optionally configure thinking budget or level
-                if (
-                    thinkingBudgetVal &&
-                    (modelId.includes("2.5") || modelId.includes("2-5"))
-                ) {
-                    thinkingConfig.thinkingBudget = thinkingBudgetVal
-                } else if (
-                    thinkingLevel &&
-                    (modelId.includes("gemini-3") ||
-                        modelId.includes("gemini3"))
-                ) {
-                    thinkingConfig.thinkingLevel = thinkingLevel as
-                        | "low"
-                        | "high"
+                // Configure thinking budget for Gemini 2.5 (default: 8192)
+                if (isGemini25) {
+                    thinkingConfig.thinkingBudget = thinkingBudgetVal || 8192
+                }
+                // Configure thinking level for Gemini 3 (default: "low")
+                else if (isGemini3) {
+                    thinkingConfig.thinkingLevel =
+                        (thinkingLevel as "low" | "high") || "low"
                 }
 
                 options.google = { thinkingConfig }
