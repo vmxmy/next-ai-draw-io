@@ -25,6 +25,7 @@ import {
     hasToolErrors,
 } from "@/features/chat/ai/tool-errors"
 import type { ChatMessage } from "@/features/chat/ai/types"
+import { deriveConversationTitle } from "@/features/chat/sessions/hooks"
 import { writeConversationMetasToStorage } from "@/features/chat/sessions/local-storage"
 import type { ConversationPayload } from "@/features/chat/sessions/storage"
 import { useCloudConversations } from "@/features/chat/sessions/use-cloud-conversations"
@@ -240,11 +241,35 @@ export default function ChatPanel({
     const processedToolCallsRef = useRef<Set<string>>(new Set())
     const activeRequestIdRef = useRef<string | null>(null)
     const retryLastFailedRef = useRef<(() => void) | null>(null)
+    const autoTitleRequestedRef = useRef<Set<string>>(new Set())
 
     // 登录态（OAuth）
     const { data: authSession, status: authStatus } = useSession()
 
     const currentConversationIdRef = useRef("")
+
+    const buildAIHeaders = useCallback(
+        (config: ReturnType<typeof getAIConfig>) => {
+            const isLoggedIn = !!authSession?.user
+            const headers: Record<string, string> = {
+                "x-access-code": config.accessCode,
+            }
+            if (config.aiProvider) {
+                headers["x-ai-provider"] = config.aiProvider
+                if (!isLoggedIn && config.aiBaseUrl) {
+                    headers["x-ai-base-url"] = config.aiBaseUrl
+                }
+                if (!isLoggedIn && config.aiApiKey) {
+                    headers["x-ai-api-key"] = config.aiApiKey
+                }
+                if (config.aiModel) {
+                    headers["x-ai-model"] = config.aiModel
+                }
+            }
+            return headers
+        },
+        [authSession?.user],
+    )
 
     const {
         messages,
@@ -962,6 +987,48 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         ],
     )
 
+    const requestSessionTitle = useCallback(
+        async (conversationId: string, userText: string) => {
+            if (!conversationId || !userText.trim()) return
+            if (autoTitleRequestedRef.current.has(conversationId)) return
+            autoTitleRequestedRef.current.add(conversationId)
+
+            const config = getAIConfig()
+            const headers = buildAIHeaders(config)
+
+            try {
+                const res = await fetch("/api/conversation/title", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...headers,
+                    },
+                    body: JSON.stringify({
+                        prompt: userText.slice(0, 500),
+                        locale,
+                    }),
+                })
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`)
+                }
+
+                const data = await res.json()
+                const aiTitle =
+                    typeof data?.title === "string" ? data.title.trim() : ""
+                if (aiTitle) {
+                    handleUpdateConversationTitle(conversationId, aiTitle)
+                }
+            } catch (error) {
+                console.warn(
+                    "[AutoTitle] Failed to generate session title:",
+                    error,
+                )
+            }
+        },
+        [buildAIHeaders, handleUpdateConversationTitle, locale],
+    )
+
     // 删除最旧的会话（用于会话数量限制）
     const handleDeleteOldestConversation = useCallback(() => {
         const oldest = [...conversations].sort(
@@ -996,6 +1063,46 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
         }
     }, [messages])
+
+    // 首轮对话：自动生成会话标题
+    useEffect(() => {
+        if (!hasRestored) return
+        const conversationId = currentConversationId
+        if (!conversationId) return
+        if (autoTitleRequestedRef.current.has(conversationId)) return
+
+        const derivedTitle = deriveConversationTitle(
+            messages as unknown as ChatMessage[],
+        )
+        const meta = conversations.find((c) => c.id === conversationId)
+        // 用户已自定义标题时不自动覆盖
+        if (meta?.title && derivedTitle && meta.title !== derivedTitle) {
+            return
+        }
+
+        const userMessages = (messages as any[]).filter(
+            (msg) => msg?.role === "user",
+        )
+        // 仅首轮（第一条用户消息）触发
+        if (userMessages.length !== 1) return
+
+        const textPart =
+            userMessages[0]?.parts?.find((p: any) => p.type === "text")?.text ||
+            ""
+        const trimmed = String(textPart || "").trim()
+        if (!trimmed) return
+
+        // 去除文件内容等附加段，只保留请求意图
+        const cleaned = trimmed.split(/\n{2,}\[[^\]]+:/)[0]?.trim() || trimmed
+
+        requestSessionTitle(conversationId, cleaned)
+    }, [
+        conversations,
+        currentConversationId,
+        hasRestored,
+        messages,
+        requestSessionTitle,
+    ])
 
     const onFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -1158,27 +1265,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
             const requestId = createRequestId()
             activeRequestIdRef.current = requestId
-
-            // 登录用户只发送 provider hint（帮助服务端选择正确的云端配置）
-            // API Key 由服务端从 ProviderConfig 表读取
-            const headers = {
-                "x-access-code": config.accessCode,
-                ...(config.aiProvider && {
-                    "x-ai-provider": config.aiProvider,
-                    // 登录用户不发送 API Key 和 Base URL（使用云端配置）
-                    ...(!isLoggedIn &&
-                        config.aiBaseUrl && {
-                            "x-ai-base-url": config.aiBaseUrl,
-                        }),
-                    ...(!isLoggedIn &&
-                        config.aiApiKey && {
-                            "x-ai-api-key": config.aiApiKey,
-                        }),
-                    ...(config.aiModel && {
-                        "x-ai-model": config.aiModel,
-                    }),
-                }),
-            }
+            const headers = buildAIHeaders(config)
 
             console.log("[Chat] Headers being sent:", {
                 ...headers,
@@ -1205,7 +1292,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             )
             quotaManager.incrementRequestCount()
         },
-        [quotaManager, sendMessage, authSession],
+        [quotaManager, sendMessage, authSession, buildAIHeaders],
     )
 
     // Apply current UI theme colors to the diagram

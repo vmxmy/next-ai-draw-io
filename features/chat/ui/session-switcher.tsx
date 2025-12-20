@@ -6,10 +6,13 @@ import {
     Loader2,
     MoreVertical,
     Pencil,
+    Sparkles,
     Trash2,
     X,
 } from "lucide-react"
+import { useSession } from "next-auth/react"
 import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,7 +29,9 @@ import {
     SheetHeader,
     SheetTitle,
 } from "@/components/ui/sheet"
+import { readConversationPayloadFromStorage } from "@/features/chat/sessions/local-storage"
 import type { ConversationMeta } from "@/features/chat/sessions/storage"
+import { getAIConfig } from "@/lib/ai-config"
 
 export function SessionSwitcher({
     isMobile,
@@ -63,10 +68,17 @@ export function SessionSwitcher({
     switchingToId?: string | null
     sessionListTitle?: string
 }) {
+    const { status: authStatus } = useSession()
+    const isAuthenticated = authStatus === "authenticated"
+    const smartRenameLabel = locale.startsWith("zh")
+        ? "智能命名"
+        : "Smart rename"
+
     const [mounted, setMounted] = useState(false)
     const [sheetOpen, setSheetOpen] = useState(false)
     const [editingId, setEditingId] = useState<string | null>(null)
     const [editingTitle, setEditingTitle] = useState("")
+    const [renamingId, setRenamingId] = useState<string | null>(null)
     const inputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
@@ -89,6 +101,101 @@ export function SessionSwitcher({
         }
         prevSwitchingToIdRef.current = switchingToId ?? null
     }, [switchingToId])
+
+    const buildAIHeaders = () => {
+        const config = getAIConfig()
+        const isLoggedIn = isAuthenticated
+        const headers: Record<string, string> = {
+            "Content-Type": "application/json",
+        }
+        if (config.accessCode) {
+            headers["x-access-code"] = config.accessCode
+        }
+        if (config.aiProvider) {
+            headers["x-ai-provider"] = config.aiProvider
+            if (!isLoggedIn && config.aiBaseUrl) {
+                headers["x-ai-base-url"] = config.aiBaseUrl
+            }
+            if (!isLoggedIn && config.aiApiKey) {
+                headers["x-ai-api-key"] = config.aiApiKey
+            }
+            if (config.aiModel) {
+                headers["x-ai-model"] = config.aiModel
+            }
+        }
+        return headers
+    }
+
+    const extractXmlFromPayload = (payload: any): string => {
+        if (!payload) return ""
+        if (typeof payload.xml === "string" && payload.xml.trim()) {
+            return payload.xml
+        }
+        const versions = Array.isArray(payload.diagramVersions)
+            ? payload.diagramVersions
+            : []
+        for (let i = versions.length - 1; i >= 0; i--) {
+            const candidate = versions[i]?.xml
+            if (typeof candidate === "string" && candidate.trim()) {
+                return candidate
+            }
+        }
+        return ""
+    }
+
+    const handleSmartRename = async (conversationId: string) => {
+        if (renamingId) return
+        setRenamingId(conversationId)
+        try {
+            let xml: string | undefined
+            if (!isAuthenticated) {
+                const payload = readConversationPayloadFromStorage(
+                    "anonymous",
+                    conversationId,
+                )
+                xml = extractXmlFromPayload(payload)
+                if (!xml) {
+                    throw new Error("未找到该会话的图表内容")
+                }
+            }
+
+            const res = await fetch("/api/conversation/title/diagram", {
+                method: "POST",
+                headers: buildAIHeaders(),
+                body: JSON.stringify({
+                    conversationId,
+                    locale,
+                    ...(xml ? { xml } : {}),
+                }),
+            })
+
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                const errMsg =
+                    typeof data?.error === "string"
+                        ? data.error
+                        : `HTTP ${res.status}`
+                throw new Error(errMsg)
+            }
+
+            const aiTitle =
+                typeof data?.title === "string" ? data.title.trim() : ""
+            if (!aiTitle) {
+                throw new Error("未生成标题")
+            }
+
+            onUpdateConversationTitle(conversationId, aiTitle)
+            toast.success(smartRenameLabel)
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : "生成失败，请重试"
+            toast.error(smartRenameLabel, {
+                description: message,
+            })
+        } finally {
+            setRenamingId(null)
+        }
+    }
 
     const handleStartEdit = (id: string, currentTitle: string) => {
         setEditingId(id)
@@ -347,6 +454,28 @@ export function SessionSwitcher({
                                                         >
                                                             <DropdownMenuItem
                                                                 onClick={() =>
+                                                                    void handleSmartRename(
+                                                                        c.id,
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    renamingId ===
+                                                                        c.id ||
+                                                                    isLoadingSwitch
+                                                                }
+                                                            >
+                                                                {renamingId ===
+                                                                c.id ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Sparkles className="h-4 w-4" />
+                                                                )}
+                                                                {
+                                                                    smartRenameLabel
+                                                                }
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem
+                                                                onClick={() =>
                                                                     handleStartEdit(
                                                                         c.id,
                                                                         displayTitle,
@@ -376,6 +505,31 @@ export function SessionSwitcher({
                                             ) : (
                                                 // 桌面端：hover 显示按钮
                                                 <>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="flex-shrink-0 h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-accent transition-all"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation()
+                                                            void handleSmartRename(
+                                                                c.id,
+                                                            )
+                                                        }}
+                                                        title={smartRenameLabel}
+                                                        aria-label={
+                                                            smartRenameLabel
+                                                        }
+                                                        disabled={
+                                                            isLoadingSwitch ||
+                                                            renamingId === c.id
+                                                        }
+                                                    >
+                                                        {renamingId === c.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                        ) : (
+                                                            <Sparkles className="h-4 w-4" />
+                                                        )}
+                                                    </Button>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
