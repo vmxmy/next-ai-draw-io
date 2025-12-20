@@ -4,6 +4,8 @@ import { authOptions } from "@/server/auth"
 import { db } from "@/server/db"
 import { decryptCredentials } from "@/server/encryption"
 
+export const maxDuration = 30
+
 const querySchema = z.object({
     provider: z.string().optional(),
 })

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { db } from "@/server/db"
 
+export const maxDuration = 10
+
 export async function GET() {
     // 从数据库读取 anonymous 等级配置
     const anonymousConfig = await db.tierConfig.findUnique({
