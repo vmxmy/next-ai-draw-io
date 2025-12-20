@@ -388,10 +388,13 @@ export function ModelConfigTab({
 
                             {/* Action Buttons */}
                             <div className="flex gap-2 pt-2">
-                                {/* Sync to Cloud Button - 允许：1) 有新 apiKey  2) 云端已有配置，只更新其他字段 */}
+                                {/* Sync to Cloud Button - 允许：1) 有新 apiKey  2) 云端已有配置  3) 创建新连接 */}
                                 {isLoggedIn &&
                                     provider &&
-                                    (apiKey || hasCloudConfig) && (
+                                    (apiKey ||
+                                        hasCloudConfig ||
+                                        (connectionName &&
+                                            connectionName !== "default")) && (
                                         <Button
                                             variant={
                                                 syncSuccess
