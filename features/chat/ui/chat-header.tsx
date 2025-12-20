@@ -61,6 +61,7 @@ export function ChatHeader({
     switchingToId,
     quotaTooltip,
     onShowQuota,
+    getCurrentMessages,
 }: {
     isMobile: boolean
     isVisible: boolean
@@ -107,6 +108,8 @@ export function ChatHeader({
     switchingToId?: string | null
     quotaTooltip: string
     onShowQuota: () => void
+    /** 获取当前会话的消息列表（用于智能命名） */
+    getCurrentMessages?: () => any[]
 }) {
     return (
         <header
@@ -158,6 +161,7 @@ export function ChatHeader({
                             }
                             isLoadingSwitch={isLoadingSwitch}
                             switchingToId={switchingToId}
+                            getCurrentMessages={getCurrentMessages}
                         />
 
                         <Button
@@ -257,6 +261,7 @@ export function ChatHeader({
                             }
                             isLoadingSwitch={isLoadingSwitch}
                             switchingToId={switchingToId}
+                            getCurrentMessages={getCurrentMessages}
                         />
 
                         <ButtonWithTooltip

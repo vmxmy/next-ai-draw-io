@@ -188,10 +188,13 @@ export async function POST(req: Request) {
             promptLength: promptSnippet.length,
         })
 
+        // Gemini thinking 模式需要更多 token 空间
+        const isGeminiThinking =
+            modelId?.includes("gemini-3") || modelId?.includes("gemini-2.5")
         const result = await generateText({
             model,
             prompt: buildTitlePrompt(promptSnippet, parsed.data.locale),
-            maxOutputTokens: 40,
+            maxOutputTokens: isGeminiThinking ? 200 : 60,
             temperature: 0.2,
             ...(providerOptions && { providerOptions }),
             ...(headers && { headers }),
@@ -216,7 +219,14 @@ export async function POST(req: Request) {
             })
         }
 
-        const rawText = result.text || ""
+        // 提取文本：优先 result.text，否则从 content 数组中提取（Gemini thinking 模式）
+        let rawText = result.text || ""
+        if (!rawText && Array.isArray((result as any)?.content)) {
+            const textParts = (result as any).content
+                .filter((part: any) => part.type === "text" && part.text)
+                .map((part: any) => part.text)
+            rawText = textParts.join("").trim()
+        }
         const normalized = normalizeTitle(rawText)
         const contentPreview = Array.isArray((result as any)?.content)
             ? JSON.stringify((result as any).content.slice(0, 2)).slice(0, 300)
@@ -231,7 +241,9 @@ export async function POST(req: Request) {
         })
         const title =
             normalized ||
-            (locale?.startsWith("zh") ? "未命名对话" : "Untitled session")
+            (parsed.data.locale?.startsWith("zh")
+                ? "未命名对话"
+                : "Untitled session")
 
         return Response.json({ title })
     } catch (error) {

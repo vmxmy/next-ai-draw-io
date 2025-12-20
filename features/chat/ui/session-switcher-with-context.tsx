@@ -159,22 +159,38 @@ export function SessionSwitcherWithContext({
         return ""
     }
 
+    // 提取第一条用户消息的文本内容
+    const extractFirstUserMessage = (payload: any): string => {
+        if (!payload?.messages || !Array.isArray(payload.messages)) return ""
+        const firstUserMsg = payload.messages.find(
+            (msg: any) => msg.role === "user",
+        )
+        if (!firstUserMsg?.parts || !Array.isArray(firstUserMsg.parts))
+            return ""
+        const textParts = firstUserMsg.parts
+            .filter((part: any) => part.type === "text" && part.text)
+            .map((part: any) => part.text)
+        return textParts.join(" ").trim()
+    }
+
     const handleSmartRename = async (conversationId: string) => {
         if (renamingId) return
         if (!handleUpdateConversationTitle) return
         setRenamingId(conversationId)
         try {
             let xml: string | undefined
+            let firstUserMessage: string | undefined
 
-            // 匿名用户：从本地存储读取图表 XML
+            // 匿名用户：从本地存储读取图表 XML 和用户消息
             if (!isAuthenticated) {
                 const payload = readConversationPayloadFromStorage(
                     "anonymous",
                     conversationId,
                 )
                 xml = extractXmlFromPayload(payload)
-                if (!xml) {
-                    throw new Error("未找到该会话的图表内容")
+                firstUserMessage = extractFirstUserMessage(payload)
+                if (!xml && !firstUserMessage) {
+                    throw new Error("未找到该会话的内容")
                 }
             }
 
@@ -185,6 +201,7 @@ export function SessionSwitcherWithContext({
                     conversationId,
                     locale,
                     ...(xml ? { xml } : {}),
+                    ...(firstUserMessage ? { firstUserMessage } : {}),
                 }),
             })
 

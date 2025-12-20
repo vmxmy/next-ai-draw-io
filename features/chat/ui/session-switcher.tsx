@@ -50,6 +50,7 @@ export function SessionSwitcher({
     isLoadingSwitch,
     switchingToId,
     sessionListTitle,
+    getCurrentMessages,
 }: {
     isMobile: boolean
     conversations: ConversationMeta[]
@@ -67,6 +68,8 @@ export function SessionSwitcher({
     isLoadingSwitch?: boolean
     switchingToId?: string | null
     sessionListTitle?: string
+    /** 获取当前会话的消息列表（用于智能命名） */
+    getCurrentMessages?: () => any[]
 }) {
     const { status: authStatus } = useSession()
     const isAuthenticated = authStatus === "authenticated"
@@ -143,20 +146,58 @@ export function SessionSwitcher({
         return ""
     }
 
+    // 提取第一条用户消息的文本内容
+    const extractFirstUserMessage = (payload: any): string => {
+        if (!payload?.messages || !Array.isArray(payload.messages)) return ""
+        const firstUserMsg = payload.messages.find(
+            (msg: any) => msg.role === "user",
+        )
+        if (!firstUserMsg?.parts || !Array.isArray(firstUserMsg.parts))
+            return ""
+        const textParts = firstUserMsg.parts
+            .filter((part: any) => part.type === "text" && part.text)
+            .map((part: any) => part.text)
+        return textParts.join(" ").trim()
+    }
+
     const handleSmartRename = async (conversationId: string) => {
         if (renamingId) return
         setRenamingId(conversationId)
         try {
             let xml: string | undefined
-            if (!isAuthenticated) {
+            let firstUserMessage: string | undefined
+
+            // 当前会话：直接从内存获取消息
+            const isCurrentConversation =
+                conversationId === currentConversationId
+            if (isCurrentConversation && getCurrentMessages) {
+                const messages = getCurrentMessages()
+                const firstUserMsg = messages.find(
+                    (msg: any) => msg.role === "user",
+                )
+                if (firstUserMsg?.parts) {
+                    const textParts = firstUserMsg.parts
+                        .filter(
+                            (part: any) => part.type === "text" && part.text,
+                        )
+                        .map((part: any) => part.text)
+                    firstUserMessage = textParts.join(" ").trim()
+                }
+            }
+
+            // 匿名用户其他会话：从本地存储读取
+            if (!firstUserMessage && !isAuthenticated) {
                 const payload = readConversationPayloadFromStorage(
                     "anonymous",
                     conversationId,
                 )
                 xml = extractXmlFromPayload(payload)
-                if (!xml) {
-                    throw new Error("未找到该会话的图表内容")
-                }
+                firstUserMessage = extractFirstUserMessage(payload)
+            }
+
+            // 登录用户：即使没有本地数据，也调用 API（服务端会从数据库读取）
+            if (!xml && !firstUserMessage && !isAuthenticated) {
+                throw new Error("未找到该会话的内容")
             }
 
             const res = await fetch("/api/conversation/title/diagram", {
@@ -166,6 +207,7 @@ export function SessionSwitcher({
                     conversationId,
                     locale,
                     ...(xml ? { xml } : {}),
+                    ...(firstUserMessage ? { firstUserMessage } : {}),
                 }),
             })
 

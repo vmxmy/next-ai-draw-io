@@ -1664,6 +1664,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 switchingToId={switchingToId}
                 quotaTooltip={t("chat.header.quotaTooltip")}
                 onShowQuota={() => setShowQuotaDialog(true)}
+                getCurrentMessages={() => messages}
             />
             {/* Messages */}
             <main className="flex-1 w-full overflow-hidden">
