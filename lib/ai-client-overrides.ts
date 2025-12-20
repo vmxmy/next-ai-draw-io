@@ -2,49 +2,50 @@ import type { ClientOverrides } from "@/lib/ai-providers"
 
 /**
  * 清洗客户端传入的 AI Provider 覆写信息，限制协议、域名等。
- * - 仅在开发环境或显式开启时允许 BYOK 覆写
+ * - BYOK（有 apiKey）始终允许，不受环境变量限制
+ * - ENABLE_CLIENT_AI_OVERRIDES 控制是否允许无 apiKey 时的覆写
  * - 校验 Base URL 协议/内网风险并应用可选白名单
  */
 export function sanitizeClientOverrides(
     headers: Headers,
 ): ClientOverrides & Record<string, string | null> {
-    const allowClientOverrides =
-        process.env.ENABLE_CLIENT_AI_OVERRIDES === "true" ||
-        process.env.NODE_ENV === "development"
-
-    console.log(
-        "[Client Overrides] allowClientOverrides:",
-        allowClientOverrides,
-    )
-    console.log("[Client Overrides] NODE_ENV:", process.env.NODE_ENV)
-    console.log(
-        "[Client Overrides] ENABLE_CLIENT_AI_OVERRIDES:",
-        process.env.ENABLE_CLIENT_AI_OVERRIDES,
-    )
-
-    if (!allowClientOverrides) {
-        return { provider: null, baseUrl: null, apiKey: null, modelId: null }
-    }
-
     const provider = headers.get("x-ai-provider")
     const baseUrl = headers.get("x-ai-base-url")
     const apiKey = headers.get("x-ai-api-key")
     const modelId = headers.get("x-ai-model")
 
-    console.log("[Client Overrides] Headers received:", {
-        provider,
-        baseUrl: baseUrl ? `${baseUrl.substring(0, 30)}...` : null,
-        apiKey: apiKey ? `${apiKey.substring(0, 10)}...` : null,
-        modelId,
+    // BYOK 场景：有 apiKey 时始终允许覆写（用户自带密钥，不消耗服务端资源）
+    // 无 apiKey 时需要 ENABLE_CLIENT_AI_OVERRIDES=true 才允许覆写
+    const isBYOK = !!apiKey
+    const allowClientOverrides =
+        isBYOK ||
+        process.env.ENABLE_CLIENT_AI_OVERRIDES === "true" ||
+        process.env.NODE_ENV === "development"
+
+    console.log("[Client Overrides] Check:", {
+        isBYOK,
+        allowClientOverrides,
+        envFlag: process.env.ENABLE_CLIENT_AI_OVERRIDES,
     })
 
-    // KISS：没有 API Key 时不接受任何覆写，避免“强行切 provider 但走服务端默认密钥”的混淆与风险。
+    if (!allowClientOverrides) {
+        return { provider: null, baseUrl: null, apiKey: null, modelId: null }
+    }
+
+    // 没有 API Key 时不接受覆写，避免"强行切 provider 但走服务端默认密钥"的风险
     if (!apiKey) {
         console.log(
             "[Client Overrides] No API key provided, rejecting overrides",
         )
         return { provider: null, baseUrl: null, apiKey: null, modelId: null }
     }
+
+    console.log("[Client Overrides] BYOK mode, headers:", {
+        provider,
+        baseUrl: baseUrl ? `${baseUrl.substring(0, 30)}...` : null,
+        apiKey: `${apiKey.substring(0, 10)}...`,
+        modelId,
+    })
 
     const allowlist = (process.env.AI_BASE_URL_ALLOWLIST || "")
         .split(",")

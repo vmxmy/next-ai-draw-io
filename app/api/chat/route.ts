@@ -601,11 +601,14 @@ async function handleChatRequest(req: Request): Promise<Response> {
             null
 
         // 查询用户的 ProviderConfig
-        // 如果指定了 provider，按 provider 查询；否则查询任意可用配置（优先 isDefault）
+        // 如果指定了 provider，按 provider 查询（优先 isDefault）
+        // 如果没有指定 provider，只查询 isDefault=true 的配置（避免使用用户不期望的配置）
         const userConfig = await db.providerConfig.findFirst({
             where: {
                 userId,
-                ...(requestedProvider ? { provider: requestedProvider } : {}),
+                ...(requestedProvider
+                    ? { provider: requestedProvider }
+                    : { isDefault: true }),
                 isDisabled: false,
             },
             orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],

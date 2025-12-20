@@ -5,7 +5,7 @@ import { DefaultChatTransport } from "ai"
 import { PanelRightOpen } from "lucide-react"
 import { useSession } from "next-auth/react"
 import type React from "react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Toaster, toast } from "sonner"
 import { AuthDialog } from "@/components/auth-dialog"
@@ -770,34 +770,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const utils = api.useUtils()
     const pushMutation = api.conversation.push.useMutation()
 
-    // BYOK 检测：检查用户是否使用自己的 API Key（本地或云端）
-    const [currentProvider, setCurrentProvider] = useState("")
-    const [localApiKey, setLocalApiKey] = useState("")
-    useEffect(() => {
-        const config = getAIConfig()
-        setCurrentProvider(config.aiProvider || "")
-        setLocalApiKey(config.aiApiKey || "")
-    }, [])
-
-    // 查询当前 provider 的云端配置（仅登录用户）
-    const { data: cloudProviderConfig } = api.providerConfig.get.useQuery(
-        { provider: currentProvider as any },
-        {
-            enabled: isAuthenticated && !!currentProvider,
-            staleTime: 30_000, // 30 秒内不重新查询
-        },
-    )
-
-    // 计算是否使用 BYOK（本地 apiKey 或云端配置）
-    // 使用 state 而非直接调用 getAIConfig() 以避免 hydration mismatch
-    const isBYOK = useMemo(() => {
-        // 匿名用户：检查本地 apiKey
-        if (!isAuthenticated) {
-            return !!localApiKey
-        }
-        // 登录用户：检查云端配置是否有 apiKey
-        return !!cloudProviderConfig?.hasApiKey
-    }, [isAuthenticated, localApiKey, cloudProviderConfig?.hasApiKey])
+    // BYOK 检测：使用 quotaManager 的 isBYOK（已包含本地和云端检查，并监听 storage 变化）
+    const { isBYOK } = quotaManager
 
     // 云端会话管理（仅登录用户）
     const cloudHook = useCloudConversations({

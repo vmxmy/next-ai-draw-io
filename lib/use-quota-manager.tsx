@@ -1,7 +1,7 @@
 "use client"
 
 import { useSession } from "next-auth/react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { QuotaLimitToast } from "@/components/quota-limit-toast"
 import { STORAGE_KEYS } from "@/lib/storage"
@@ -37,6 +37,7 @@ export interface QuotaUsage {
  */
 export function useQuotaManager(fallbackConfig?: QuotaConfig): {
     hasOwnApiKey: () => boolean
+    isBYOK: boolean
     checkDailyLimit: () => QuotaCheckResult
     checkTokenLimit: () => QuotaCheckResult
     checkTPMLimit: () => QuotaCheckResult
@@ -72,6 +73,48 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
             enabled: status === "authenticated",
             refetchInterval: 10_000, // 每 10 秒刷新
         })
+
+    // BYOK 检测：获取当前 provider 和云端配置
+    const [currentProvider, setCurrentProvider] = useState("")
+    const [localApiKey, setLocalApiKey] = useState("")
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        const provider = localStorage.getItem(STORAGE_KEYS.aiProvider) || ""
+        const apiKey = localStorage.getItem(STORAGE_KEYS.aiApiKey) || ""
+        setCurrentProvider(provider)
+        setLocalApiKey(apiKey)
+
+        // 监听 storage 变化（设置对话框更改时）
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === STORAGE_KEYS.aiProvider) {
+                setCurrentProvider(e.newValue || "")
+            }
+            if (e.key === STORAGE_KEYS.aiApiKey) {
+                setLocalApiKey(e.newValue || "")
+            }
+        }
+        window.addEventListener("storage", handleStorage)
+        return () => window.removeEventListener("storage", handleStorage)
+    }, [])
+
+    // 登录用户：查询云端 ProviderConfig
+    const { data: cloudProviderConfig } = api.providerConfig.get.useQuery(
+        { provider: currentProvider as any },
+        {
+            enabled: status === "authenticated" && !!currentProvider,
+            staleTime: 30_000,
+        },
+    )
+
+    // 计算是否使用 BYOK（本地或云端）
+    const isBYOK = useMemo(() => {
+        // 匿名用户：检查本地 apiKey
+        if (status !== "authenticated") {
+            return !!(currentProvider && localApiKey)
+        }
+        // 登录用户：检查云端配置
+        return !!cloudProviderConfig?.hasApiKey
+    }, [status, currentProvider, localApiKey, cloudProviderConfig?.hasApiKey])
 
     // 匿名用户：从 /api/quota/anonymous 获取配额配置和使用情况
     useEffect(() => {
@@ -131,13 +174,10 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
     }, [usageData])
 
     // Check if user has their own API key configured (bypass limits)
+    // 现在使用 isBYOK，同时检查本地和云端配置
     const hasOwnApiKey = useCallback((): boolean => {
-        // SSR safe: only access localStorage in browser
-        if (typeof window === "undefined") return false
-        const provider = localStorage.getItem(STORAGE_KEYS.aiProvider)
-        const apiKey = localStorage.getItem(STORAGE_KEYS.aiApiKey)
-        return !!(provider && apiKey)
-    }, [])
+        return isBYOK
+    }, [isBYOK])
 
     // Check daily request limit
     const checkDailyLimit = useCallback((): QuotaCheckResult => {
@@ -275,6 +315,7 @@ export function useQuotaManager(fallbackConfig?: QuotaConfig): {
     return {
         // Check functions
         hasOwnApiKey,
+        isBYOK,
         checkDailyLimit,
         checkTokenLimit,
         checkTPMLimit,
