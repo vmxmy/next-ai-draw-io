@@ -1,6 +1,6 @@
 "use client"
 
-import { Moon, Palette, Sun } from "lucide-react"
+import { Moon, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -14,6 +14,42 @@ import { Switch } from "@/components/ui/switch"
 import { useI18n } from "@/contexts/i18n-context"
 import { useTheme } from "@/contexts/theme-context"
 import { tweakcnThemes } from "@/lib/tweakcn-themes"
+
+/**
+ * Theme color preview swatches
+ * Applies the theme class to show actual colors from CSS variables
+ */
+function ThemeColorSwatches({
+    themeName,
+    mode,
+}: {
+    themeName: string
+    mode: "light" | "dark"
+}) {
+    // CSS variable colors to display as swatches
+    const colorVars = [
+        "--ds-primary",
+        "--ds-secondary",
+        "--ds-accent",
+        "--ds-muted",
+        "--ds-background",
+    ]
+
+    return (
+        <div
+            className={`theme-${themeName} ${mode} flex items-center gap-0.5`}
+            style={{ isolation: "isolate" }}
+        >
+            {colorVars.map((varName) => (
+                <div
+                    key={varName}
+                    className="w-3 h-3 rounded-sm border border-border/50"
+                    style={{ backgroundColor: `var(${varName})` }}
+                />
+            ))}
+        </div>
+    )
+}
 
 interface InterfaceTabProps {
     darkMode: boolean
@@ -77,7 +113,7 @@ export function InterfaceTab({
                 >
                     <SelectTrigger
                         id="theme-color-select"
-                        className="w-[180px]"
+                        className="w-[220px]"
                     >
                         <SelectValue />
                     </SelectTrigger>
@@ -85,7 +121,10 @@ export function InterfaceTab({
                         {tweakcnThemes.map((theme) => (
                             <SelectItem key={theme.name} value={theme.name}>
                                 <div className="flex items-center gap-2">
-                                    <Palette className="h-3.5 w-3.5" />
+                                    <ThemeColorSwatches
+                                        themeName={theme.name}
+                                        mode={darkMode ? "dark" : "light"}
+                                    />
                                     {theme.title}
                                 </div>
                             </SelectItem>
