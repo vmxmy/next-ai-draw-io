@@ -401,17 +401,17 @@ export async function POST(req: Request) {
     } = {}
 
     if (userId && !clientOverrides.apiKey) {
+        // 直接从 headers 读取 provider（sanitizeClientOverrides 在无 apiKey 时返回 null）
         const requestedProvider =
-            clientOverrides.provider ||
+            req.headers.get("x-ai-provider") ||
             req.headers.get("x-ai-provider-hint") ||
             null
 
+        // 如果指定了 provider，按 provider 查询；否则查询任意可用配置（优先 isDefault）
         const userConfig = await db.providerConfig.findFirst({
             where: {
                 userId,
-                ...(requestedProvider
-                    ? { provider: requestedProvider }
-                    : { isDefault: true }),
+                ...(requestedProvider ? { provider: requestedProvider } : {}),
                 isDisabled: false,
             },
             orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],

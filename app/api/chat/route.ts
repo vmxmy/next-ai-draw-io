@@ -594,18 +594,18 @@ async function handleChatRequest(req: Request): Promise<Response> {
 
     // 如果用户已登录且客户端没有传 API Key，尝试从云端获取配置
     if (userId && !clientOverrides.apiKey) {
+        // 直接从 headers 读取 provider（sanitizeClientOverrides 在无 apiKey 时返回 null）
         const requestedProvider =
-            clientOverrides.provider ||
+            req.headers.get("x-ai-provider") ||
             req.headers.get("x-ai-provider-hint") ||
             null
 
         // 查询用户的 ProviderConfig
+        // 如果指定了 provider，按 provider 查询；否则查询任意可用配置（优先 isDefault）
         const userConfig = await db.providerConfig.findFirst({
             where: {
                 userId,
-                ...(requestedProvider
-                    ? { provider: requestedProvider }
-                    : { isDefault: true }),
+                ...(requestedProvider ? { provider: requestedProvider } : {}),
                 isDisabled: false,
             },
             orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
