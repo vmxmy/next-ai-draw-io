@@ -772,9 +772,11 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
     // BYOK 检测：检查用户是否使用自己的 API Key（本地或云端）
     const [currentProvider, setCurrentProvider] = useState("")
+    const [localApiKey, setLocalApiKey] = useState("")
     useEffect(() => {
         const config = getAIConfig()
         setCurrentProvider(config.aiProvider || "")
+        setLocalApiKey(config.aiApiKey || "")
     }, [])
 
     // 查询当前 provider 的云端配置（仅登录用户）
@@ -787,15 +789,15 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     )
 
     // 计算是否使用 BYOK（本地 apiKey 或云端配置）
+    // 使用 state 而非直接调用 getAIConfig() 以避免 hydration mismatch
     const isBYOK = useMemo(() => {
-        const config = getAIConfig()
         // 匿名用户：检查本地 apiKey
         if (!isAuthenticated) {
-            return !!config.aiApiKey
+            return !!localApiKey
         }
         // 登录用户：检查云端配置是否有 apiKey
         return !!cloudProviderConfig?.hasApiKey
-    }, [isAuthenticated, cloudProviderConfig?.hasApiKey])
+    }, [isAuthenticated, localApiKey, cloudProviderConfig?.hasApiKey])
 
     // 云端会话管理（仅登录用户）
     const cloudHook = useCloudConversations({
