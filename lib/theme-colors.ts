@@ -53,16 +53,34 @@ export function cssColorToHex(cssColor: string): string {
 }
 
 /**
- * Get computed color from CSS variable by applying it to a temp element
- * This properly resolves var() references and converts OKLCH to RGB
+ * Get computed color from CSS variable on document root
+ * Reads --ds-* variables directly as they contain the actual OKLCH values
+ * Uses getComputedStyle on documentElement to get the resolved color value
  */
 function getComputedColor(varName: string): string {
     if (typeof document === "undefined") {
         return "#808080"
     }
 
+    const root = document.documentElement
+    const styles = getComputedStyle(root)
+
+    // Try to get the value directly from computed styles
+    // This works for --ds-* variables defined in :root or theme classes
+    const rawValue = styles.getPropertyValue(varName).trim()
+
+    if (!rawValue) {
+        return "#808080"
+    }
+
+    // If the value is already hex, return it
+    if (rawValue.startsWith("#")) {
+        return rawValue
+    }
+
+    // For oklch or other color formats, use a temp element to convert to RGB
     const temp = document.createElement("div")
-    temp.style.color = `var(${varName})`
+    temp.style.color = rawValue
     temp.style.display = "none"
     document.body.appendChild(temp)
 
@@ -83,6 +101,8 @@ function getComputedColor(varName: string): string {
 
 /**
  * Extract current theme colors from CSS variables
+ * Uses --ds-* variables which contain the actual OKLCH values
+ * These are defined in design-tokens.css and overridden by theme classes in palettes.css
  */
 export function extractThemeColors(): ThemeColors {
     if (typeof document === "undefined") {
@@ -97,14 +117,16 @@ export function extractThemeColors(): ThemeColors {
         }
     }
 
+    // Use --ds-* variables (design system tokens) as they contain the actual values
+    // The --primary etc. are @theme directive aliases that may not be accessible via getComputedStyle
     return {
-        primary: getComputedColor("--primary"),
-        secondary: getComputedColor("--secondary"),
-        accent: getComputedColor("--accent"),
-        background: getComputedColor("--background"),
-        foreground: getComputedColor("--foreground"),
-        muted: getComputedColor("--muted"),
-        border: getComputedColor("--border"),
+        primary: getComputedColor("--ds-primary"),
+        secondary: getComputedColor("--ds-secondary"),
+        accent: getComputedColor("--ds-accent"),
+        background: getComputedColor("--ds-background"),
+        foreground: getComputedColor("--ds-foreground"),
+        muted: getComputedColor("--ds-muted"),
+        border: getComputedColor("--ds-border"),
     }
 }
 
