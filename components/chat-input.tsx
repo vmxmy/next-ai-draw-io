@@ -5,6 +5,7 @@ import {
     History,
     Image as ImageIcon,
     Loader2,
+    Palette,
     Redo2,
     Send,
     Square,
@@ -164,6 +165,7 @@ interface ChatInputProps {
     conversationTitle?: string
     error?: Error | null
     disableImageUpload?: boolean
+    onApplyTheme?: () => void
 }
 
 export function ChatInput({
@@ -190,6 +192,7 @@ export function ChatInput({
     conversationTitle,
     error = null,
     disableImageUpload = false,
+    onApplyTheme,
 }: ChatInputProps) {
     const { t } = useI18n()
     const { saveDiagramToFile } = useDiagram()
@@ -469,6 +472,20 @@ export function ChatInput({
                                 title: conversationTitle,
                             })}
                         />
+
+                        {onApplyTheme && (
+                            <ButtonWithTooltip
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={onApplyTheme}
+                                disabled={isDisabled}
+                                tooltipContent={t("chat.tooltip.applyTheme")}
+                                className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
+                            >
+                                <Palette className="h-4 w-4" />
+                            </ButtonWithTooltip>
+                        )}
 
                         <ButtonWithTooltip
                             type="button"

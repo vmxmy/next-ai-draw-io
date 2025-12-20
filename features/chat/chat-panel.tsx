@@ -34,6 +34,10 @@ import { ChatHeader } from "@/features/chat/ui/chat-header"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
+import {
+    extractThemeColors,
+    formatThemeColorsForPrompt,
+} from "@/lib/theme-colors"
 import { api } from "@/lib/trpc/client"
 import { type FileData, useFileProcessor } from "@/lib/use-file-processor"
 import { useQuotaManager } from "@/lib/use-quota-manager"
@@ -1204,6 +1208,48 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         [quotaManager, sendMessage, authSession],
     )
 
+    // Apply current UI theme colors to the diagram
+    const handleApplyTheme = useCallback(async () => {
+        const isProcessing = status === "streaming" || status === "submitted"
+        if (isProcessing) return
+
+        // Check quota limits first
+        if (!checkAllQuotaLimits()) return
+
+        try {
+            // Extract current theme colors and format prompt
+            const colors = extractThemeColors()
+            const themePrompt = formatThemeColorsForPrompt(colors)
+
+            // Fetch current diagram XML
+            const chartXml = await onFetchChart()
+            chartXMLRef.current = chartXml
+
+            // Record diagram version before sending
+            const messageIndex = messages.length
+            const previousXml = getPreviousDiagramXmlBeforeMessage(messageIndex)
+            ensureDiagramVersionForMessage(
+                messageIndex,
+                chartXml,
+                "before-send",
+            )
+
+            // Send the theme application message
+            sendChatMessage(themePrompt, [], chartXml, previousXml, sessionId)
+        } catch (error) {
+            console.error("Error applying theme:", error)
+        }
+    }, [
+        status,
+        checkAllQuotaLimits,
+        onFetchChart,
+        messages.length,
+        getPreviousDiagramXmlBeforeMessage,
+        ensureDiagramVersionForMessage,
+        sendChatMessage,
+        sessionId,
+    ])
+
     // Process files and append content to user text (handles PDF, text, and optionally images)
     const processFilesAndAppendContent = async (
         baseText: string,
@@ -1583,6 +1629,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     )}
                     error={error}
                     disableImageUpload={disableImageUpload}
+                    onApplyTheme={handleApplyTheme}
                 />
             </footer>
 

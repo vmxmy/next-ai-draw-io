@@ -137,6 +137,7 @@ export type I18nKey =
     | "chat.tooltip.undo"
     | "chat.tooltip.redo"
     | "chat.tooltip.upload"
+    | "chat.tooltip.applyTheme"
     | "chat.send"
     | "chat.sending"
     | "chat.thinking"
@@ -470,6 +471,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.undo": "Undo",
         "chat.tooltip.redo": "Redo",
         "chat.tooltip.upload": "Upload file (image, PDF, text)",
+        "chat.tooltip.applyTheme": "Apply theme to diagram",
         "chat.send": "Send",
         "chat.sending": "Sending...",
         "chat.thinking": "Thinking...",
@@ -808,6 +810,7 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.undo": "撤销",
         "chat.tooltip.redo": "重做",
         "chat.tooltip.upload": "上传文件（图片 / PDF / 文本）",
+        "chat.tooltip.applyTheme": "应用主题样式到图表",
         "chat.send": "发送",
         "chat.sending": "发送中…",
         "chat.thinking": "思考中…",
