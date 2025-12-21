@@ -41,6 +41,7 @@ import {
     QuotaExceededError,
     recordTokenUsage,
 } from "@/server/quota-enforcement"
+import { processMessageImages } from "@/server/services/image-processor"
 
 export const maxDuration = 120
 
@@ -645,14 +646,27 @@ ${preprocessResult.processedMessage}
     // This allows us to store only fileId in localStorage/database
     const expandedMessages = await expandFileReferences(messages)
 
-    // Modify the last message's text BEFORE converting to ModelMessages
+    // Modify the last message's text and process images BEFORE converting to ModelMessages
     // This ensures convertToModelMessages handles the file parts correctly
     if (expandedMessages.length > 0) {
         const lastExpandedMessage =
             expandedMessages[expandedMessages.length - 1]
         if (lastExpandedMessage.role === "user" && lastExpandedMessage.parts) {
+            // Process images - resize large images to save tokens
+            const {
+                parts: processedParts,
+                imagesProcessed,
+                tokensSaved,
+            } = await processMessageImages(lastExpandedMessage.parts)
+
+            if (imagesProcessed > 0) {
+                console.log(
+                    `[ImageProcessor] Processed ${imagesProcessed} image(s), ~${tokensSaved} tokens saved`,
+                )
+            }
+
             // Update the text part with formatted input
-            const updatedParts = lastExpandedMessage.parts.map((part: any) => {
+            const updatedParts = processedParts.map((part: any) => {
                 if (part.type === "text") {
                     return { ...part, text: formattedUserInput }
                 }
