@@ -25,9 +25,20 @@ export const STORAGE_KEYS = {
     accessCode: "next-ai-draw-io-access-code",
     closeProtection: "next-ai-draw-io-close-protection",
     accessCodeRequired: "next-ai-draw-io-access-code-required",
+    // Legacy single config (for backwards compatibility)
     aiProvider: "next-ai-draw-io-ai-provider",
     aiProviderConnection: "next-ai-draw-io-ai-provider-connection",
     aiBaseUrl: "next-ai-draw-io-ai-base-url",
     aiApiKey: "next-ai-draw-io-ai-api-key",
     aiModel: "next-ai-draw-io-ai-model",
+    // Fast mode config
+    fastProvider: "next-ai-draw-io-fast-provider",
+    fastBaseUrl: "next-ai-draw-io-fast-base-url",
+    fastApiKey: "next-ai-draw-io-fast-api-key",
+    fastModel: "next-ai-draw-io-fast-model",
+    // Max mode config
+    maxProvider: "next-ai-draw-io-max-provider",
+    maxBaseUrl: "next-ai-draw-io-max-base-url",
+    maxApiKey: "next-ai-draw-io-max-api-key",
+    maxModel: "next-ai-draw-io-max-model",
 } as const

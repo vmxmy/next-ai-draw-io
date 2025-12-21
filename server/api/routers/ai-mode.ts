@@ -9,55 +9,65 @@ export const aiModeRouter = createTRPCRouter({
     getStatus: protectedProcedure.query(async ({ ctx }) => {
         const userId = ctx.session.user.id
 
-        const user = await ctx.db.user.findUnique({
-            where: { id: userId },
-            select: {
-                aiMode: true,
-                tier: true,
-                selectedProviderConfigId: true,
-                selectedProviderConfig: {
-                    select: {
-                        id: true,
-                        provider: true,
-                        name: true,
-                        modelId: true,
-                        isDisabled: true,
-                        encryptedCredentials: true,
-                    },
+        // 获取用户基本信息和 mode configs
+        const [user, credentials, modeConfigs] = await Promise.all([
+            ctx.db.user.findUnique({
+                where: { id: userId },
+                select: {
+                    aiMode: true,
+                    tier: true,
                 },
-            },
-        })
+            }),
+            ctx.db.userCredential.findMany({
+                where: {
+                    userId,
+                    isDisabled: false,
+                    encryptedCredentials: { not: null },
+                },
+                select: {
+                    provider: true,
+                    name: true,
+                },
+            }),
+            ctx.db.userModeConfig.findMany({
+                where: { userId },
+                select: {
+                    mode: true,
+                    provider: true,
+                    credentialName: true,
+                    modelId: true,
+                },
+            }),
+        ])
 
-        const selectedConfig = user?.selectedProviderConfig
-        const hasValidConfig =
-            !!selectedConfig &&
-            !selectedConfig.isDisabled &&
-            !!selectedConfig.encryptedCredentials
+        // 检查用户是否有有效的 BYOK 配置
+        // 需要至少有一个凭证 + 至少一个模式配置了 provider
+        const hasValidCredential = credentials.length > 0
+        const fastConfig = modeConfigs.find((c) => c.mode === "fast")
+        const maxConfig = modeConfigs.find((c) => c.mode === "max")
+        const hasModeConfig = !!(fastConfig?.provider || maxConfig?.provider)
+        const hasByokConfig = hasValidCredential && hasModeConfig
 
         const result = {
             aiMode:
                 (user?.aiMode as "system_default" | "byok") || "system_default",
             tier: user?.tier || "free",
-            hasByokConfig: hasValidConfig,
-            selectedConfigId: user?.selectedProviderConfigId || null,
-            byokProvider: selectedConfig?.provider || null,
-            byokConnectionName: selectedConfig?.name || null,
-            byokModel: selectedConfig?.modelId || null,
+            hasByokConfig,
+            // 返回 fast 模式的配置信息（主要配置）
+            byokProvider: fastConfig?.provider || null,
+            byokCredentialName: fastConfig?.credentialName || null,
+            byokModel: fastConfig?.modelId || null,
+            // 返回 max 模式配置信息
+            maxProvider: maxConfig?.provider || null,
+            maxCredentialName: maxConfig?.credentialName || null,
+            maxModel: maxConfig?.modelId || null,
         }
 
-        // Debug logging
         console.log("[aiMode.getStatus] Debug:", {
             userId,
             userAiMode: user?.aiMode,
-            selectedConfig: selectedConfig
-                ? {
-                      id: selectedConfig.id,
-                      provider: selectedConfig.provider,
-                      name: selectedConfig.name,
-                      hasEncryptedCredentials:
-                          !!selectedConfig.encryptedCredentials,
-                  }
-                : null,
+            credentialCount: credentials.length,
+            hasByokConfig,
             result,
         })
 
@@ -70,30 +80,30 @@ export const aiModeRouter = createTRPCRouter({
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
 
-            // 切换到 BYOK 模式时，验证用户是否有选中的有效配置
+            // 切换到 BYOK 模式时，验证用户是否有有效配置
             if (input.mode === "byok") {
-                const user = await ctx.db.user.findUnique({
-                    where: { id: userId },
-                    select: {
-                        selectedProviderConfig: {
-                            select: {
-                                isDisabled: true,
-                                encryptedCredentials: true,
-                            },
-                        },
+                // 检查用户是否有凭证
+                const credentialCount = await ctx.db.userCredential.count({
+                    where: {
+                        userId,
+                        isDisabled: false,
+                        encryptedCredentials: { not: null },
                     },
                 })
 
-                const config = user?.selectedProviderConfig
-                if (
-                    !config ||
-                    config.isDisabled ||
-                    !config.encryptedCredentials
-                ) {
+                // 检查用户是否有模式配置
+                const modeConfigCount = await ctx.db.userModeConfig.count({
+                    where: {
+                        userId,
+                        provider: { not: null },
+                    },
+                })
+
+                if (credentialCount === 0 || modeConfigCount === 0) {
                     throw new TRPCError({
                         code: "BAD_REQUEST",
                         message:
-                            "Cannot enable BYOK mode: No valid configuration selected. Please select a provider with API key first.",
+                            "Cannot enable BYOK mode: Please configure at least one credential and mode setting first.",
                     })
                 }
             }
@@ -106,7 +116,7 @@ export const aiModeRouter = createTRPCRouter({
             return { success: true, mode: input.mode }
         }),
 
-    // 设置选中的配置
+    // 设置选中的配置（已废弃，保留兼容性）
     setSelectedConfig: protectedProcedure
         .input(
             z.object({
@@ -114,29 +124,11 @@ export const aiModeRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ ctx, input }) => {
-            const userId = ctx.session.user.id
-
-            // 如果设置了 configId，验证它属于当前用户
-            if (input.configId) {
-                const config = await ctx.db.providerConfig.findFirst({
-                    where: {
-                        id: input.configId,
-                        userId,
-                    },
-                })
-                if (!config) {
-                    throw new TRPCError({
-                        code: "NOT_FOUND",
-                        message: "Configuration not found",
-                    })
-                }
-            }
-
-            await ctx.db.user.update({
-                where: { id: userId },
-                data: { selectedProviderConfigId: input.configId },
-            })
-
+            // 不再使用 selectedProviderConfigId
+            // 保留此 endpoint 以兼容旧客户端
+            console.warn(
+                "[aiMode.setSelectedConfig] Deprecated: Use userModeConfig instead",
+            )
             return { success: true, configId: input.configId }
         }),
 })

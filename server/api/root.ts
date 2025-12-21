@@ -8,7 +8,9 @@ import { quotaMonitoringRouter } from "@/server/api/routers/quota-monitoring"
 import { systemConfigRouter } from "@/server/api/routers/system-config"
 import { systemCredentialRouter } from "@/server/api/routers/system-credential"
 import { tierConfigRouter } from "@/server/api/routers/tier-config"
+import { userCredentialRouter } from "@/server/api/routers/user-credential"
 import { userManagementRouter } from "@/server/api/routers/user-management"
+import { userModeConfigRouter } from "@/server/api/routers/user-mode-config"
 import { createTRPCRouter } from "@/server/api/trpc"
 
 export const appRouter = createTRPCRouter({
@@ -22,7 +24,9 @@ export const appRouter = createTRPCRouter({
     systemConfig: systemConfigRouter,
     systemCredential: systemCredentialRouter,
     tierConfig: tierConfigRouter,
+    userCredential: userCredentialRouter,
     userManagement: userManagementRouter,
+    userModeConfig: userModeConfigRouter,
 })
 
 export type AppRouter = typeof appRouter

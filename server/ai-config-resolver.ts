@@ -16,11 +16,73 @@ export interface ResolvedAIConfig {
 }
 
 /**
+ * 从 UserCredential 获取解密的凭证
+ */
+async function getUserCredential(
+    userId: string,
+    provider: string,
+    credentialName?: string | null,
+): Promise<{ apiKey: string; baseUrl?: string } | null> {
+    // 查找指定凭证，或该 provider 的默认凭证
+    let credential = credentialName
+        ? await db.userCredential.findUnique({
+              where: {
+                  userId_provider_name: {
+                      userId,
+                      provider,
+                      name: credentialName,
+                  },
+              },
+          })
+        : await db.userCredential.findFirst({
+              where: {
+                  userId,
+                  provider,
+                  isDefault: true,
+                  isDisabled: false,
+              },
+          })
+
+    // 如果没有默认凭证，尝试获取任意一个可用的
+    if (!credential && !credentialName) {
+        credential = await db.userCredential.findFirst({
+            where: {
+                userId,
+                provider,
+                isDisabled: false,
+            },
+            orderBy: { createdAt: "asc" },
+        })
+    }
+
+    if (!credential || !credential.encryptedCredentials) {
+        return null
+    }
+
+    try {
+        const decrypted = decryptCredentials({
+            encryptedData: credential.encryptedCredentials,
+            iv: credential.credentialsIv!,
+            authTag: credential.credentialsAuthTag!,
+            keyVersion: credential.credentialsVersion,
+        })
+        const parsed = JSON.parse(decrypted)
+        return {
+            apiKey: parsed.apiKey,
+            baseUrl: credential.baseUrl || undefined,
+        }
+    } catch (error) {
+        console.error("[getUserCredential] Failed to decrypt:", error)
+        return null
+    }
+}
+
+/**
  * 服务端单一配置解析入口
  *
  * 优先级:
  * 1. 匿名用户 + BYOK headers -> 使用 headers，绕过配额
- * 2. 登录用户 aiMode="byok" -> 使用云端 ProviderConfig，绕过配额
+ * 2. 登录用户 aiMode="byok" -> 使用 UserModeConfig + UserCredential，绕过配额
  * 3. 登录用户 aiMode="system_default" -> 使用系统配置，受配额限制
  * 4. 匿名用户无 BYOK -> 使用系统配置，受配额限制
  */
@@ -61,29 +123,14 @@ export async function resolveAIConfig(params: {
             where: { id: userId },
             select: {
                 aiMode: true,
-                providerConfigs: {
-                    where: {
-                        modelMode: modelMode,
-                        isDisabled: false,
-                    },
-                    orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+                modeConfigs: {
+                    where: { mode: modelMode },
                     take: 1,
-                    select: {
-                        id: true,
-                        provider: true,
-                        modelId: true,
-                        baseUrl: true,
-                        modelMode: true,
-                        encryptedCredentials: true,
-                        credentialsIv: true,
-                        credentialsAuthTag: true,
-                        credentialsVersion: true,
-                    },
                 },
             },
         })
 
-        const modeConfig = user?.providerConfigs?.[0]
+        const modeConfig = user?.modeConfigs?.[0]
 
         console.log("[resolveAIConfig] User lookup:", {
             userId,
@@ -93,49 +140,35 @@ export async function resolveAIConfig(params: {
             configProvider: modeConfig?.provider,
         })
 
-        if (user?.aiMode === "byok" && modeConfig) {
-            // 检查配置是否有效
-            if (modeConfig.encryptedCredentials) {
-                try {
-                    const decrypted = decryptCredentials({
-                        encryptedData: modeConfig.encryptedCredentials,
-                        iv: modeConfig.credentialsIv!,
-                        authTag: modeConfig.credentialsAuthTag!,
-                        keyVersion: modeConfig.credentialsVersion,
-                    })
-                    const credentials = JSON.parse(decrypted)
+        if (user?.aiMode === "byok" && modeConfig?.provider) {
+            // 从 UserCredential 获取凭证
+            const credential = await getUserCredential(
+                userId,
+                modeConfig.provider,
+                modeConfig.credentialName,
+            )
 
-                    const resolvedConfig = {
-                        source: "byok" as const,
-                        provider: modeConfig.provider,
-                        apiKey: credentials.apiKey,
-                        baseUrl: modeConfig.baseUrl || undefined,
-                        modelId: modeConfig.modelId || undefined,
-                        bypassQuota: true,
-                    }
-                    console.log(
-                        "[resolveAIConfig] Using BYOK config for mode:",
-                        {
-                            modelMode,
-                            provider: resolvedConfig.provider,
-                            modelId: resolvedConfig.modelId,
-                            hasApiKey: !!resolvedConfig.apiKey,
-                        },
-                    )
-                    return resolvedConfig
-                } catch (error) {
-                    console.error(
-                        "[resolveAIConfig] Failed to decrypt credentials:",
-                        error,
-                    )
-                    // 解密失败，回退到系统默认
+            if (credential?.apiKey) {
+                const resolvedConfig = {
+                    source: "byok" as const,
+                    provider: modeConfig.provider,
+                    apiKey: credential.apiKey,
+                    baseUrl: credential.baseUrl,
+                    modelId: modeConfig.modelId || undefined,
+                    bypassQuota: true,
                 }
-            } else {
-                console.log(
-                    "[resolveAIConfig] Config for mode has no credentials:",
+                console.log("[resolveAIConfig] Using BYOK config for mode:", {
                     modelMode,
-                )
+                    provider: resolvedConfig.provider,
+                    modelId: resolvedConfig.modelId,
+                    hasApiKey: !!resolvedConfig.apiKey,
+                })
+                return resolvedConfig
             }
+            console.log(
+                "[resolveAIConfig] No valid credential for mode:",
+                modelMode,
+            )
         }
     }
 

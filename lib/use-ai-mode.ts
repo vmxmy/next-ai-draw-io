@@ -11,12 +11,15 @@ export interface AIModeStat {
     mode: AIMode
     isLoading: boolean
     hasByokConfig: boolean
-    selectedConfigId: string | null
+    // Fast 模式配置
     byokProvider: string | null
-    byokConnectionName: string | null
+    byokCredentialName: string | null
     byokModel: string | null
+    // Max 模式配置
+    maxProvider: string | null
+    maxCredentialName: string | null
+    maxModel: string | null
     setMode: (mode: AIMode) => Promise<void>
-    setSelectedConfig: (configId: string | null) => Promise<void>
     refresh: () => void
 }
 
@@ -40,7 +43,6 @@ export function useAIMode(): AIModeStat {
     )
 
     const setModeMutation = api.aiMode.setMode.useMutation()
-    const setSelectedConfigMutation = api.aiMode.setSelectedConfig.useMutation()
 
     // 匿名用户: localStorage 检测
     const [anonymousHasByok, setAnonymousHasByok] = useState(false)
@@ -64,7 +66,6 @@ export function useAIMode(): AIModeStat {
 
     const isAuthenticatedRef = useRef(isAuthenticated)
     const setModeMutationRef = useRef(setModeMutation)
-    const setSelectedConfigMutationRef = useRef(setSelectedConfigMutation)
     const refetchRef = useRef(refetch)
 
     useEffect(() => {
@@ -73,19 +74,12 @@ export function useAIMode(): AIModeStat {
 
     useEffect(() => {
         setModeMutationRef.current = setModeMutation
-        setSelectedConfigMutationRef.current = setSelectedConfigMutation
         refetchRef.current = refetch
-    }, [setModeMutation, setSelectedConfigMutation, refetch])
+    }, [setModeMutation, refetch])
 
     const setMode = useCallback(async (mode: AIMode) => {
         if (!isAuthenticatedRef.current) return
         await setModeMutationRef.current.mutateAsync({ mode })
-        await refetchRef.current()
-    }, [])
-
-    const setSelectedConfig = useCallback(async (configId: string | null) => {
-        if (!isAuthenticatedRef.current) return
-        await setSelectedConfigMutationRef.current.mutateAsync({ configId })
         await refetchRef.current()
     }, [])
 
@@ -104,12 +98,15 @@ export function useAIMode(): AIModeStat {
         mode,
         isLoading: isAuthenticated ? isLoading : false,
         hasByokConfig,
-        selectedConfigId: data?.selectedConfigId || null,
+        // Fast 模式配置
         byokProvider: data?.byokProvider || null,
-        byokConnectionName: data?.byokConnectionName || null,
+        byokCredentialName: data?.byokCredentialName || null,
         byokModel: data?.byokModel || null,
+        // Max 模式配置
+        maxProvider: data?.maxProvider || null,
+        maxCredentialName: data?.maxCredentialName || null,
+        maxModel: data?.maxModel || null,
         setMode,
-        setSelectedConfig,
         refresh: refetch,
     }
 }

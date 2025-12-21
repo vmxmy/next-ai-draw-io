@@ -258,7 +258,7 @@ export default function ChatPanel({
             }
 
             // 匿名用户 BYOK: 通过 headers 传递配置
-            // 登录用户: 服务端从 aiMode + ProviderConfig 读取，无需传递
+            // 登录用户: 服务端从 aiMode + UserCredential + UserModeConfig 读取
             if (!isLoggedIn && config.aiProvider && config.aiApiKey) {
                 headers["x-ai-provider"] = config.aiProvider
                 headers["x-ai-api-key"] = config.aiApiKey
@@ -1030,7 +1030,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             if (autoTitleRequestedRef.current.has(conversationId)) return
             autoTitleRequestedRef.current.add(conversationId)
 
-            const config = getAIConfig()
+            const config = getAIConfig("fast")
             const headers = buildAIHeaders(config, "fast")
 
             try {
@@ -1281,13 +1281,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             editFailureCountRef.current = 0
             forceDisplayNextRef.current = false
 
-            const config = getAIConfig()
+            const config = getAIConfig(modelMode)
             const isLoggedIn = !!authSession?.user
 
             // 登录用户：不发送 localStorage 中的 API Key，让服务端从云端配置读取
-            // 匿名用户：使用 localStorage 中的配置
+            // 匿名用户：使用 localStorage 中的配置（基于当前 modelMode）
             console.log("[Chat] AI Config:", {
                 isLoggedIn,
+                modelMode,
                 provider: config.aiProvider,
                 baseUrl: config.aiBaseUrl
                     ? `${config.aiBaseUrl.substring(0, 30)}...`

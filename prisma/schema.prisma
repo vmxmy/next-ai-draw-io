@@ -34,6 +34,8 @@ model User {
 
   conversations   Conversation[]
   providerConfigs ProviderConfig[] @relation("UserConfigs")
+  credentials     UserCredential[]
+  modeConfigs     UserModeConfig[]
   quotaUsage      UserQuotaUsage[]
   roles           UserRole[]
   auditLogs       AuditLog[]
@@ -235,6 +237,61 @@ model SystemCredential {
   @@index([provider])
   @@index([provider, isDefault])
   @@index([isDisabled])
+}
+
+// 用户级连接凭证（支持每个 Provider 多套凭证，与 SystemCredential 结构一致）
+model UserCredential {
+  id       String @id @default(cuid())
+  userId   String
+  provider String // openrouter, openai, anthropic, etc.
+  name     String @default("default") // 凭证别名
+
+  // 可选覆盖（优先级高于 ProviderCatalog）
+  baseUrl String?
+
+  // 加密凭证
+  credentialType       String  @default("apiKey") // apiKey | aws | oauth
+  encryptedCredentials String?
+  credentialsIv        String?
+  credentialsAuthTag   String?
+  credentialsVersion   Int     @default(1)
+
+  // AWS/Azure 特定字段
+  region       String?
+  resourceName String?
+
+  isDefault  Boolean @default(false) // 该 provider 下的默认凭证
+  isDisabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider, name])
+  @@index([userId])
+  @@index([userId, provider])
+  @@index([userId, provider, isDefault])
+}
+
+// 用户模式配置（Fast/Max 模式分别的 Provider + 凭证 + 模型选择）
+model UserModeConfig {
+  id       String @id @default(cuid())
+  userId   String
+  mode     String // fast | max
+
+  // 选择的配置
+  provider       String? // 留空则使用系统默认
+  credentialName String? // 留空则使用该 provider 的默认凭证
+  modelId        String? // 留空则使用系统默认模型
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, mode])
+  @@index([userId])
 }
 
 // SMS 验证码（用于手机号登录）
