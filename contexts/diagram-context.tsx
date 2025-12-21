@@ -12,6 +12,7 @@ import {
 } from "react"
 import type { DrawIoEmbedRef } from "react-drawio"
 import type { ExportFormat } from "@/components/save-dialog"
+import { initDebugParser } from "@/lib/debug-parser"
 import { STORAGE_DIAGRAM_XML_KEY } from "@/lib/storage-keys"
 import {
     autoFixXml,
@@ -66,6 +67,23 @@ export function DiagramProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         historyCursorRef.current = historyCursor
     }, [historyCursor])
+
+    // Initialize debug parser in development mode
+    useEffect(() => {
+        if (process.env.NODE_ENV === "development") {
+            initDebugParser()
+        }
+    }, [])
+
+    // Sync current diagram XML to window for debug parser
+    useEffect(() => {
+        if (
+            typeof window !== "undefined" &&
+            process.env.NODE_ENV === "development"
+        ) {
+            window._currentDiagramXml = chartXML || null
+        }
+    }, [chartXML])
 
     const onDrawioLoad = useCallback(() => {
         // Only set ready state once to prevent infinite loops

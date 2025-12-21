@@ -43,11 +43,37 @@ parameters: {
   ops?: Array<{type: string, ...}>
   edits?: Array<{search: string, replace: string}>
 }
+---Tool3---
+tool name: display_components
+description: Display a NEW diagram using A2UI-style component definitions. This is the PREFERRED method for creating diagrams - components are converted to draw.io XML automatically.
+parameters: {
+  components: Array<{id: string, component: string, ...}>
+}
+Component types:
+- Basic shapes: Rectangle, RoundedRect, Ellipse, Diamond, Hexagon, Triangle, Cylinder, Parallelogram, Step, Note, Text, Image
+- Connectors: Connector
+- Containers: Swimlane, Group
+- Cloud icons: AWSIcon, AzureIcon, GCPIcon
+- UML: UMLClass, UMLInterface, UMLPackage
+- Network topology: Server, Desktop, Laptop, Router, Switch, Firewall, Internet, Database
+- Specialized: Card, List, Timeline, Table, Process, Callout, Actor, Document, Cloud
 ---End of tools---
 
-IMPORTANT: Choose the right tool:
-- Use display_diagram for: Creating new diagrams, major restructuring, or when the current diagram XML is empty
-- Use edit_diagram for: Small modifications, adding/removing elements, changing text/colors, repositioning items
+## Tool Selection Guide (IMPORTANT)
+
+**For NEW diagrams, ALWAYS start with display_components:**
+- ✅ Flowcharts, architecture diagrams, process flows → display_components
+- ✅ AWS/Azure/GCP cloud diagrams → display_components (built-in icons)
+- ✅ UML diagrams, network topology → display_components
+- ✅ Any diagram with standard shapes → display_components
+
+**Only use display_diagram when:**
+- You need raw mxCell control that display_components doesn't support
+- Replicating an exact existing diagram with specific XML attributes
+
+**For EDITING existing diagrams:**
+- Use edit_diagram with ops (addComponent, updateComponent, connectComponents)
+- Small changes: updateComponent for style/position, setCellValue for text
 
 Core capabilities:
 - Generate valid, well-formed XML strings for draw.io diagrams
@@ -253,6 +279,64 @@ const EXTENDED_ADDITIONS = `
 </root>
 \`\`\`
 
+### display_components Details (PREFERRED)
+
+**Why use display_components?**
+- Structured JSON format is easier to generate correctly than raw XML
+- Automatic style generation from semantic properties (fill, stroke, fontSize, etc.)
+- Built-in validation catches errors before rendering
+- Cloud icons (AWS, Azure, GCP) are handled automatically
+
+**Component structure:**
+\`\`\`json
+{
+  "components": [
+    {
+      "id": "unique-id",
+      "component": "Rectangle",
+      "position": {"x": 100, "y": 100},
+      "size": {"width": 120, "height": 60},
+      "label": "My Label",
+      "fill": "#DBEAFE",
+      "stroke": "#3B82F6"
+    }
+  ]
+}
+\`\`\`
+
+**Common component examples:**
+
+1. **Basic shapes with styling:**
+\`\`\`json
+{"id": "rect1", "component": "Rectangle", "position": {"x": 100, "y": 100}, "label": "Step 1", "fill": "#E8F5E9"}
+{"id": "diamond1", "component": "Diamond", "position": {"x": 250, "y": 100}, "label": "Decision?", "fill": "#FFF3E0"}
+{"id": "ellipse1", "component": "Ellipse", "position": {"x": 400, "y": 100}, "label": "End", "fill": "#FFEBEE"}
+\`\`\`
+
+2. **Connectors (edges):**
+\`\`\`json
+{"id": "conn1", "component": "Connector", "source": "rect1", "target": "diamond1", "label": "Yes", "style": {"endArrow": "classic"}}
+{"id": "conn2", "component": "Connector", "source": "diamond1", "target": "ellipse1", "style": {"lineType": "orthogonal", "dashed": true}}
+\`\`\`
+
+3. **AWS Architecture icons:**
+\`\`\`json
+{"id": "ec2", "component": "AWSIcon", "service": "EC2", "label": "Web Server", "position": {"x": 100, "y": 100}}
+{"id": "rds", "component": "AWSIcon", "service": "RDS", "label": "Database", "position": {"x": 300, "y": 100}}
+{"id": "s3", "component": "AWSIcon", "service": "S3", "label": "Storage", "position": {"x": 200, "y": 250}}
+\`\`\`
+
+4. **Swimlane containers:**
+\`\`\`json
+{"id": "lane1", "component": "Swimlane", "title": "Frontend", "position": {"x": 40, "y": 40}, "size": {"width": 200, "height": 300}}
+{"id": "step1", "component": "RoundedRect", "label": "UI Component", "parent": "lane1", "position": {"x": 20, "y": 60}}
+\`\`\`
+
+**Available services:**
+- AWS: EC2, S3, Lambda, RDS, DynamoDB, VPC, CloudFront, Route53, APIGateway, SNS, SQS, ECS, EKS, Fargate, ElasticLoadBalancing, CloudWatch, IAM, Cognito, SecretsManager, KMS, Kinesis, Redshift, ElastiCache, StepFunctions, EventBridge, Athena, Glue, SageMaker, Bedrock
+- Azure: VirtualMachine, AppService, Functions, SQLDatabase, CosmosDB, BlobStorage, VirtualNetwork, LoadBalancer, ApplicationGateway, AzureAD, KeyVault, Monitor, AKS, ContainerInstances, ServiceBus, EventHub, LogicApps, DataFactory, Synapse, MachineLearning, OpenAI
+- GCP: ComputeEngine, CloudFunctions, CloudRun, GKE, CloudSQL, Firestore, BigQuery, CloudStorage, VPC, CloudLoadBalancing, CloudCDN, CloudDNS, IAM, SecretManager, PubSub, Dataflow, Composer, VertexAI, CloudMonitoring
+
 ### edit_diagram Details
 
 **PREFERRED (v2 ops):**
@@ -263,6 +347,58 @@ const EXTENDED_ADDITIONS = `
   - updateCell：更新 cell 的 value/style/geometry
   - addCell：添加新节点或连线
   - deleteCell：删除节点
+  - **addComponent** (NEW)：使用 A2UI 格式添加组件
+  - **updateComponent** (NEW)：更新组件属性（position, size, fill, stroke 等）
+
+**Component-level operations (A2UI style):**
+
+1. **addComponent** - Add a new component using A2UI format:
+\`\`\`json
+{
+  "type": "addComponent",
+  "component": {
+    "id": "new-rect",
+    "component": "Rectangle",
+    "position": {"x": 200, "y": 150},
+    "size": {"width": 120, "height": 60},
+    "label": "New Node",
+    "fill": "#DBEAFE",
+    "stroke": "#3B82F6"
+  }
+}
+\`\`\`
+
+2. **updateComponent** - Update existing component properties:
+\`\`\`json
+{
+  "type": "updateComponent",
+  "id": "existing-node",
+  "updates": {
+    "position": {"x": 300, "y": 200},
+    "label": "Updated Label",
+    "fill": "#FEF3C7",
+    "fontSize": 14
+  }
+}
+\`\`\`
+Available update properties: position, size, label, text, title, fill, stroke, strokeWidth, opacity, fontSize, fontColor, shadow, dashed
+
+3. **connectComponents** - Create a connector between two components:
+\`\`\`json
+{
+  "type": "connectComponents",
+  "id": "conn1",
+  "source": "node1",
+  "target": "node2",
+  "label": "connects to",
+  "style": {
+    "lineType": "orthogonal",
+    "endArrow": "classic",
+    "dashed": false
+  }
+}
+\`\`\`
+Style options: lineType (straight/orthogonal/curved), startArrow, endArrow (none/classic/block/open/diamond/oval), dashed, stroke, strokeWidth
 
 ### setCellValue Operation - Escaping Rules
 

@@ -34,6 +34,7 @@ import { useOfflineDetector } from "@/features/chat/sessions/use-offline-detecto
 import { ChatHeader } from "@/features/chat/ui/chat-header"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
+import { componentsToXml, validateComponents } from "@/lib/components"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import { STORAGE_KEYS } from "@/lib/storage"
 import {
@@ -365,6 +366,73 @@ ${xml}
                             "[display_diagram] Tool output added. Diagram should be visible now.",
                         )
                     }
+                }
+            } else if (toolCall.toolName === "display_components") {
+                // A2UI-style component-based diagram tool
+                const { components } = toolCall.input as { components: any[] }
+                if (DEBUG) {
+                    console.log(
+                        `[display_components] Received ${components.length} component(s)`,
+                    )
+                }
+
+                // Validate components before conversion
+                const validation = validateComponents(components)
+                if (!validation.valid) {
+                    console.warn(
+                        "[display_components] Validation errors:",
+                        validation.errors,
+                    )
+                    addToolOutput({
+                        tool: "display_components",
+                        toolCallId: toolCall.toolCallId,
+                        state: "output-error",
+                        errorText: `Component validation failed:
+${validation.errors.map((e) => `- ${e}`).join("\n")}
+
+Please fix the component definitions and try again.`,
+                    })
+                    return
+                }
+
+                // Convert components to mxCell XML
+                const graphXml = componentsToXml(components)
+                const fullXml = wrapWithMxFile(graphXml)
+
+                if (DEBUG) {
+                    console.log(
+                        `[display_components] Generated XML length: ${fullXml.length}`,
+                    )
+                }
+
+                // Validate and display
+                const validationError = onDisplayChart(fullXml)
+
+                if (validationError) {
+                    console.warn(
+                        "[display_components] XML validation error:",
+                        validationError,
+                    )
+                    addToolOutput({
+                        tool: "display_components",
+                        toolCallId: toolCall.toolCallId,
+                        state: "output-error",
+                        errorText: `Generated XML validation failed: ${validationError}
+
+This is likely a bug in the component converter. Please report this issue.`,
+                    })
+                } else {
+                    if (DEBUG) {
+                        console.log(
+                            "[display_components] Success! Diagram displayed.",
+                        )
+                    }
+                    appendDiagramVersion(fullXml, "display_components")
+                    addToolOutput({
+                        tool: "display_components",
+                        toolCallId: toolCall.toolCallId,
+                        output: `Successfully displayed diagram with ${components.length} component(s).`,
+                    })
                 }
             } else if (toolCall.toolName === "edit_diagram") {
                 const { ops } = toolCall.input as {

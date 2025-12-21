@@ -1,12 +1,34 @@
+import type { DrawIOComponent } from "./components"
+import { componentToCellXml } from "./components"
 import {
     ensureChildElement,
     escapeXmlAttrValue,
     findMxCell,
     findMxCellOrThrow,
+    findRootElementOrThrow,
     parseXml,
     serializeXml,
     upsertMxPoint,
 } from "./diagram-ops-utils"
+
+/**
+ * Parse style string to key-value object
+ */
+function parseStyleString(style: string): Record<string, string> {
+    const props: Record<string, string> = {}
+    style.split(";").forEach((part) => {
+        const eqIndex = part.indexOf("=")
+        if (eqIndex > 0) {
+            const key = part.substring(0, eqIndex).trim()
+            const val = part.substring(eqIndex + 1).trim()
+            props[key] = val
+        } else if (part.trim()) {
+            // Handle style flags like "rounded" without value
+            props[part.trim()] = "1"
+        }
+    })
+    return props
+}
 
 export type DiagramEditOp =
     | {
@@ -43,6 +65,56 @@ export type DiagramEditOp =
     | {
           type: "deleteCell"
           id: string
+      }
+    | {
+          type: "addComponent"
+          component: DrawIOComponent
+      }
+    | {
+          type: "updateComponent"
+          id: string
+          updates: {
+              position?: { x?: number; y?: number }
+              size?: { width?: number; height?: number }
+              label?: string
+              text?: string
+              title?: string
+              fill?: string
+              stroke?: string
+              strokeWidth?: number
+              opacity?: number
+              fontSize?: number
+              fontColor?: string
+              shadow?: boolean
+              dashed?: boolean
+          }
+      }
+    | {
+          type: "connectComponents"
+          id: string
+          source: string
+          target: string
+          label?: string
+          style?: {
+              lineType?: "straight" | "orthogonal" | "curved"
+              startArrow?:
+                  | "none"
+                  | "classic"
+                  | "block"
+                  | "open"
+                  | "diamond"
+                  | "oval"
+              endArrow?:
+                  | "none"
+                  | "classic"
+                  | "block"
+                  | "open"
+                  | "diamond"
+                  | "oval"
+              dashed?: boolean
+              stroke?: string
+              strokeWidth?: number
+          }
       }
 
 /**
@@ -214,8 +286,7 @@ export function applyDiagramOps(
                 // Locate root (to append cell to correct location in DOM if needed, usually children of root)
                 // In flat draw.io model, all cells are children of <root>
                 // We typically insert new cell at the end of <root>
-                const root = doc.querySelector("root")
-                if (!root) throw new Error("Invalid XML: missing <root>")
+                const root = findRootElementOrThrow(doc)
 
                 const newCell = doc.createElement("mxCell")
                 newCell.setAttribute("id", op.id)
@@ -287,6 +358,203 @@ export function applyDiagramOps(
                 if (cell?.parentNode) {
                     cell.parentNode.removeChild(cell)
                 }
+                continue
+            }
+
+            if (op.type === "addComponent") {
+                const component = op.component
+                if (findMxCell(doc, component.id)) {
+                    throw new Error(`Cell id="${component.id}" already exists`)
+                }
+
+                const root = findRootElementOrThrow(doc)
+
+                // Convert component to mxCell XML string
+                const cellXml = componentToCellXml(component)
+
+                // Parse the generated XML and append to root
+                const tempDoc = parseXml(
+                    `<mxGraphModel><root>${cellXml}</root></mxGraphModel>`,
+                )
+                // Use getElementsByTagName for Node.js compatibility (xmldom doesn't support querySelector)
+                const cells = tempDoc.getElementsByTagName("mxCell")
+                if (cells.length > 0) {
+                    // Import and append the new cell
+                    const importedCell = doc.importNode(cells[0], true)
+                    root.appendChild(importedCell)
+                }
+                continue
+            }
+
+            if (op.type === "updateComponent") {
+                const cell = findMxCellOrThrow(doc, op.id)
+                const updates = op.updates
+
+                // Update position
+                if (updates.position) {
+                    const geometry = ensureChildElement(
+                        doc,
+                        cell,
+                        "mxGeometry",
+                        (g) => g.getAttribute("as") === "geometry",
+                    )
+                    if (updates.position.x !== undefined)
+                        geometry.setAttribute("x", String(updates.position.x))
+                    if (updates.position.y !== undefined)
+                        geometry.setAttribute("y", String(updates.position.y))
+                }
+
+                // Update size
+                if (updates.size) {
+                    const geometry = ensureChildElement(
+                        doc,
+                        cell,
+                        "mxGeometry",
+                        (g) => g.getAttribute("as") === "geometry",
+                    )
+                    if (updates.size.width !== undefined)
+                        geometry.setAttribute(
+                            "width",
+                            String(updates.size.width),
+                        )
+                    if (updates.size.height !== undefined)
+                        geometry.setAttribute(
+                            "height",
+                            String(updates.size.height),
+                        )
+                }
+
+                // Update label (for shapes with label property)
+                if ("label" in updates && updates.label !== undefined) {
+                    cell.setAttribute(
+                        "value",
+                        escapeXmlAttrValue(String(updates.label)),
+                    )
+                }
+
+                // Update text (for Text components)
+                if ("text" in updates && updates.text !== undefined) {
+                    cell.setAttribute(
+                        "value",
+                        escapeXmlAttrValue(String(updates.text)),
+                    )
+                }
+
+                // Update title (for Swimlane/Card components)
+                if ("title" in updates && updates.title !== undefined) {
+                    cell.setAttribute(
+                        "value",
+                        escapeXmlAttrValue(String(updates.title)),
+                    )
+                }
+
+                // Update style properties
+                const style = cell.getAttribute("style") || ""
+                const styleProps = parseStyleString(style)
+
+                if ("fill" in updates && updates.fill !== undefined) {
+                    styleProps.fillColor = updates.fill
+                }
+                if ("stroke" in updates && updates.stroke !== undefined) {
+                    styleProps.strokeColor = updates.stroke
+                }
+                if (
+                    "strokeWidth" in updates &&
+                    updates.strokeWidth !== undefined
+                ) {
+                    styleProps.strokeWidth = String(updates.strokeWidth)
+                }
+                if ("opacity" in updates && updates.opacity !== undefined) {
+                    styleProps.opacity = String(updates.opacity)
+                }
+                if ("fontSize" in updates && updates.fontSize !== undefined) {
+                    styleProps.fontSize = String(updates.fontSize)
+                }
+                if ("fontColor" in updates && updates.fontColor !== undefined) {
+                    styleProps.fontColor = updates.fontColor
+                }
+                if ("shadow" in updates && updates.shadow !== undefined) {
+                    styleProps.shadow = updates.shadow ? "1" : "0"
+                }
+                if ("dashed" in updates && updates.dashed !== undefined) {
+                    styleProps.dashed = updates.dashed ? "1" : "0"
+                }
+
+                // Rebuild style string
+                const newStyle = Object.entries(styleProps)
+                    .map(([k, v]) => `${k}=${v}`)
+                    .join(";")
+                cell.setAttribute("style", newStyle + ";")
+                continue
+            }
+
+            if (op.type === "connectComponents") {
+                // Verify source and target exist
+                const sourceCell = findMxCell(doc, op.source)
+                const targetCell = findMxCell(doc, op.target)
+                if (!sourceCell) {
+                    throw new Error(`Source component "${op.source}" not found`)
+                }
+                if (!targetCell) {
+                    throw new Error(`Target component "${op.target}" not found`)
+                }
+                if (findMxCell(doc, op.id)) {
+                    throw new Error(`Connector id="${op.id}" already exists`)
+                }
+
+                const root = findRootElementOrThrow(doc)
+
+                // Build edge style
+                const styleParts: string[] = ["html=1"]
+
+                // Line type
+                const lineType = op.style?.lineType || "orthogonal"
+                if (lineType === "orthogonal") {
+                    styleParts.push("edgeStyle=orthogonalEdgeStyle")
+                } else if (lineType === "curved") {
+                    styleParts.push("curved=1")
+                }
+                // straight is default, no special style needed
+
+                // Arrows
+                const endArrow = op.style?.endArrow || "classic"
+                styleParts.push(`endArrow=${endArrow}`)
+                if (op.style?.startArrow && op.style.startArrow !== "none") {
+                    styleParts.push(`startArrow=${op.style.startArrow}`)
+                }
+
+                // Other styles
+                if (op.style?.dashed) {
+                    styleParts.push("dashed=1")
+                }
+                if (op.style?.stroke) {
+                    styleParts.push(`strokeColor=${op.style.stroke}`)
+                }
+                if (op.style?.strokeWidth) {
+                    styleParts.push(`strokeWidth=${op.style.strokeWidth}`)
+                }
+
+                const edgeStyle = styleParts.join(";") + ";"
+
+                // Create edge element
+                const newEdge = doc.createElement("mxCell")
+                newEdge.setAttribute("id", op.id)
+                newEdge.setAttribute("parent", "1")
+                newEdge.setAttribute("edge", "1")
+                newEdge.setAttribute("source", op.source)
+                newEdge.setAttribute("target", op.target)
+                newEdge.setAttribute("style", edgeStyle)
+                if (op.label) {
+                    newEdge.setAttribute("value", escapeXmlAttrValue(op.label))
+                }
+
+                // Add geometry
+                const geo = doc.createElement("mxGeometry")
+                geo.setAttribute("relative", "1")
+                geo.setAttribute("as", "geometry")
+                newEdge.appendChild(geo)
+
+                root.appendChild(newEdge)
                 continue
             }
 

@@ -13,6 +13,100 @@ import {
 
 const STORAGE_WARNING_THRESHOLD = 0.8 // 80%
 
+/**
+ * Sanitize messages to fix tool call/response pairing issues.
+ * This handles cases where:
+ * 1. Tool messages have empty content (common with client-side tools like display_diagram)
+ * 2. Tool-call parts exist without corresponding tool responses
+ *
+ * These issues can cause AI SDK validation errors when switching providers.
+ */
+function sanitizeMessages(messages: any[]): any[] {
+    if (!Array.isArray(messages)) return []
+
+    // First pass: find tool call IDs that have invalid (empty) responses
+    const invalidToolCallIds = new Set<string>()
+    messages.forEach((msg) => {
+        if (msg.role === "tool") {
+            const hasValidContent =
+                Array.isArray(msg.parts) && msg.parts.length > 0
+            if (!hasValidContent) {
+                // Find the tool call ID from parts or content
+                const toolCallId =
+                    msg.parts?.[0]?.toolCallId ||
+                    msg.toolInvocations?.[0]?.toolCallId
+                if (toolCallId) {
+                    invalidToolCallIds.add(toolCallId)
+                    console.log(
+                        `[sanitizeMessages] Found empty tool message for callId: ${toolCallId}`,
+                    )
+                }
+            }
+        }
+    })
+
+    if (invalidToolCallIds.size === 0) {
+        return messages // No sanitization needed
+    }
+
+    // Second pass: remove invalid tool messages and their corresponding tool-calls
+    const sanitized = messages
+        .filter((msg) => {
+            // Remove empty tool messages
+            if (msg.role === "tool") {
+                const hasValidContent =
+                    Array.isArray(msg.parts) && msg.parts.length > 0
+                if (!hasValidContent) {
+                    console.log(
+                        `[sanitizeMessages] Removing empty tool message`,
+                    )
+                    return false
+                }
+            }
+            return true
+        })
+        .map((msg) => {
+            // Remove orphan tool-call parts from assistant messages
+            if (msg.role === "assistant" && Array.isArray(msg.parts)) {
+                const filteredParts = msg.parts.filter((part: any) => {
+                    if (
+                        part.type === "tool-invocation" &&
+                        invalidToolCallIds.has(part.toolInvocationId)
+                    ) {
+                        console.log(
+                            `[sanitizeMessages] Removing orphan tool-invocation: ${part.toolInvocationId}`,
+                        )
+                        return false
+                    }
+                    return true
+                })
+                if (filteredParts.length !== msg.parts.length) {
+                    return { ...msg, parts: filteredParts }
+                }
+            }
+            return msg
+        })
+        .filter((msg) => {
+            // Remove assistant messages that have no remaining content
+            if (msg.role === "assistant") {
+                const hasContent =
+                    Array.isArray(msg.parts) && msg.parts.length > 0
+                if (!hasContent) {
+                    console.log(
+                        `[sanitizeMessages] Removing empty assistant message`,
+                    )
+                    return false
+                }
+            }
+            return true
+        })
+
+    console.log(
+        `[sanitizeMessages] Removed ${messages.length - sanitized.length} problematic messages`,
+    )
+    return sanitized
+}
+
 export function cleanOldestConversations(
     userId: string,
     count: number,
@@ -197,6 +291,17 @@ export function readConversationPayloadFromStorage(
                 )
                 removeConversationPayloadFromStorage(userId, id)
                 return null
+            }
+        }
+
+        // Sanitize messages to fix tool call/response pairing issues
+        if (payload.messages) {
+            const originalCount = payload.messages.length
+            payload.messages = sanitizeMessages(payload.messages)
+            if (payload.messages.length !== originalCount) {
+                console.log(
+                    `[session-debug] sanitized messages: ${originalCount} -> ${payload.messages.length}`,
+                )
             }
         }
 

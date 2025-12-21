@@ -13,6 +13,7 @@ import {
     getAIModel,
     supportsHistoryXmlReplace,
     supportsPromptCaching,
+    supportsVision,
 } from "@/lib/ai-providers"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { expandFileReferences } from "@/lib/file-reference"
@@ -28,6 +29,7 @@ import { applyMessageWindow } from "@/lib/message-window"
 import { getSystemPrompt } from "@/lib/system-prompts"
 import {
     ANALYZE_DIAGRAM_DESCRIPTION,
+    DISPLAY_COMPONENTS_DESCRIPTION,
     DISPLAY_DIAGRAM_DESCRIPTION,
     EDIT_DIAGRAM_DESCRIPTION,
 } from "@/lib/tool-descriptions"
@@ -143,6 +145,231 @@ function fixToolCallInputs(messages: any[]): any[] {
         })
         return { ...msg, content: fixedContent }
     })
+}
+
+// Helper function to check if a content part contains image data
+function isImagePart(part: any): boolean {
+    if (!part) return false
+
+    const partType = String(part.type || "").toLowerCase()
+
+    // Direct type checks
+    if (partType === "image" || partType === "image_url") {
+        return true
+    }
+
+    // Check if type contains "image"
+    if (partType.includes("image")) {
+        return true
+    }
+
+    // Check for file type - AI SDK converts image files to type: "file"
+    // These get converted to image_url by the provider adapter
+    if (partType === "file") {
+        // Check mimeType property
+        if (
+            String(part.mimeType || "")
+                .toLowerCase()
+                .startsWith("image/")
+        ) {
+            return true
+        }
+        // Check mediaType property (AI SDK uses this)
+        if (
+            String(part.mediaType || "")
+                .toLowerCase()
+                .startsWith("image/")
+        ) {
+            return true
+        }
+        // Check data property for base64 image data
+        if (typeof part.data === "string") {
+            // Base64 image data or data URL
+            if (part.data.startsWith("data:image/")) {
+                return true
+            }
+        }
+        // Check url property for data URL
+        if (
+            typeof part.url === "string" &&
+            part.url.startsWith("data:image/")
+        ) {
+            return true
+        }
+        // AGGRESSIVE: Assume all file types could be images when vision is not supported
+        // This is safe because we're only using this for non-vision models
+        return true
+    }
+
+    // Check for image data properties (AI SDK uses these)
+    if (part.image !== undefined) {
+        return true
+    }
+
+    // Check for OpenAI format properties
+    if (part.imageUrl !== undefined || part.image_url !== undefined) {
+        return true
+    }
+
+    // Check for data URL that is an image
+    if (typeof part.url === "string" && part.url.startsWith("data:image/")) {
+        return true
+    }
+
+    // Check for nested image_url object (OpenAI wire format)
+    if (part.image_url && typeof part.image_url === "object") {
+        return true
+    }
+
+    // Check for data property (AI SDK file format)
+    if (typeof part.data === "string" && part.data.startsWith("data:image/")) {
+        return true
+    }
+
+    return false
+}
+
+// Helper function to filter out image content for models that don't support vision
+// Replaces image parts with text placeholders to preserve context
+function filterImageContent(messages: any[]): any[] {
+    const placeholder = {
+        type: "text",
+        text: "[Image removed: This model does not support vision]",
+    }
+
+    return messages.map((msg, msgIdx) => {
+        // Skip messages without array content
+        if (!Array.isArray(msg.content)) {
+            // Check if non-array content might be an image (edge case)
+            if (isImagePart(msg.content)) {
+                console.log(
+                    `[Vision Filter] Message[${msgIdx}] has non-array image content, replacing`,
+                )
+                return { ...msg, content: [placeholder] }
+            }
+            return msg
+        }
+
+        // CRITICAL: Don't modify tool messages - they have special format requirements
+        // Tool messages must have tool-result type content, not text
+        if (msg.role === "tool") {
+            return msg
+        }
+
+        let hasImageContent = false
+        const filteredContent: any[] = []
+
+        for (const part of msg.content) {
+            const partType = String(part.type || "").toLowerCase()
+
+            // Preserve tool-call and tool-result parts - don't filter these
+            if (partType === "tool-call" || partType === "tool-result") {
+                filteredContent.push(part)
+                continue
+            }
+
+            // Check if this is image content
+            if (isImagePart(part)) {
+                hasImageContent = true
+                console.log(
+                    `[Vision Filter] Message[${msgIdx}] filtering out image part type="${part.type}" hasImage=${part.image !== undefined} hasImageUrl=${part.image_url !== undefined}`,
+                )
+                // Don't add placeholder for each image, we'll add one at the end if needed
+                continue
+            }
+
+            // Keep non-image content
+            filteredContent.push(part)
+        }
+
+        // If we removed images and have no text content, add placeholder
+        if (hasImageContent) {
+            const hasTextContent = filteredContent.some(
+                (p) => p.type === "text" && p.text,
+            )
+            if (!hasTextContent) {
+                filteredContent.unshift(placeholder)
+            }
+            console.log(
+                `[Vision Filter] Removed image content from ${msg.role} message[${msgIdx}]`,
+            )
+        }
+
+        // Ensure we always have at least one content item (for user/assistant messages)
+        if (filteredContent.length === 0) {
+            filteredContent.push(placeholder)
+        }
+
+        return { ...msg, content: filteredContent }
+    })
+}
+
+/**
+ * Strip tool-related history and non-standard content types from messages.
+ * This is used for non-vision models when conversation history contains:
+ * 1. Tool calls/responses (often malformed when persisted)
+ * 2. Reasoning parts (not supported by all models like DeepSeek)
+ * 3. File/image content (already filtered but double-check)
+ *
+ * For non-vision models, we keep ONLY text content to maximize compatibility.
+ */
+function stripToolHistory(messages: any[]): any[] {
+    console.log(`[stripToolHistory] Processing ${messages.length} messages`)
+
+    const result = messages
+        .filter((msg) => msg.role !== "tool") // Remove all tool response messages
+        .map((msg) => {
+            // For assistant messages, only keep text parts
+            // This removes: tool-call, reasoning, and any other non-text content
+            if (msg.role === "assistant" && Array.isArray(msg.content)) {
+                const textOnlyContent = msg.content.filter(
+                    (part: any) => part.type === "text",
+                )
+
+                const removedCount = msg.content.length - textOnlyContent.length
+                if (removedCount > 0) {
+                    const removedTypes = msg.content
+                        .filter((p: any) => p.type !== "text")
+                        .map((p: any) => p.type)
+                    console.log(
+                        `[stripToolHistory] Removed ${removedCount} non-text parts: ${removedTypes.join(", ")}`,
+                    )
+                }
+
+                if (textOnlyContent.length === 0) {
+                    return null // Mark for removal
+                }
+                return { ...msg, content: textOnlyContent }
+            }
+
+            // For user messages, only keep text parts (remove file/image)
+            if (msg.role === "user" && Array.isArray(msg.content)) {
+                const textOnlyContent = msg.content.filter(
+                    (part: any) => part.type === "text",
+                )
+                if (textOnlyContent.length === 0) {
+                    // If no text, add a placeholder
+                    return {
+                        ...msg,
+                        content: [
+                            {
+                                type: "text",
+                                text: "[Image/file content removed]",
+                            },
+                        ],
+                    }
+                }
+                if (textOnlyContent.length !== msg.content.length) {
+                    return { ...msg, content: textOnlyContent }
+                }
+            }
+
+            return msg
+        })
+        .filter((msg) => msg !== null) // Remove empty messages
+
+    console.log(`[stripToolHistory] Result: ${result.length} messages`)
+    return result
 }
 
 function sanitizeGoogleToolCallingHistory(messages: any[]): any[] {
@@ -711,6 +938,51 @@ ${preprocessResult.processedMessage}
     // Fix tool call inputs for Bedrock API (requires JSON objects, not strings)
     const fixedMessages = fixToolCallInputs(modelMessages)
 
+    // Filter out image content for models that don't support vision
+    const visionSupported = supportsVision(aiConfig.provider, modelId)
+
+    console.log(
+        `[Vision Filter] Provider: ${aiConfig.provider}, Model: ${modelId}, Vision supported: ${visionSupported}`,
+    )
+
+    let visionFilteredMessages = fixedMessages
+    if (!visionSupported) {
+        console.log(
+            `[Vision Filter] Filtering images for non-vision model: ${modelId}`,
+        )
+        // Log ALL content types before filtering for debugging
+        fixedMessages.forEach((msg: any, idx: number) => {
+            if (Array.isArray(msg.content)) {
+                const types = msg.content.map((p: any) => p.type).join(", ")
+                console.log(
+                    `[Vision Filter] Message[${idx}] role=${msg.role} types: ${types}`,
+                )
+                // Extra debug for tool messages
+                if (msg.role === "tool") {
+                    console.log(
+                        `[Vision Filter] Tool message[${idx}] content:`,
+                        JSON.stringify(msg.content).slice(0, 500),
+                    )
+                }
+            } else {
+                console.log(
+                    `[Vision Filter] Message[${idx}] role=${msg.role} content type: ${typeof msg.content}`,
+                )
+            }
+        })
+        visionFilteredMessages = filterImageContent(fixedMessages)
+        // Log after filtering
+        console.log(`[Vision Filter] After filtering:`)
+        visionFilteredMessages.forEach((msg: any, idx: number) => {
+            if (Array.isArray(msg.content)) {
+                const types = msg.content.map((p: any) => p.type).join(", ")
+                console.log(
+                    `[Vision Filter] Filtered[${idx}] role=${msg.role} types: ${types}`,
+                )
+            }
+        })
+    }
+
     // Replace historical tool call XML with placeholders to reduce tokens.
     // Some models copy placeholders; use a conservative whitelist unless forced by env.
     const historyReplaceEnv = process.env.ENABLE_HISTORY_XML_REPLACE
@@ -722,12 +994,17 @@ ${preprocessResult.processedMessage}
               : supportsHistoryXmlReplace(modelId)
 
     const placeholderMessages = enableHistoryReplace
-        ? replaceHistoricalToolInputs(fixedMessages)
-        : fixedMessages
+        ? replaceHistoricalToolInputs(visionFilteredMessages)
+        : visionFilteredMessages
+
+    // For non-vision models, we need to strip tool history that might be related to image processing
+    // This prevents tool call/response pairing issues when image-related tools are in history
+    const cleanedMessages = !visionSupported
+        ? stripToolHistory(placeholderMessages)
+        : placeholderMessages
 
     // Filter out messages with empty content arrays (Bedrock API rejects these)
-    // This is a safety measure - ideally convertToModelMessages should handle all cases
-    const enhancedMessages = placeholderMessages.filter(
+    const enhancedMessages = cleanedMessages.filter(
         (msg: any) =>
             msg.content && Array.isArray(msg.content) && msg.content.length > 0,
     )
@@ -832,10 +1109,38 @@ ${preprocessResult.processedMessage}
         return windowedMessages
     })()
 
-    const finalMessages =
+    const sanitizedMessages =
         providerForSanitize === "google" || isGeminiModel
             ? sanitizeGoogleToolCallingHistory(preservedMessages)
             : preservedMessages
+
+    // FINAL safety check: filter images one more time for non-vision models
+    // This catches any images that might have slipped through earlier transformations
+    const finalMessages = !visionSupported
+        ? filterImageContent(sanitizedMessages)
+        : sanitizedMessages
+
+    // Debug: log final message structure for non-vision models
+    if (!visionSupported) {
+        console.log(
+            `[Vision Filter] FINAL CHECK - Total messages: ${finalMessages.length}`,
+        )
+        finalMessages.forEach((msg: any, idx: number) => {
+            if (Array.isArray(msg.content)) {
+                const hasImage = msg.content.some((p: any) => isImagePart(p))
+                if (hasImage) {
+                    console.error(
+                        `[Vision Filter] ERROR: Image still present in final message[${idx}] role=${msg.role}`,
+                    )
+                    msg.content.forEach((p: any, pIdx: number) => {
+                        console.error(
+                            `  Part[${pIdx}]: type=${p.type} hasImage=${p.image !== undefined} hasImageUrl=${p.image_url !== undefined}`,
+                        )
+                    })
+                }
+            }
+        })
+    }
 
     // Record safe trace metadata for observability
     setTraceMetadata({
@@ -984,6 +1289,28 @@ ${preprocessResult.processedMessage}
                                     type: z.literal("deleteCell"),
                                     id: z.string().min(1),
                                 }),
+                                z.object({
+                                    type: z.literal("addComponent"),
+                                    component: z
+                                        .object({
+                                            id: z.string().min(1),
+                                            component: z.string().min(1),
+                                        })
+                                        .passthrough()
+                                        .describe(
+                                            "A2UI-style component definition",
+                                        ),
+                                }),
+                                z.object({
+                                    type: z.literal("updateComponent"),
+                                    id: z.string().min(1),
+                                    updates: z
+                                        .object({})
+                                        .passthrough()
+                                        .describe(
+                                            "Partial component properties to update (position, size, fill, stroke, label, etc.)",
+                                        ),
+                                }),
                             ]),
                         )
                         .describe("Array of structured edit operations"),
@@ -997,6 +1324,26 @@ ${preprocessResult.processedMessage}
                 execute: async ({ xml }) => {
                     return analyzeDiagramXml(xml)
                 },
+            },
+            // Component-based diagram tool (A2UI-style)
+            display_components: {
+                description: DISPLAY_COMPONENTS_DESCRIPTION,
+                inputSchema: z.object({
+                    components: z
+                        .array(
+                            z
+                                .object({
+                                    id: z
+                                        .string()
+                                        .describe("Unique component ID"),
+                                    component: z
+                                        .string()
+                                        .describe("Component type name"),
+                                })
+                                .passthrough(),
+                        )
+                        .describe("Array of component definitions"),
+                }),
             },
         },
         ...(process.env.TEMPERATURE !== undefined && {

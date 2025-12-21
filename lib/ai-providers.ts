@@ -720,3 +720,50 @@ export function supportsHistoryXmlReplace(modelId: string): boolean {
         id.includes("deepseek")
     )
 }
+
+/**
+ * Check if a model supports vision/image inputs
+ * Models that DON'T support vision will have image content filtered out
+ */
+export function supportsVision(
+    provider: ProviderName | string,
+    modelId: string,
+): boolean {
+    // Normalize provider and model ID for case-insensitive comparison
+    const normalizedProvider = String(provider || "").toLowerCase()
+    const id = modelId.toLowerCase()
+
+    // DeepSeek models don't support vision (as of 2025)
+    if (normalizedProvider === "deepseek") {
+        return false
+    }
+
+    // SiliconFlow - depends on the model
+    if (normalizedProvider === "siliconflow") {
+        // Most SiliconFlow models don't support vision
+        // Only specific vision models would be whitelisted here
+        return false
+    }
+
+    // OpenRouter - check for known non-vision models
+    if (normalizedProvider === "openrouter") {
+        // DeepSeek models via OpenRouter don't support vision
+        if (id.includes("deepseek")) {
+            return false
+        }
+    }
+
+    // Check model ID for DeepSeek models (regardless of provider)
+    // This catches cases where DeepSeek models are used via OpenAI-compatible endpoints
+    if (id.includes("deepseek")) {
+        return false
+    }
+
+    // Most other providers support vision for their main models:
+    // - OpenAI: gpt-4-vision, gpt-4o, etc.
+    // - Anthropic: claude-3 models
+    // - Google: gemini models
+    // - Azure: depends on deployment
+    // - Bedrock: claude models
+    return true
+}

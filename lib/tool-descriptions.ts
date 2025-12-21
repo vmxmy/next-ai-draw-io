@@ -112,3 +112,98 @@ Use structured "ops" with mxCell id anchors. This is robust and avoids failures 
 
 export const ANALYZE_DIAGRAM_DESCRIPTION =
     "Analyze the CURRENT diagram XML and return a concise structural summary (nodes, edges, containers, warnings). Use this before edit_diagram when the diagram is non-empty or complex. This tool is READ-ONLY and does not modify the diagram."
+
+export const DISPLAY_COMPONENTS_DESCRIPTION = `Display a diagram using component-based specification (A2UI-style).
+
+Components are sent as a flat array with parent-child relationships via ID references.
+This is an alternative to display_diagram that uses structured JSON instead of raw XML.
+
+BENEFITS:
+- Simpler syntax: No need to write raw mxCell XML
+- Type-safe: Structured properties instead of semicolon-separated style strings
+- Less error-prone: System handles XML escaping and style formatting
+
+COMPONENT TYPES:
+
+**Basic Shapes:**
+- Rectangle: Basic rectangle shape
+- RoundedRect: Rectangle with rounded corners (cornerRadius option)
+- Ellipse: Ellipse or circle
+- Diamond: Rhombus for decision points
+- Hexagon: Preparation/manual operations
+- Triangle: Triangle with direction option
+- Cylinder: Database representation
+- Text: Text label without shape
+- Image: Image from URL (src property)
+
+**Connector:**
+- Connector: Line between components (requires source, target IDs)
+  - style: { lineType, startArrow, endArrow, strokeColor, dashed, animated }
+  - waypoints: Array of {x, y} for routing
+
+**Containers:**
+- Swimlane: Container with title bar (title, children, horizontal)
+- Group: Invisible grouping container (children)
+
+**Cloud Provider Icons:**
+- AWSIcon: AWS service icon (service: "EC2", "S3", "Lambda", etc.)
+- AzureIcon: Azure service icon (service: "VirtualMachine", "Functions", etc.)
+- GCPIcon: GCP service icon (service: "ComputeEngine", "CloudFunctions", etc.)
+
+**Specialized:**
+- Card: Card with title, subtitle, content
+- List: Bulleted/numbered list (items array)
+- Callout: Annotation bubble (text, calloutStyle: "note"|"warning"|"info"|"tip")
+- Actor: Stick figure for use case diagrams
+- Document: Document shape with wavy bottom
+- Cloud: Cloud shape for external systems
+
+COMMON PROPERTIES:
+- id (required): Unique identifier
+- position: { x, y } coordinates
+- size: { width, height } dimensions
+- parent: Parent component ID (defaults to "1" for root)
+
+SHAPE STYLE PROPERTIES:
+- fill: Fill color (hex, e.g., "#FF5733")
+- stroke: Stroke color
+- strokeWidth: Stroke width in pixels
+- opacity: Opacity (0-100)
+- shadow: Enable shadow (boolean)
+- dashed: Dashed stroke (boolean)
+
+TEXT STYLE PROPERTIES:
+- fontSize: Font size in pixels
+- fontColor: Font color
+- fontStyle: "normal" | "bold" | "italic" | "boldItalic"
+- align: "left" | "center" | "right"
+
+EXAMPLE - Simple Flowchart:
+{
+  "components": [
+    {"id": "start", "component": "RoundedRect", "label": "Start", "position": {"x": 100, "y": 50}, "fill": "#90EE90"},
+    {"id": "process", "component": "Rectangle", "label": "Process Data", "position": {"x": 100, "y": 150}},
+    {"id": "decision", "component": "Diamond", "label": "Valid?", "position": {"x": 100, "y": 250}},
+    {"id": "end", "component": "RoundedRect", "label": "End", "position": {"x": 100, "y": 350}, "fill": "#FFB6C1"},
+    {"id": "e1", "component": "Connector", "source": "start", "target": "process"},
+    {"id": "e2", "component": "Connector", "source": "process", "target": "decision"},
+    {"id": "e3", "component": "Connector", "source": "decision", "target": "end", "label": "Yes"}
+  ]
+}
+
+EXAMPLE - AWS Architecture:
+{
+  "components": [
+    {"id": "vpc", "component": "Swimlane", "title": "VPC", "position": {"x": 50, "y": 50}, "size": {"width": 400, "height": 300}},
+    {"id": "elb", "component": "AWSIcon", "service": "ElasticLoadBalancing", "label": "ALB", "position": {"x": 100, "y": 100}, "parent": "vpc"},
+    {"id": "ec2", "component": "AWSIcon", "service": "EC2", "label": "Web Server", "position": {"x": 250, "y": 100}, "parent": "vpc"},
+    {"id": "rds", "component": "AWSIcon", "service": "RDS", "label": "Database", "position": {"x": 250, "y": 200}, "parent": "vpc"},
+    {"id": "e1", "component": "Connector", "source": "elb", "target": "ec2"},
+    {"id": "e2", "component": "Connector", "source": "ec2", "target": "rds"}
+  ]
+}
+
+WHEN TO USE:
+- Use display_components for: New diagrams, simple to medium complexity, structured layouts
+- Use display_diagram for: Complex custom styling, precise XML control, advanced mxGraph features
+`

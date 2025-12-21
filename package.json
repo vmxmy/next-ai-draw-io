@@ -11,6 +11,9 @@
         "format": "biome check --write .",
         "check": "biome ci",
         "prepare": "husky",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
         "prisma:generate": "prisma generate",
         "prisma:migrate:dev": "prisma migrate dev",
         "prisma:migrate:deploy": "prisma migrate deploy",
@@ -54,7 +57,6 @@
         "@trpc/react-query": "^11.7.2",
         "@trpc/server": "^11.7.2",
         "@vercel/analytics": "^1.6.1",
-        "@xmldom/xmldom": "^0.9.8",
         "ai": "^5.0.89",
         "base-64": "^1.0.0",
         "class-variance-authority": "^0.7.1",
@@ -102,11 +104,14 @@
         "@types/pako": "^2.0.3",
         "@types/react": "^19",
         "@types/react-dom": "^19",
+        "@vitest/coverage-v8": "^4.0.16",
+        "@xmldom/xmldom": "^0.8.11",
         "eslint": "9.39.1",
         "eslint-config-next": "16.0.5",
         "husky": "^9.1.7",
         "lint-staged": "^16.2.7",
         "tailwindcss": "^4",
-        "typescript": "^5"
+        "typescript": "^5",
+        "vitest": "^4.0.16"
     }
 }
