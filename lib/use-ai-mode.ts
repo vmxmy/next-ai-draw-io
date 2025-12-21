@@ -44,16 +44,34 @@ export function useAIMode(): AIModeStat {
 
     const setModeMutation = api.aiMode.setMode.useMutation()
 
-    // 匿名用户: localStorage 检测
+    // 匿名用户: localStorage 检测和 BYOK 模式管理
     const [anonymousHasByok, setAnonymousHasByok] = useState(false)
+    const [anonymousByokEnabled, setAnonymousByokEnabled] = useState(false)
 
     useEffect(() => {
         if (typeof window === "undefined" || isAuthenticated) return
 
         const checkLocalByok = () => {
-            const provider = localStorage.getItem(STORAGE_KEYS.aiProvider)
-            const apiKey = localStorage.getItem(STORAGE_KEYS.aiApiKey)
-            setAnonymousHasByok(!!(provider && apiKey))
+            // Check if user has configured BYOK for either fast or max mode
+            const fastProvider = localStorage.getItem(STORAGE_KEYS.fastProvider)
+            const fastApiKey = localStorage.getItem(STORAGE_KEYS.fastApiKey)
+            const maxProvider = localStorage.getItem(STORAGE_KEYS.maxProvider)
+            const maxApiKey = localStorage.getItem(STORAGE_KEYS.maxApiKey)
+            // Also check legacy keys
+            const legacyProvider = localStorage.getItem(STORAGE_KEYS.aiProvider)
+            const legacyApiKey = localStorage.getItem(STORAGE_KEYS.aiApiKey)
+
+            const hasFastConfig = !!(fastProvider && fastApiKey)
+            const hasMaxConfig = !!(maxProvider && maxApiKey)
+            const hasLegacyConfig = !!(legacyProvider && legacyApiKey)
+
+            setAnonymousHasByok(
+                hasFastConfig || hasMaxConfig || hasLegacyConfig,
+            )
+
+            // Check if BYOK mode is enabled
+            const byokEnabled = localStorage.getItem(STORAGE_KEYS.byokEnabled)
+            setAnonymousByokEnabled(byokEnabled === "true")
         }
 
         checkLocalByok()
@@ -78,17 +96,28 @@ export function useAIMode(): AIModeStat {
     }, [setModeMutation, refetch])
 
     const setMode = useCallback(async (mode: AIMode) => {
-        if (!isAuthenticatedRef.current) return
-        await setModeMutationRef.current.mutateAsync({ mode })
-        await refetchRef.current()
+        if (isAuthenticatedRef.current) {
+            await setModeMutationRef.current.mutateAsync({ mode })
+            await refetchRef.current()
+        } else {
+            // For anonymous users, store in localStorage
+            localStorage.setItem(
+                STORAGE_KEYS.byokEnabled,
+                mode === "byok" ? "true" : "false",
+            )
+            setAnonymousByokEnabled(mode === "byok")
+        }
     }, [])
 
     const mode = useMemo((): AIMode => {
         if (isAuthenticated) {
             return data?.aiMode || "system_default"
         }
-        return anonymousHasByok ? "byok" : "system_default"
-    }, [isAuthenticated, data?.aiMode, anonymousHasByok])
+        // For anonymous users, check if BYOK is enabled AND has config
+        return anonymousByokEnabled && anonymousHasByok
+            ? "byok"
+            : "system_default"
+    }, [isAuthenticated, data?.aiMode, anonymousByokEnabled, anonymousHasByok])
 
     const hasByokConfig = isAuthenticated
         ? data?.hasByokConfig || false

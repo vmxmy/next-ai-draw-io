@@ -35,6 +35,7 @@ import { ChatHeader } from "@/features/chat/ui/chat-header"
 import { getAIConfig } from "@/lib/ai-config"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
+import { STORAGE_KEYS } from "@/lib/storage"
 import {
     extractFullThemeConfig,
     formatThemeColorsForPrompt,
@@ -257,16 +258,20 @@ export default function ChatPanel({
                 "x-model-mode": mode,
             }
 
-            // 匿名用户 BYOK: 通过 headers 传递配置
+            // 匿名用户 BYOK: 只有在 BYOK 模式启用时才传递配置
             // 登录用户: 服务端从 aiMode + UserCredential + UserModeConfig 读取
-            if (!isLoggedIn && config.aiProvider && config.aiApiKey) {
-                headers["x-ai-provider"] = config.aiProvider
-                headers["x-ai-api-key"] = config.aiApiKey
-                if (config.aiBaseUrl) {
-                    headers["x-ai-base-url"] = config.aiBaseUrl
-                }
-                if (config.aiModel) {
-                    headers["x-ai-model"] = config.aiModel
+            if (!isLoggedIn) {
+                const byokEnabled =
+                    localStorage.getItem(STORAGE_KEYS.byokEnabled) === "true"
+                if (byokEnabled && config.aiProvider && config.aiApiKey) {
+                    headers["x-ai-provider"] = config.aiProvider
+                    headers["x-ai-api-key"] = config.aiApiKey
+                    if (config.aiBaseUrl) {
+                        headers["x-ai-base-url"] = config.aiBaseUrl
+                    }
+                    if (config.aiModel) {
+                        headers["x-ai-model"] = config.aiModel
+                    }
                 }
             }
 

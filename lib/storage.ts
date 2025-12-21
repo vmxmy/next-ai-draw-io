@@ -41,4 +41,6 @@ export const STORAGE_KEYS = {
     maxBaseUrl: "next-ai-draw-io-max-base-url",
     maxApiKey: "next-ai-draw-io-max-api-key",
     maxModel: "next-ai-draw-io-max-model",
+    // BYOK mode toggle for anonymous users
+    byokEnabled: "next-ai-draw-io-byok-enabled",
 } as const

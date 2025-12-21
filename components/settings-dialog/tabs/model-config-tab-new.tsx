@@ -371,6 +371,38 @@ export function NewModelConfigTab({ isLoggedIn }: NewModelConfigTabProps) {
     const currentLocalModel =
         localActiveMode === "fast" ? localFastModel : localMaxModel
 
+    // Model selector for anonymous users
+    const [localModelMenuOpen, setLocalModelMenuOpen] = useState(false)
+    const [localModelSearchValue, setLocalModelSearchValue] = useState("")
+
+    const {
+        modelOptions: localModelOptions,
+        isLoadingModels: isLoadingLocalModels,
+        filterModels: filterLocalModels,
+    } = useModelSelector({
+        provider: currentLocalProvider,
+        apiKey: currentLocalApiKey,
+        baseUrl: currentLocalBaseUrl,
+        isDialogOpen: true,
+        isLoggedIn: false,
+        hasCloudConfig: false,
+    })
+
+    const filteredLocalModels = filterLocalModels(localModelSearchValue)
+
+    // BYOK mode toggle for anonymous users
+    const [isSwitchingLocalMode, setIsSwitchingLocalMode] = useState(false)
+    const handleLocalModeToggle = async (checked: boolean) => {
+        setIsSwitchingLocalMode(true)
+        try {
+            await setMode(checked ? "byok" : "system_default")
+        } catch {
+            toast.error("Failed to switch mode")
+        } finally {
+            setIsSwitchingLocalMode(false)
+        }
+    }
+
     const setCurrentLocalProvider = (v: string) => {
         if (localActiveMode === "fast") setLocalFastProvider(v)
         else setLocalMaxProvider(v)
@@ -383,15 +415,52 @@ export function NewModelConfigTab({ isLoggedIn }: NewModelConfigTabProps) {
         if (localActiveMode === "fast") setLocalFastBaseUrl(v)
         else setLocalMaxBaseUrl(v)
     }
-    const setCurrentLocalModel = (v: string) => {
-        if (localActiveMode === "fast") setLocalFastModel(v)
-        else setLocalMaxModel(v)
+
+    // Handle local model selection
+    const handleLocalSelectModel = (modelId: string) => {
+        if (localActiveMode === "fast") {
+            setLocalFastModel(modelId)
+        } else {
+            setLocalMaxModel(modelId)
+        }
+        setLocalModelMenuOpen(false)
+        setLocalModelSearchValue("")
     }
 
     // Render for non-logged-in users
     if (!isLoggedIn) {
         return (
             <div className="space-y-4 py-2">
+                {/* AI Mode Toggle */}
+                <div className="space-y-2 pb-4 border-b">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <Label htmlFor="local-ai-mode">
+                                使用自定义配置 (BYOK)
+                            </Label>
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                {aiMode === "byok"
+                                    ? "使用您配置的 API Key，不消耗系统额度"
+                                    : "使用系统默认配置，消耗您的使用额度"}
+                            </p>
+                        </div>
+                        <Switch
+                            id="local-ai-mode"
+                            checked={aiMode === "byok"}
+                            disabled={
+                                (aiMode !== "byok" && !hasAnyByokConfig) ||
+                                isSwitchingLocalMode
+                            }
+                            onCheckedChange={handleLocalModeToggle}
+                        />
+                    </div>
+                    {!hasAnyByokConfig && aiMode !== "byok" && (
+                        <p className="text-sm text-muted-foreground">
+                            请先配置 API Key
+                        </p>
+                    )}
+                </div>
+
                 {/* Mode Tabs */}
                 <div className="flex gap-2">
                     <Button
@@ -472,14 +541,98 @@ export function NewModelConfigTab({ isLoggedIn }: NewModelConfigTabProps) {
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Model ID</Label>
-                                <Input
-                                    value={currentLocalModel}
-                                    onChange={(e) =>
-                                        setCurrentLocalModel(e.target.value)
-                                    }
-                                    placeholder="输入模型 ID"
-                                />
+                                <Label>模型</Label>
+                                <div className="relative">
+                                    <div className="relative">
+                                        <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            value={
+                                                localModelSearchValue ||
+                                                currentLocalModel
+                                            }
+                                            onChange={(e) => {
+                                                setLocalModelSearchValue(
+                                                    e.target.value,
+                                                )
+                                                setLocalModelMenuOpen(true)
+                                            }}
+                                            onFocus={() => {
+                                                setLocalModelSearchValue(
+                                                    currentLocalModel,
+                                                )
+                                                setLocalModelMenuOpen(true)
+                                            }}
+                                            onBlur={() => {
+                                                setTimeout(() => {
+                                                    setLocalModelMenuOpen(false)
+                                                    setLocalModelSearchValue("")
+                                                }, 150)
+                                            }}
+                                            placeholder="输入或选择模型"
+                                            className="pl-8 pr-9"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                                            onMouseDown={(e) =>
+                                                e.preventDefault()
+                                            }
+                                            onClick={() =>
+                                                setLocalModelMenuOpen((v) => !v)
+                                            }
+                                        >
+                                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                        </Button>
+                                    </div>
+                                    {localModelMenuOpen &&
+                                        filteredLocalModels.length > 0 && (
+                                            <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
+                                                <div className="max-h-56 overflow-auto">
+                                                    {filteredLocalModels
+                                                        .slice(0, 100)
+                                                        .map((m) => (
+                                                            <button
+                                                                key={m.id}
+                                                                type="button"
+                                                                className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                                                                onMouseDown={(
+                                                                    e,
+                                                                ) =>
+                                                                    e.preventDefault()
+                                                                }
+                                                                onClick={() =>
+                                                                    handleLocalSelectModel(
+                                                                        m.id,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <span className="truncate">
+                                                                    {m.id}
+                                                                </span>
+                                                                {m.label && (
+                                                                    <span className="ml-2 max-w-[45%] truncate text-xs text-muted-foreground">
+                                                                        {
+                                                                            m.label
+                                                                        }
+                                                                    </span>
+                                                                )}
+                                                            </button>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {isLoadingLocalModels
+                                        ? "加载模型列表中..."
+                                        : localModelOptions.length > 0
+                                          ? `已加载 ${localModelOptions.length} 个模型`
+                                          : currentLocalApiKey
+                                            ? "输入 API Key 后自动加载模型列表"
+                                            : "请先输入 API Key"}
+                                </p>
                             </div>
                         </>
                     )}
