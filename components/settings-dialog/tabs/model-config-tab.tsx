@@ -1,6 +1,7 @@
 "use client"
 
 import {
+    Brain,
     Check,
     ChevronDown,
     ChevronRight,
@@ -8,6 +9,7 @@ import {
     HardDrive,
     Search,
     Settings2,
+    Zap,
 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -36,7 +38,13 @@ interface ProviderOption {
     label: string
 }
 
+export type ModelModeType = "fast" | "max"
+
 interface ModelConfigTabProps {
+    // Model mode
+    modelMode: ModelModeType
+    onModelModeChange: (mode: ModelModeType) => void
+
     // Access code
     accessCodeRequired: boolean
     accessCode: string
@@ -92,6 +100,8 @@ interface ModelConfigTabProps {
 }
 
 export function ModelConfigTab({
+    modelMode,
+    onModelModeChange,
     accessCodeRequired,
     accessCode,
     onAccessCodeChange,
@@ -263,6 +273,36 @@ export function ModelConfigTab({
                     )}
                 </div>
             )}
+
+            {/* Model Mode Selector */}
+            <div className="space-y-2 pb-3 border-b">
+                <Label>{t("settings.modelMode.label")}</Label>
+                <p className="text-[0.8rem] text-muted-foreground">
+                    {t("settings.modelMode.description")}
+                </p>
+                <div className="flex gap-2">
+                    <Button
+                        type="button"
+                        variant={modelMode === "fast" ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1 gap-2"
+                        onClick={() => onModelModeChange("fast")}
+                    >
+                        <Zap className="h-4 w-4" />
+                        {t("settings.modelMode.fast")}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant={modelMode === "max" ? "default" : "outline"}
+                        size="sm"
+                        className="flex-1 gap-2"
+                        onClick={() => onModelModeChange("max")}
+                    >
+                        <Brain className="h-4 w-4" />
+                        {t("settings.modelMode.max")}
+                    </Button>
+                </div>
+            </div>
 
             {/* AI Provider Section */}
             <div className="space-y-2">

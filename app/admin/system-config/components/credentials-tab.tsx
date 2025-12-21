@@ -1,4 +1,8 @@
-import { useState } from "react"
+"use client"
+
+import { Plus, Star, Trash2 } from "lucide-react"
+import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -8,7 +12,23 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import {
     Table,
     TableBody,
@@ -17,6 +37,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
+import { api } from "@/lib/trpc/client"
 
 interface ProviderCatalog {
     key: string
@@ -27,302 +48,444 @@ interface ProviderCatalog {
     isActive: boolean
 }
 
-interface SystemConfig {
-    key: string
-    value: unknown
-    description: string | null
-}
-
 interface CredentialsTabProps {
-    configs: SystemConfig[] | undefined
     providerCatalogs: ProviderCatalog[] | undefined
     hasWritePermission: boolean
-    onUpdateConfig: (key: string, value: string) => void
-    isPending: boolean
+}
+
+interface CredentialForm {
+    provider: string
+    name: string
+    apiKey: string
+    baseUrl: string
+    isDefault: boolean
+}
+
+const initialForm: CredentialForm = {
+    provider: "",
+    name: "default",
+    apiKey: "",
+    baseUrl: "",
+    isDefault: false,
 }
 
 export function CredentialsTab({
-    configs,
     providerCatalogs,
     hasWritePermission,
-    onUpdateConfig,
-    isPending,
 }: CredentialsTabProps) {
-    const [editingKey, setEditingKey] = useState<string | null>(null)
-    const [editValue, setEditValue] = useState("")
+    const [isDialogOpen, setIsDialogOpen] = useState(false)
+    const [editingCredential, setEditingCredential] = useState<{
+        provider: string
+        name: string
+    } | null>(null)
+    const [form, setForm] = useState<CredentialForm>(initialForm)
 
     const activeProviders = providerCatalogs?.filter((p) => p.isActive) || []
 
-    const getConfigValue = (key: string): string => {
-        const config = configs?.find((c) => c.key === key)
-        return config?.value ? String(config.value) : ""
+    // 获取所有凭证
+    const {
+        data: credentials,
+        refetch,
+        isLoading,
+        error,
+    } = api.systemCredential.adminList.useQuery(undefined, {
+        retry: false,
+    })
+
+    // 调试：打印错误
+    if (error) {
+        console.error("[CredentialsTab] Query error:", error)
     }
 
-    const maskSecret = (value: string) => {
-        if (!value) return "未配置"
-        const trimmed = value.trim()
-        if (trimmed.length <= 8) return "********"
-        return `********${trimmed.slice(-4)}`
+    // 创建/更新凭证
+    const upsertMutation = api.systemCredential.adminUpsert.useMutation({
+        onSuccess: () => {
+            toast.success(editingCredential ? "凭证已更新" : "凭证已创建")
+            setIsDialogOpen(false)
+            setEditingCredential(null)
+            setForm(initialForm)
+            void refetch()
+        },
+        onError: (error) => {
+            toast.error(`操作失败：${error.message}`)
+        },
+    })
+
+    // 删除凭证
+    const deleteMutation = api.systemCredential.adminDelete.useMutation({
+        onSuccess: () => {
+            toast.success("凭证已删除")
+            void refetch()
+        },
+        onError: (error) => {
+            toast.error(`删除失败：${error.message}`)
+        },
+    })
+
+    // 设置默认凭证
+    const setDefaultMutation = api.systemCredential.adminSetDefault.useMutation(
+        {
+            onSuccess: () => {
+                toast.success("已设为默认凭证")
+                void refetch()
+            },
+            onError: (error) => {
+                toast.error(`设置失败：${error.message}`)
+            },
+        },
+    )
+
+    const handleAddNew = () => {
+        setEditingCredential(null)
+        setForm(initialForm)
+        setIsDialogOpen(true)
     }
 
-    const formatBaseUrl = (value: string) => {
-        if (!value) return "-"
-        if (value.length <= 40) return value
-        return `${value.slice(0, 36)}...`
+    const handleEdit = (provider: string, name: string) => {
+        const credential = credentials?.find(
+            (c) => c.provider === provider && c.name === name,
+        )
+        if (credential) {
+            setEditingCredential({ provider, name })
+            setForm({
+                provider: credential.provider,
+                name: credential.name,
+                apiKey: "", // 不回填 API Key
+                baseUrl: credential.baseUrl || "",
+                isDefault: credential.isDefault,
+            })
+            setIsDialogOpen(true)
+        }
     }
 
-    const handleEdit = (key: string, currentValue: string) => {
-        setEditingKey(key)
-        setEditValue(currentValue)
+    const handleDelete = (provider: string, name: string) => {
+        if (confirm(`确定要删除凭证 "${name}" 吗？`)) {
+            deleteMutation.mutate({ provider: provider as any, name })
+        }
     }
 
-    const handleSave = (key: string) => {
-        onUpdateConfig(key, editValue)
-        setEditingKey(null)
-        setEditValue("")
+    const handleSetDefault = (provider: string, name: string) => {
+        setDefaultMutation.mutate({ provider: provider as any, name })
     }
 
-    const handleCancel = () => {
-        setEditingKey(null)
-        setEditValue("")
+    const handleSubmit = () => {
+        if (!form.provider) {
+            toast.error("请选择 Provider")
+            return
+        }
+        if (!form.name.trim()) {
+            toast.error("请输入凭证名称")
+            return
+        }
+        // 新建时必须有 API Key
+        if (!editingCredential && !form.apiKey) {
+            toast.error("请输入 API Key")
+            return
+        }
+
+        upsertMutation.mutate({
+            provider: form.provider as any,
+            name: form.name.trim(),
+            apiKey: form.apiKey || undefined,
+            baseUrl: form.baseUrl || undefined,
+            isDefault: form.isDefault,
+        })
     }
+
+    // 按 provider 分组凭证
+    const credentialsByProvider = credentials?.reduce(
+        (acc, cred) => {
+            if (!acc[cred.provider]) {
+                acc[cred.provider] = []
+            }
+            acc[cred.provider].push(cred)
+            return acc
+        },
+        {} as Record<string, typeof credentials>,
+    )
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    连接凭证配置
-                    <Badge variant="outline">系统层</Badge>
-                </CardTitle>
-                <CardDescription>
-                    为各 Provider 配置 API Key 和 Base URL 覆盖
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <CardTitle className="flex items-center gap-2">
+                            连接凭证管理
+                            <Badge variant="outline">系统层</Badge>
+                        </CardTitle>
+                        <CardDescription>
+                            管理系统级 API Key，支持每个 Provider 配置多套凭证
+                        </CardDescription>
+                    </div>
+                    <Button
+                        onClick={handleAddNew}
+                        disabled={!hasWritePermission}
+                        size="sm"
+                    >
+                        <Plus className="h-4 w-4 mr-1" />
+                        添加凭证
+                    </Button>
+                </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="text-sm text-muted-foreground">
-                    系统级凭证用于未配置 BYOK 的请求，用户自定义配置优先级更高
-                </div>
+            <CardContent className="space-y-6">
+                {isLoading ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                        加载中...
+                    </div>
+                ) : !credentials || credentials.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                        暂无配置的凭证，点击"添加凭证"开始配置
+                    </div>
+                ) : (
+                    activeProviders.map((provider) => {
+                        const providerCredentials =
+                            credentialsByProvider?.[provider.key] || []
+                        if (providerCredentials.length === 0) return null
 
-                <div className="overflow-x-auto">
-                    <Table className="min-w-[800px]">
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-[180px]">
-                                    Provider
-                                </TableHead>
-                                <TableHead>API Key</TableHead>
-                                <TableHead>Base URL 覆盖</TableHead>
-                                <TableHead className="w-[100px]">
-                                    状态
-                                </TableHead>
-                                <TableHead className="w-[160px]">
-                                    操作
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {activeProviders.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={5}>
-                                        暂无启用的 Provider
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                activeProviders.map((provider) => {
-                                    const apiKeyKey = `ai.${provider.key}.apiKey`
-                                    const baseUrlKey = `ai.${provider.key}.baseUrl`
-                                    const apiKeyValue =
-                                        getConfigValue(apiKeyKey)
-                                    const baseUrlValue =
-                                        getConfigValue(baseUrlKey)
-                                    const isEditingApiKey =
-                                        editingKey === apiKeyKey
-                                    const isEditingBaseUrl =
-                                        editingKey === baseUrlKey
-
-                                    return (
-                                        <TableRow key={provider.key}>
-                                            <TableCell>
-                                                <div className="font-medium">
-                                                    {provider.displayName}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground font-mono">
-                                                    {provider.key}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {isEditingApiKey ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <Input
-                                                            value={editValue}
-                                                            onChange={(e) =>
-                                                                setEditValue(
-                                                                    e.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            type="password"
-                                                            className="h-8 font-mono text-sm"
-                                                            placeholder="输入 API Key"
-                                                        />
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleSave(
-                                                                    apiKeyKey,
-                                                                )
-                                                            }
-                                                            disabled={isPending}
-                                                        >
-                                                            保存
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={
-                                                                handleCancel
-                                                            }
-                                                        >
-                                                            取消
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-mono text-sm text-muted-foreground">
-                                                            {maskSecret(
-                                                                apiKeyValue,
-                                                            )}
-                                                        </span>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() =>
-                                                                handleEdit(
-                                                                    apiKeyKey,
-                                                                    apiKeyValue,
-                                                                )
-                                                            }
-                                                            disabled={
-                                                                !hasWritePermission
-                                                            }
-                                                        >
-                                                            编辑
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {isEditingBaseUrl ? (
-                                                    <div className="flex items-center gap-2">
-                                                        <Input
-                                                            value={editValue}
-                                                            onChange={(e) =>
-                                                                setEditValue(
-                                                                    e.target
-                                                                        .value,
-                                                                )
-                                                            }
-                                                            className="h-8 font-mono text-sm"
-                                                            placeholder={
-                                                                provider.defaultBaseUrl ||
-                                                                "留空使用默认"
-                                                            }
-                                                        />
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleSave(
-                                                                    baseUrlKey,
-                                                                )
-                                                            }
-                                                            disabled={isPending}
-                                                        >
-                                                            保存
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={
-                                                                handleCancel
-                                                            }
-                                                        >
-                                                            取消
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center gap-2">
-                                                        <span
-                                                            className="font-mono text-sm text-muted-foreground truncate max-w-[200px]"
-                                                            title={
-                                                                baseUrlValue ||
-                                                                undefined
-                                                            }
-                                                        >
-                                                            {formatBaseUrl(
-                                                                baseUrlValue,
-                                                            )}
-                                                        </span>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() =>
-                                                                handleEdit(
-                                                                    baseUrlKey,
-                                                                    baseUrlValue,
-                                                                )
-                                                            }
-                                                            disabled={
-                                                                !hasWritePermission
-                                                            }
-                                                        >
-                                                            编辑
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge
-                                                    variant={
-                                                        apiKeyValue
-                                                            ? "secondary"
-                                                            : "outline"
-                                                    }
-                                                >
-                                                    {apiKeyValue
-                                                        ? "已配置"
-                                                        : "未配置"}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {provider.authType ===
-                                                    "none"
-                                                        ? "无需鉴权"
-                                                        : provider.authType ===
-                                                            "aws"
-                                                          ? "AWS 凭证"
-                                                          : "API Key"}
-                                                </div>
-                                            </TableCell>
+                        return (
+                            <div
+                                key={provider.key}
+                                className="border rounded-lg"
+                            >
+                                <div className="px-4 py-3 bg-muted/30 border-b">
+                                    <div className="font-medium">
+                                        {provider.displayName}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground font-mono">
+                                        {provider.key}
+                                    </div>
+                                </div>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-[180px]">
+                                                名称
+                                            </TableHead>
+                                            <TableHead>Base URL</TableHead>
+                                            <TableHead className="w-[100px]">
+                                                状态
+                                            </TableHead>
+                                            <TableHead className="w-[180px]">
+                                                操作
+                                            </TableHead>
                                         </TableRow>
-                                    )
-                                })
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {providerCredentials.map((cred) => (
+                                            <TableRow
+                                                key={`${cred.provider}-${cred.name}`}
+                                            >
+                                                <TableCell>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-medium">
+                                                            {cred.name}
+                                                        </span>
+                                                        {cred.isDefault && (
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="text-xs"
+                                                            >
+                                                                默认
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <span className="font-mono text-sm text-muted-foreground truncate max-w-[200px] block">
+                                                        {cred.baseUrl || "-"}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Badge
+                                                        variant={
+                                                            cred.hasCredentials
+                                                                ? "secondary"
+                                                                : "outline"
+                                                        }
+                                                    >
+                                                        {cred.hasCredentials
+                                                            ? "已配置"
+                                                            : "未配置"}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-1">
+                                                        {!cred.isDefault && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() =>
+                                                                    handleSetDefault(
+                                                                        cred.provider,
+                                                                        cred.name,
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    !hasWritePermission ||
+                                                                    setDefaultMutation.isPending
+                                                                }
+                                                                title="设为默认"
+                                                            >
+                                                                <Star className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() =>
+                                                                handleEdit(
+                                                                    cred.provider,
+                                                                    cred.name,
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                !hasWritePermission
+                                                            }
+                                                        >
+                                                            编辑
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() =>
+                                                                handleDelete(
+                                                                    cred.provider,
+                                                                    cred.name,
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                !hasWritePermission ||
+                                                                deleteMutation.isPending
+                                                            }
+                                                        >
+                                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        )
+                    })
+                )}
 
                 <div className="pt-4 border-t text-sm text-muted-foreground space-y-2">
                     <p>
-                        <strong>提示：</strong>API Key
-                        以加密形式存储，仅显示最后 4 位用于识别
+                        <strong>提示：</strong>
+                        每个 Provider 可配置多套凭证，在"系统默认"中可选择
+                        Fast/Max 模式使用哪套凭证
                     </p>
                     <p>
-                        Base URL 覆盖用于自定义接口地址（如代理），留空则使用
-                        Provider 目录的默认值
+                        <Star className="h-3 w-3 inline mr-1" />
+                        标记为"默认"的凭证将在未指定凭证名称时使用
                     </p>
                 </div>
             </CardContent>
+
+            {/* 添加/编辑凭证对话框 */}
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {editingCredential ? "编辑凭证" : "添加凭证"}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {editingCredential
+                                ? "修改凭证配置，留空 API Key 将保留原有值"
+                                : "为 Provider 添加新的 API Key 凭证"}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Provider</Label>
+                            <Select
+                                value={form.provider}
+                                onValueChange={(value) =>
+                                    setForm({ ...form, provider: value })
+                                }
+                                disabled={!!editingCredential}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="选择 Provider" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {activeProviders.map((p) => (
+                                        <SelectItem key={p.key} value={p.key}>
+                                            {p.displayName}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>凭证名称</Label>
+                            <Input
+                                value={form.name}
+                                onChange={(e) =>
+                                    setForm({ ...form, name: e.target.value })
+                                }
+                                placeholder="例如：default, backup, team-a"
+                                disabled={!!editingCredential}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                用于区分同一 Provider 的多套凭证
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>API Key</Label>
+                            <Input
+                                value={form.apiKey}
+                                onChange={(e) =>
+                                    setForm({ ...form, apiKey: e.target.value })
+                                }
+                                type="password"
+                                placeholder={
+                                    editingCredential
+                                        ? "留空保留原有值"
+                                        : "输入 API Key"
+                                }
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Base URL（可选）</Label>
+                            <Input
+                                value={form.baseUrl}
+                                onChange={(e) =>
+                                    setForm({
+                                        ...form,
+                                        baseUrl: e.target.value,
+                                    })
+                                }
+                                placeholder="留空使用 Provider 默认值"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                覆盖 Provider 目录中的默认端点
+                            </p>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsDialogOpen(false)}
+                        >
+                            取消
+                        </Button>
+                        <Button
+                            onClick={handleSubmit}
+                            disabled={upsertMutation.isPending}
+                        >
+                            {upsertMutation.isPending ? "保存中..." : "保存"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </Card>
     )
 }

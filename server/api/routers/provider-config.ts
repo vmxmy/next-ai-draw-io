@@ -145,11 +145,15 @@ function resolveCredentialType(
     return "custom"
 }
 
+// Model mode enum
+const modelModeEnum = z.enum(["fast", "max"])
+
 // 输入验证 Schema（增强安全性）
 const upsertInputSchema = z
     .object({
         provider: providerEnum,
         name: z.string().min(1).max(100).optional(),
+        modelMode: modelModeEnum.optional().default("fast"),
         isDefault: z.boolean().optional(),
         isDisabled: z.boolean().optional(),
         credentialType: z
@@ -221,20 +225,23 @@ export const providerConfigRouter = createTRPCRouter({
             z.object({
                 provider: providerEnum,
                 name: z.string().max(100).optional(),
+                modelMode: modelModeEnum.optional().default("fast"),
             }),
         )
         .query(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
 
             const name = (input.name || "").trim()
+            const modelMode = input.modelMode
             const config =
                 name.length > 0
                     ? await ctx.db.providerConfig.findUnique({
                           where: {
-                              userId_provider_name: {
+                              userId_provider_name_modelMode: {
                                   userId,
                                   provider: input.provider,
                                   name,
+                                  modelMode,
                               },
                           },
                           select: {
@@ -263,6 +270,7 @@ export const providerConfigRouter = createTRPCRouter({
                           where: {
                               userId,
                               provider: input.provider,
+                              modelMode,
                           },
                           orderBy: [
                               { isDefault: "desc" },
@@ -360,6 +368,7 @@ export const providerConfigRouter = createTRPCRouter({
                 id: true,
                 provider: true,
                 name: true,
+                modelMode: true,
                 isDefault: true,
                 isDisabled: true,
                 encryptedCredentials: true,
@@ -416,6 +425,7 @@ export const providerConfigRouter = createTRPCRouter({
                 id: config.id,
                 provider: config.provider,
                 name: config.name,
+                modelMode: config.modelMode,
                 isDefault: config.isDefault,
                 isDisabled: config.isDisabled,
                 credentialType: config.credentialType,
@@ -445,6 +455,7 @@ export const providerConfigRouter = createTRPCRouter({
 
             const connectionName =
                 (input.name || "").trim() || DEFAULT_CONNECTION_NAME
+            const modelMode = input.modelMode || "fast"
             const shouldSetDefault =
                 input.isDefault === true ||
                 (input.isDefault === undefined &&
@@ -455,6 +466,7 @@ export const providerConfigRouter = createTRPCRouter({
                     where: {
                         userId,
                         provider: input.provider,
+                        modelMode,
                         name: { not: connectionName },
                         isDefault: true,
                     },
@@ -472,10 +484,11 @@ export const providerConfigRouter = createTRPCRouter({
             // 检查是否是新建配置
             const existingConfig = await ctx.db.providerConfig.findUnique({
                 where: {
-                    userId_provider_name: {
+                    userId_provider_name_modelMode: {
                         userId,
                         provider: input.provider,
                         name: connectionName,
+                        modelMode,
                     },
                 },
                 select: { id: true, encryptedCredentials: true },
@@ -520,16 +533,18 @@ export const providerConfigRouter = createTRPCRouter({
 
             const config = await ctx.db.providerConfig.upsert({
                 where: {
-                    userId_provider_name: {
+                    userId_provider_name_modelMode: {
                         userId,
                         provider: input.provider,
                         name: connectionName,
+                        modelMode,
                     },
                 },
                 create: {
                     userId,
                     provider: input.provider,
                     name: connectionName,
+                    modelMode,
                     isDefault: shouldSetDefault,
                     isDisabled: input.isDisabled || false,
                     credentialType,
@@ -601,19 +616,22 @@ export const providerConfigRouter = createTRPCRouter({
             z.object({
                 provider: providerEnum,
                 name: z.string().max(100).optional(),
+                modelMode: modelModeEnum.optional().default("fast"),
             }),
         )
         .mutation(async ({ ctx, input }) => {
             const userId = ctx.session.user.id
 
             const name = (input.name || "").trim()
+            const modelMode = input.modelMode
             if (name.length > 0) {
                 await ctx.db.providerConfig.delete({
                     where: {
-                        userId_provider_name: {
+                        userId_provider_name_modelMode: {
                             userId,
                             provider: input.provider,
                             name,
+                            modelMode,
                         },
                     },
                 })
@@ -621,7 +639,7 @@ export const providerConfigRouter = createTRPCRouter({
             }
 
             const fallback = await ctx.db.providerConfig.findFirst({
-                where: { userId, provider: input.provider },
+                where: { userId, provider: input.provider, modelMode },
                 orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
                 select: { name: true },
             })
@@ -629,10 +647,11 @@ export const providerConfigRouter = createTRPCRouter({
             if (fallback) {
                 await ctx.db.providerConfig.delete({
                     where: {
-                        userId_provider_name: {
+                        userId_provider_name_modelMode: {
                             userId,
                             provider: input.provider,
                             name: fallback.name,
+                            modelMode,
                         },
                     },
                 })

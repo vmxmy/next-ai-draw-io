@@ -11,7 +11,7 @@ import { Toaster, toast } from "sonner"
 import { AuthDialog } from "@/components/auth-dialog"
 import { AutoRetryLimitToast } from "@/components/auto-retry-limit-toast"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
-import { ChatInput } from "@/components/chat-input"
+import { ChatInput, type ModelMode } from "@/components/chat-input"
 import { ChatMessageDisplay } from "@/components/chat-message-display"
 import { ConversationLimitDialog } from "@/components/conversation-limit-dialog"
 import { QuotaDialog } from "@/components/quota-dialog"
@@ -189,6 +189,7 @@ export default function ChatPanel({
         useState(false)
     const [, setAccessCodeRequired] = useState(false)
     const [input, setInput] = useState("")
+    const [modelMode, setModelMode] = useState<ModelMode>("fast")
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
     const [dailyTokenLimit, setDailyTokenLimit] = useState(0)
     const [tpmLimit, setTpmLimit] = useState(0)
@@ -249,10 +250,11 @@ export default function ChatPanel({
     const currentConversationIdRef = useRef("")
 
     const buildAIHeaders = useCallback(
-        (config: ReturnType<typeof getAIConfig>) => {
+        (config: ReturnType<typeof getAIConfig>, mode: ModelMode) => {
             const isLoggedIn = !!authSession?.user
             const headers: Record<string, string> = {
                 "x-access-code": config.accessCode,
+                "x-model-mode": mode,
             }
 
             // 匿名用户 BYOK: 通过 headers 传递配置
@@ -1029,7 +1031,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             autoTitleRequestedRef.current.add(conversationId)
 
             const config = getAIConfig()
-            const headers = buildAIHeaders(config)
+            const headers = buildAIHeaders(config, "fast")
 
             try {
                 const res = await fetch("/api/conversation/title", {
@@ -1300,13 +1302,14 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
 
             const requestId = createRequestId()
             activeRequestIdRef.current = requestId
-            const headers = buildAIHeaders(config)
+            const headers = buildAIHeaders(config, modelMode)
 
             console.log("[Chat] Headers being sent:", {
                 ...headers,
                 "x-ai-api-key": headers["x-ai-api-key"]
                     ? `${headers["x-ai-api-key"].substring(0, 10)}...`
                     : "(not sent - using cloud config)",
+                "x-model-mode": modelMode,
             })
 
             sendMessage(
@@ -1327,7 +1330,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             )
             quotaManager.incrementRequestCount()
         },
-        [quotaManager, sendMessage, authSession, buildAIHeaders],
+        [quotaManager, sendMessage, authSession, buildAIHeaders, modelMode],
     )
 
     // Apply current UI theme colors to the diagram
@@ -1754,6 +1757,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     error={error}
                     disableImageUpload={disableImageUpload}
                     onApplyTheme={handleApplyTheme}
+                    modelMode={modelMode}
+                    onModelModeChange={setModelMode}
                 />
             </footer>
 

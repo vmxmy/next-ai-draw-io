@@ -1,6 +1,7 @@
 "use client"
 
 import {
+    Brain,
     Download,
     History,
     Image as ImageIcon,
@@ -138,6 +139,8 @@ function showValidationErrors(
     }
 }
 
+export type ModelMode = "fast" | "max"
+
 interface ChatInputProps {
     input: string
     status: "submitted" | "streaming" | "ready" | "error"
@@ -166,6 +169,8 @@ interface ChatInputProps {
     error?: Error | null
     disableImageUpload?: boolean
     onApplyTheme?: () => void
+    modelMode?: ModelMode
+    onModelModeChange?: (mode: ModelMode) => void
 }
 
 export function ChatInput({
@@ -193,6 +198,8 @@ export function ChatInput({
     error = null,
     disableImageUpload = false,
     onApplyTheme,
+    modelMode = "fast",
+    onModelModeChange,
 }: ChatInputProps) {
     const { t } = useI18n()
     const { saveDiagramToFile } = useDiagram()
@@ -514,6 +521,31 @@ export function ChatInput({
                         />
 
                         <div className="w-px h-5 bg-border mx-1" />
+
+                        {/* Model Mode Toggle */}
+                        <ButtonWithTooltip
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                const nextMode =
+                                    modelMode === "fast" ? "max" : "fast"
+                                onModelModeChange?.(nextMode)
+                            }}
+                            disabled={isDisabled}
+                            tooltipContent={
+                                modelMode === "max"
+                                    ? t("chat.tooltip.modelMax")
+                                    : t("chat.tooltip.modelFast")
+                            }
+                            className={`h-8 w-8 p-0 shrink-0 transition-all ${
+                                modelMode === "max"
+                                    ? "text-primary hover:text-primary/80 hover:bg-primary/10"
+                                    : "text-muted-foreground/40 hover:text-muted-foreground/60"
+                            }`}
+                        >
+                            <Brain className="h-4 w-4" />
+                        </ButtonWithTooltip>
 
                         <Button
                             type={showStop ? "button" : "submit"}

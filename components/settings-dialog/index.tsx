@@ -71,6 +71,7 @@ export function SettingsDialog({
     )
 
     // Provider config state
+    const [modelMode, setModelMode] = useState<"fast" | "max">("fast")
     const [provider, setProvider] = useState("")
     const [connectionName, setConnectionName] = useState("default")
     const [connectionIsDefault, setConnectionIsDefault] = useState(true)
@@ -94,6 +95,7 @@ export function SettingsDialog({
     const cloudSync = useCloudSync({
         provider,
         connectionName,
+        modelMode,
         isDefault: connectionIsDefault,
         apiKey,
         baseUrl,
@@ -299,6 +301,51 @@ export function SettingsDialog({
             }
         },
         [isLoggedIn, cloudSync, allCloudConnections, setSelectedConfig],
+    )
+
+    // Handle model mode change
+    const handleModelModeChange = useCallback(
+        async (newMode: "fast" | "max") => {
+            setModelMode(newMode)
+
+            // Clear form fields
+            setApiKey("")
+            setBaseUrl("")
+            setModelId("")
+            setConnectionName("default")
+            setConnectionIsDefault(true)
+
+            if (isLoggedIn && provider) {
+                // Load config for the new mode
+                cloudSync.clearCloudConfigState()
+                const configs = await cloudSync.loadConnections(
+                    provider,
+                    newMode,
+                )
+                const defaultConfig =
+                    configs.find((c) => c.isDefault) ||
+                    configs.find((c) => c.name === "default") ||
+                    configs[0]
+
+                if (defaultConfig) {
+                    setConnectionName(defaultConfig.name || "default")
+                    setConnectionIsDefault(!!defaultConfig.isDefault)
+                    setBaseUrl(defaultConfig.baseUrl || "")
+                    setModelId(defaultConfig.modelId || "")
+
+                    if (defaultConfig.id) {
+                        setSelectedConfig(defaultConfig.id)
+                    }
+
+                    await cloudSync.loadCloudConfig(
+                        provider,
+                        defaultConfig.name,
+                        newMode,
+                    )
+                }
+            }
+        },
+        [isLoggedIn, provider, cloudSync, setSelectedConfig],
     )
 
     const handleConnectionNameChange = useCallback(
@@ -514,6 +561,8 @@ export function SettingsDialog({
                         className="space-y-4 py-2 overflow-y-auto flex-1"
                     >
                         <ModelConfigTab
+                            modelMode={modelMode}
+                            onModelModeChange={handleModelModeChange}
                             accessCodeRequired={accessCodeRequired}
                             accessCode={accessCode}
                             onAccessCodeChange={setAccessCode}

@@ -6,6 +6,7 @@ import { providerCatalogRouter } from "@/server/api/routers/provider-catalog"
 import { providerConfigRouter } from "@/server/api/routers/provider-config"
 import { quotaMonitoringRouter } from "@/server/api/routers/quota-monitoring"
 import { systemConfigRouter } from "@/server/api/routers/system-config"
+import { systemCredentialRouter } from "@/server/api/routers/system-credential"
 import { tierConfigRouter } from "@/server/api/routers/tier-config"
 import { userManagementRouter } from "@/server/api/routers/user-management"
 import { createTRPCRouter } from "@/server/api/trpc"
@@ -19,6 +20,7 @@ export const appRouter = createTRPCRouter({
     providerConfig: providerConfigRouter,
     quotaMonitoring: quotaMonitoringRouter,
     systemConfig: systemConfigRouter,
+    systemCredential: systemCredentialRouter,
     tierConfig: tierConfigRouter,
     userManagement: userManagementRouter,
 })

@@ -11,9 +11,12 @@ export interface CloudSyncState {
     isDeleting: boolean
 }
 
+export type ModelModeType = "fast" | "max"
+
 export interface UseCloudSyncOptions {
     provider: string
     connectionName: string
+    modelMode: ModelModeType
     isDefault: boolean
     apiKey: string
     baseUrl: string
@@ -28,6 +31,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     const {
         provider,
         connectionName,
+        modelMode,
         isDefault,
         apiKey,
         baseUrl,
@@ -53,7 +57,11 @@ export function useCloudSync(options: UseCloudSyncOptions) {
 
     // Load cloud config for a provider
     const loadCloudConfig = useCallback(
-        async (targetProvider: string, targetName?: string) => {
+        async (
+            targetProvider: string,
+            targetName?: string,
+            targetModelMode?: ModelModeType,
+        ) => {
             if (!session?.user || !targetProvider) {
                 setCloudConfig({})
                 return null
@@ -62,6 +70,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
             try {
                 const config = await utils.providerConfig.get.fetch({
                     provider: targetProvider as ProviderType,
+                    modelMode: targetModelMode || modelMode,
                     ...(targetName ? { name: targetName } : {}),
                 })
 
@@ -90,11 +99,11 @@ export function useCloudSync(options: UseCloudSyncOptions) {
                 return null
             }
         },
-        [session, utils, onCloudConfigLoaded],
+        [session, utils, modelMode, onCloudConfigLoaded],
     )
 
     const loadConnections = useCallback(
-        async (targetProvider?: string) => {
+        async (targetProvider?: string, targetModelMode?: ModelModeType) => {
             if (!session?.user) {
                 setConnections([])
                 return []
@@ -102,11 +111,14 @@ export function useCloudSync(options: UseCloudSyncOptions) {
             setIsLoadingConnections(true)
             try {
                 const configs = await utils.providerConfig.getAll.fetch()
-                const filtered = targetProvider
-                    ? configs.filter(
-                          (config) => config.provider === targetProvider,
-                      )
-                    : configs
+                const mode = targetModelMode || modelMode
+                const filtered = configs.filter((config) => {
+                    const matchesMode = config.modelMode === mode
+                    const matchesProvider = targetProvider
+                        ? config.provider === targetProvider
+                        : true
+                    return matchesMode && matchesProvider
+                })
                 setConnections(filtered)
                 onConnectionsLoaded?.(filtered)
                 return filtered
@@ -118,7 +130,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
                 setIsLoadingConnections(false)
             }
         },
-        [session, utils, onConnectionsLoaded],
+        [session, utils, modelMode, onConnectionsLoaded],
     )
 
     // Sync current config to cloud
@@ -136,6 +148,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
             {
                 provider: provider as ProviderType,
                 name: connectionName || "default",
+                modelMode,
                 isDefault,
                 // 只有本地有 apiKey 时才发送，否则后端会保留原有的
                 ...(apiKey ? { apiKey } : {}),
@@ -144,7 +157,11 @@ export function useCloudSync(options: UseCloudSyncOptions) {
             },
             {
                 onSuccess: () => {
-                    console.log("[settings] Synced to cloud:", provider)
+                    console.log(
+                        "[settings] Synced to cloud:",
+                        provider,
+                        modelMode,
+                    )
                     loadConnections(provider)
                     setSyncSuccess(true)
                     setTimeout(() => setSyncSuccess(false), 2000)
@@ -155,6 +172,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         session,
         provider,
         connectionName,
+        modelMode,
         isDefault,
         apiKey,
         baseUrl,
@@ -174,6 +192,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         try {
             const config = await utils.providerConfig.get.fetch({
                 provider: provider as ProviderType,
+                modelMode,
                 ...(connectionName ? { name: connectionName } : {}),
             })
 
@@ -188,7 +207,11 @@ export function useCloudSync(options: UseCloudSyncOptions) {
 
                 onConfigRestored?.(restored)
 
-                console.log("[settings] Restored from cloud:", provider)
+                console.log(
+                    "[settings] Restored from cloud:",
+                    provider,
+                    modelMode,
+                )
                 setRestoreSuccess(true)
                 setTimeout(() => setRestoreSuccess(false), 2000)
             } else {
@@ -199,7 +222,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         } finally {
             setIsRestoring(false)
         }
-    }, [session, provider, connectionName, utils, onConfigRestored])
+    }, [session, provider, connectionName, modelMode, utils, onConfigRestored])
 
     // Delete cloud config
     const deleteCloudConfig = useCallback(() => {
@@ -212,6 +235,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         deleteConfigMutation.mutate(
             {
                 provider: provider as ProviderType,
+                modelMode,
                 ...(connectionName ? { name: connectionName } : {}),
             },
             {
@@ -219,6 +243,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
                     console.log(
                         "[settings] Cloud config cleared for provider:",
                         provider,
+                        modelMode,
                     )
                     loadConnections(provider)
                 },
@@ -234,6 +259,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         session,
         provider,
         connectionName,
+        modelMode,
         deleteConfigMutation,
         loadConnections,
     ])

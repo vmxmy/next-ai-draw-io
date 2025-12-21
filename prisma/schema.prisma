@@ -148,6 +148,9 @@ model ProviderConfig {
   isDefault Boolean @default(false)
   isDisabled Boolean @default(false)
 
+  // 模型模式：fast（快速）或 max（深度思考）
+  modelMode String @default("fast") // fast | max
+
   // 可选配置
   baseUrl     String?
   modelId     String?
@@ -170,13 +173,14 @@ model ProviderConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user         User   @relation("UserConfigs", fields: [userId], references: [id], onDelete: Cascade)
+  user            User   @relation("UserConfigs", fields: [userId], references: [id], onDelete: Cascade)
   selectedByUsers User[] @relation("SelectedConfig")
 
-  @@unique([userId, provider, name])
+  @@unique([userId, provider, name, modelMode])
   @@index([userId])
   @@index([provider])
   @@index([credentialsVersion])
+  @@index([modelMode])
 }
 
 // Provider 默认配置目录（系统级）
@@ -199,6 +203,38 @@ model ProviderCatalog {
   updatedAt DateTime @updatedAt
 
   @@index([isActive])
+}
+
+// 系统级连接凭证（支持每个 Provider 多套凭证）
+model SystemCredential {
+  id       String @id @default(cuid())
+  provider String // openrouter, openai, anthropic, etc.
+  name     String @default("default") // 凭证别名
+
+  // 可选覆盖（优先级高于 ProviderCatalog）
+  baseUrl String?
+
+  // 加密凭证（与 ProviderConfig 结构一致）
+  credentialType       String  @default("apiKey") // apiKey | aws | oauth
+  encryptedCredentials String?
+  credentialsIv        String?
+  credentialsAuthTag   String?
+  credentialsVersion   Int     @default(1)
+
+  // AWS 特定字段（如需要）
+  region       String?
+  resourceName String?
+
+  isDefault  Boolean @default(false) // 该 provider 下的默认凭证
+  isDisabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, name])
+  @@index([provider])
+  @@index([provider, isDefault])
+  @@index([isDisabled])
 }
 
 // SMS 验证码（用于手机号登录）

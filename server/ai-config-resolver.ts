@@ -4,7 +4,7 @@
  */
 import { db } from "@/server/db"
 import { decryptCredentials } from "@/server/encryption"
-import { getDefaultAIConfig } from "@/server/system-config"
+import { getDefaultAIConfig, type ModelMode } from "@/server/system-config"
 
 export interface ResolvedAIConfig {
     source: "system" | "byok" | "anonymous_byok"
@@ -30,6 +30,9 @@ export async function resolveAIConfig(params: {
 }): Promise<ResolvedAIConfig> {
     const { userId, headers } = params
 
+    // 获取模型模式（fast 或 max）
+    const modelMode = (headers.get("x-model-mode") as ModelMode) || "fast"
+
     // 检查匿名 BYOK (headers 包含 API key)
     const headerApiKey = headers.get("x-ai-api-key")
     const headerProvider = headers.get("x-ai-provider")
@@ -52,19 +55,25 @@ export async function resolveAIConfig(params: {
         return config
     }
 
-    // 登录用户: 检查 aiMode 和选中的配置
+    // 登录用户: 检查 aiMode 和对应模式的配置
     if (userId) {
         const user = await db.user.findUnique({
             where: { id: userId },
             select: {
                 aiMode: true,
-                selectedProviderConfig: {
+                providerConfigs: {
+                    where: {
+                        modelMode: modelMode,
+                        isDisabled: false,
+                    },
+                    orderBy: [{ isDefault: "desc" }, { updatedAt: "desc" }],
+                    take: 1,
                     select: {
                         id: true,
                         provider: true,
                         modelId: true,
                         baseUrl: true,
-                        isDisabled: true,
+                        modelMode: true,
                         encryptedCredentials: true,
                         credentialsIv: true,
                         credentialsAuthTag: true,
@@ -74,40 +83,40 @@ export async function resolveAIConfig(params: {
             },
         })
 
+        const modeConfig = user?.providerConfigs?.[0]
+
         console.log("[resolveAIConfig] User lookup:", {
             userId,
             aiMode: user?.aiMode,
-            hasSelectedConfig: !!user?.selectedProviderConfig,
-            selectedProvider: user?.selectedProviderConfig?.provider,
+            modelMode,
+            hasConfigForMode: !!modeConfig,
+            configProvider: modeConfig?.provider,
         })
 
-        if (user?.aiMode === "byok" && user.selectedProviderConfig) {
-            const config = user.selectedProviderConfig
-
+        if (user?.aiMode === "byok" && modeConfig) {
             // 检查配置是否有效
-            if (config.isDisabled) {
-                console.log("[resolveAIConfig] Selected config is disabled")
-            } else if (config.encryptedCredentials) {
+            if (modeConfig.encryptedCredentials) {
                 try {
                     const decrypted = decryptCredentials({
-                        encryptedData: config.encryptedCredentials,
-                        iv: config.credentialsIv!,
-                        authTag: config.credentialsAuthTag!,
-                        keyVersion: config.credentialsVersion,
+                        encryptedData: modeConfig.encryptedCredentials,
+                        iv: modeConfig.credentialsIv!,
+                        authTag: modeConfig.credentialsAuthTag!,
+                        keyVersion: modeConfig.credentialsVersion,
                     })
                     const credentials = JSON.parse(decrypted)
 
                     const resolvedConfig = {
                         source: "byok" as const,
-                        provider: config.provider,
+                        provider: modeConfig.provider,
                         apiKey: credentials.apiKey,
-                        baseUrl: config.baseUrl || undefined,
-                        modelId: config.modelId || undefined,
+                        baseUrl: modeConfig.baseUrl || undefined,
+                        modelId: modeConfig.modelId || undefined,
                         bypassQuota: true,
                     }
                     console.log(
-                        "[resolveAIConfig] Using selected BYOK config:",
+                        "[resolveAIConfig] Using BYOK config for mode:",
                         {
+                            modelMode,
                             provider: resolvedConfig.provider,
                             modelId: resolvedConfig.modelId,
                             hasApiKey: !!resolvedConfig.apiKey,
@@ -123,14 +132,15 @@ export async function resolveAIConfig(params: {
                 }
             } else {
                 console.log(
-                    "[resolveAIConfig] Selected config has no credentials",
+                    "[resolveAIConfig] Config for mode has no credentials:",
+                    modelMode,
                 )
             }
         }
     }
 
-    // 系统默认配置
-    const defaultConfig = await getDefaultAIConfig()
+    // 系统默认配置（根据 modelMode 选择不同的模型）
+    const defaultConfig = await getDefaultAIConfig(modelMode)
     const systemConfig = {
         source: "system" as const,
         provider: defaultConfig.provider,
@@ -140,6 +150,7 @@ export async function resolveAIConfig(params: {
         bypassQuota: false,
     }
     console.log("[resolveAIConfig] Using system default:", {
+        modelMode,
         provider: systemConfig.provider,
         modelId: systemConfig.modelId,
         hasApiKey: !!systemConfig.apiKey,

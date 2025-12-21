@@ -1,3 +1,5 @@
+"use client"
+
 import { ChevronDown, HardDrive, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +19,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { api } from "@/lib/trpc/client"
 
 interface ModelOption {
     id: string
@@ -40,8 +43,7 @@ interface ProviderOption {
 interface SystemDefaultsTabProps {
     currentProvider: string
     currentModel: string
-    currentBaseUrl: string
-    currentApiKey: string
+    currentCredential: string
     currentProviderCatalog: ProviderCatalog | undefined
     providerOptions: ProviderOption[]
     modelOptions: ModelOption[]
@@ -52,15 +54,22 @@ interface SystemDefaultsTabProps {
     setModelSearchValue: React.Dispatch<React.SetStateAction<string>>
     hasWritePermission: boolean
     onQuickUpdate: (key: string, value: string) => void
-    baseUrlInput: string
-    setBaseUrlInput: React.Dispatch<React.SetStateAction<string>>
+    maxProvider: string
+    maxModel: string
+    maxCredential: string
+    // Max 模式模型选择
+    maxModelOptions: ModelOption[]
+    isLoadingMaxModels: boolean
+    isMaxModelMenuOpen: boolean
+    setIsMaxModelMenuOpen: React.Dispatch<React.SetStateAction<boolean>>
+    maxModelSearchValue: string
+    setMaxModelSearchValue: React.Dispatch<React.SetStateAction<string>>
 }
 
 export function SystemDefaultsTab({
     currentProvider,
     currentModel,
-    currentBaseUrl,
-    currentApiKey,
+    currentCredential,
     currentProviderCatalog,
     providerOptions,
     modelOptions,
@@ -71,26 +80,40 @@ export function SystemDefaultsTab({
     setModelSearchValue,
     hasWritePermission,
     onQuickUpdate,
-    baseUrlInput,
-    setBaseUrlInput,
+    maxProvider,
+    maxModel,
+    maxCredential,
+    maxModelOptions,
+    isLoadingMaxModels,
+    isMaxModelMenuOpen,
+    setIsMaxModelMenuOpen,
+    maxModelSearchValue,
+    setMaxModelSearchValue,
 }: SystemDefaultsTabProps) {
-    const maskSecret = (value: string) => {
-        if (!value) return "未配置"
-        const trimmed = value.trim()
-        if (trimmed.length <= 6) return "******"
-        return `******${trimmed.slice(-6)}`
+    // 获取所有凭证
+    const { data: credentials } = api.systemCredential.adminList.useQuery()
+
+    // 获取当前 provider 的凭证选项
+    const getCredentialOptions = (provider: string) => {
+        return (
+            credentials
+                ?.filter((c) => c.provider === provider)
+                .map((c) => ({
+                    value: c.name,
+                    label: c.isDefault ? `${c.name} (默认)` : c.name,
+                })) || []
+        )
     }
 
-    const formatBaseUrl = (value: string) => {
-        if (!value) return "默认"
-        if (value.length <= 36) return value
-        return `${value.slice(0, 32)}...`
-    }
+    const fastCredentialOptions = getCredentialOptions(currentProvider)
+    const maxCredentialOptions = getCredentialOptions(
+        maxProvider || currentProvider,
+    )
 
-    const effectiveBaseUrl =
-        String(currentBaseUrl || "") ||
-        currentProviderCatalog?.defaultBaseUrl ||
-        ""
+    // 获取当前选中凭证的信息
+    const currentCredentialInfo = credentials?.find(
+        (c) => c.provider === currentProvider && c.name === currentCredential,
+    )
 
     const filteredModelOptions = modelOptions.filter((m) => {
         const query = modelSearchValue.trim().toLowerCase()
@@ -103,7 +126,16 @@ export function SystemDefaultsTab({
         )
     })
 
-    const currentProviderBaseUrlKey = `ai.${currentProvider}.baseUrl`
+    const filteredMaxModelOptions = maxModelOptions.filter((m) => {
+        const query = maxModelSearchValue.trim().toLowerCase()
+        if (!query) return true
+        return (
+            String(m.id).toLowerCase().includes(query) ||
+            String(m.label || "")
+                .toLowerCase()
+                .includes(query)
+        )
+    })
 
     return (
         <div className="space-y-6">
@@ -158,55 +190,41 @@ export function SystemDefaultsTab({
                 </CardContent>
             </Card>
 
-            {/* AI 配置面板 */}
+            {/* Fast 模式配置面板 */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        默认 AI 配置
-                        <Badge variant="outline">应用层</Badge>
+                        Fast 模式配置
+                        <Badge variant="outline">快速响应</Badge>
                     </CardTitle>
                     <CardDescription>
-                        管理系统默认 Provider 与模型，优先级低于用户自定义配置
+                        用于日常对话，优先选择响应速度快、成本低的模型
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
                         <div className="text-sm text-muted-foreground">
-                            当前生效链路
+                            当前配置
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="secondary">
                                 Provider: {currentProvider}
                             </Badge>
                             <Badge variant="outline">
-                                Catalog Base URL:{" "}
-                                {formatBaseUrl(
-                                    String(
-                                        currentProviderCatalog?.defaultBaseUrl ||
-                                            "",
-                                    ),
-                                )}
+                                凭证: {currentCredential || "默认"}
                             </Badge>
                             <Badge variant="outline">
-                                System Base URL:{" "}
-                                {formatBaseUrl(String(currentBaseUrl))}
+                                Model: {currentModel || "未配置"}
                             </Badge>
-                            <Badge variant="outline">
-                                Effective:{" "}
-                                {formatBaseUrl(String(effectiveBaseUrl))}
-                            </Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline">
-                                Auth: {currentProviderCatalog?.authType || "-"}
-                            </Badge>
-                            <Badge variant="outline">
-                                Compat:{" "}
-                                {currentProviderCatalog?.compatibility || "-"}
-                            </Badge>
-                            <Badge variant="outline">
-                                API Key: {maskSecret(currentApiKey)}
-                            </Badge>
+                            {currentCredentialInfo?.hasCredentials ? (
+                                <Badge variant="secondary">
+                                    API Key 已配置
+                                </Badge>
+                            ) : (
+                                <Badge variant="destructive">
+                                    API Key 未配置
+                                </Badge>
+                            )}
                         </div>
                     </div>
 
@@ -240,35 +258,42 @@ export function SystemDefaultsTab({
                             </div>
                         </div>
 
-                        {/* Base URL 配置 */}
+                        {/* 凭证选择 */}
                         <div className="space-y-2">
-                            <Label htmlFor="base-url">
-                                Base URL（可选覆盖）
-                            </Label>
-                            <Input
-                                id="base-url"
-                                value={baseUrlInput}
-                                onChange={(e) => {
-                                    setBaseUrlInput(e.target.value)
+                            <Label>使用凭证</Label>
+                            <Select
+                                value={currentCredential || ""}
+                                onValueChange={(value) => {
+                                    onQuickUpdate(
+                                        "ai.default.credential",
+                                        value,
+                                    )
                                 }}
-                                onBlur={(e) => {
-                                    const value = e.target.value.trim()
-                                    if (value !== currentBaseUrl) {
-                                        onQuickUpdate(
-                                            currentProviderBaseUrlKey,
-                                            value,
-                                        )
-                                    }
-                                }}
-                                placeholder={
-                                    currentProviderCatalog?.defaultBaseUrl ||
-                                    "留空使用 Provider 目录默认"
-                                }
                                 disabled={!hasWritePermission}
-                            />
-                            <p className="text-[0.8rem] text-muted-foreground">
-                                失焦后自动保存，留空则使用 Provider 目录的默认值
-                            </p>
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="使用默认凭证" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {fastCredentialOptions.length === 0 ? (
+                                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                            请先在"连接凭证"中配置
+                                        </div>
+                                    ) : (
+                                        fastCredentialOptions.map((c) => (
+                                            <SelectItem
+                                                key={c.value}
+                                                value={c.value}
+                                            >
+                                                {c.label}
+                                            </SelectItem>
+                                        ))
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <div className="text-[0.8rem] text-muted-foreground">
+                                选择该 Provider 使用的 API Key 凭证
+                            </div>
                         </div>
                     </div>
 
@@ -377,17 +402,229 @@ export function SystemDefaultsTab({
                                     ? "加载模型列表中..."
                                     : modelOptions.length > 0
                                       ? `已加载 ${modelOptions.length} 个模型`
-                                      : currentApiKey
+                                      : currentCredentialInfo?.hasCredentials
                                         ? "无法加载模型列表"
-                                        : "配置 API Key 后可自动加载模型"}
+                                        : "配置凭证后可自动加载模型"}
                             </p>
                         </div>
                     </div>
 
                     <div className="pt-4 border-t">
                         <p className="text-sm text-muted-foreground">
-                            提示：修改配置后，新的 AI 请求将使用更新后的设置；
-                            客户端自定义配置（BYOK）优先级更高。
+                            提示：Fast 模式适合日常对话，响应速度快、成本低
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Max 模式配置面板 */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        Max 模式配置
+                        <Badge variant="secondary">深度思考</Badge>
+                    </CardTitle>
+                    <CardDescription>
+                        用于复杂任务，优先选择推理能力强的模型（如需要深度分析时）
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-2">
+                        <div className="text-sm text-muted-foreground">
+                            当前配置
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">
+                                Provider: {maxProvider || "未配置（继承 Fast）"}
+                            </Badge>
+                            <Badge variant="outline">
+                                Model: {maxModel || "未配置（继承 Fast）"}
+                            </Badge>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Max Provider 选择 */}
+                        <div className="space-y-2">
+                            <Label>Max 模式 Provider</Label>
+                            <Select
+                                value={maxProvider || ""}
+                                onValueChange={(value) => {
+                                    onQuickUpdate("ai.max.provider", value)
+                                }}
+                                disabled={!hasWritePermission}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="未配置（继承 Fast 模式）" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {providerOptions.map((p) => (
+                                        <SelectItem
+                                            key={p.value}
+                                            value={p.value}
+                                        >
+                                            {p.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <div className="text-[0.8rem] text-muted-foreground">
+                                未配置时继承 Fast 模式的 Provider
+                            </div>
+                        </div>
+
+                        {/* Max 凭证选择 */}
+                        <div className="space-y-2">
+                            <Label>使用凭证</Label>
+                            <Select
+                                value={maxCredential || ""}
+                                onValueChange={(value) => {
+                                    onQuickUpdate("ai.max.credential", value)
+                                }}
+                                disabled={!hasWritePermission}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="未配置（继承 Fast 模式）" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {maxCredentialOptions.length === 0 ? (
+                                        <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                            请先在"连接凭证"中配置
+                                        </div>
+                                    ) : (
+                                        maxCredentialOptions.map((c) => (
+                                            <SelectItem
+                                                key={c.value}
+                                                value={c.value}
+                                            >
+                                                {c.label}
+                                            </SelectItem>
+                                        ))
+                                    )}
+                                </SelectContent>
+                            </Select>
+                            <div className="text-[0.8rem] text-muted-foreground">
+                                未配置时继承 Fast 模式的凭证
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                        {/* Max Model 选择 */}
+                        <div className="space-y-2">
+                            <Label
+                                htmlFor="max-model"
+                                className="flex items-center gap-1.5"
+                            >
+                                Max 模式模型
+                                {maxModel && (
+                                    <HardDrive className="h-3 w-3 text-muted-foreground" />
+                                )}
+                            </Label>
+                            <div className="relative">
+                                <div className="relative">
+                                    <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                    <Input
+                                        id="max-model"
+                                        value={
+                                            maxModelSearchValue ||
+                                            String(maxModel)
+                                        }
+                                        onChange={(e) => {
+                                            setMaxModelSearchValue(
+                                                e.target.value,
+                                            )
+                                            setIsMaxModelMenuOpen(true)
+                                        }}
+                                        onFocus={() => {
+                                            setMaxModelSearchValue(
+                                                String(maxModel),
+                                            )
+                                            setIsMaxModelMenuOpen(true)
+                                        }}
+                                        onBlur={() => {
+                                            setTimeout(() => {
+                                                setIsMaxModelMenuOpen(false)
+                                                setMaxModelSearchValue("")
+                                            }, 150)
+                                        }}
+                                        placeholder="输入或选择模型 ID（留空继承 Fast）"
+                                        className="pl-8 pr-9"
+                                        disabled={!hasWritePermission}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault()
+                                        }}
+                                        onClick={() =>
+                                            setIsMaxModelMenuOpen((v) => !v)
+                                        }
+                                        disabled={!hasWritePermission}
+                                    >
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                </div>
+                                {isMaxModelMenuOpen &&
+                                    filteredMaxModelOptions.length > 0 && (
+                                        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
+                                            <div className="max-h-56 overflow-auto">
+                                                {filteredMaxModelOptions
+                                                    .slice(0, 100)
+                                                    .map((m) => (
+                                                        <button
+                                                            key={m.id}
+                                                            type="button"
+                                                            className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent"
+                                                            onMouseDown={(
+                                                                e,
+                                                            ) => {
+                                                                e.preventDefault()
+                                                            }}
+                                                            onClick={() => {
+                                                                onQuickUpdate(
+                                                                    "ai.max.model",
+                                                                    m.id,
+                                                                )
+                                                                setIsMaxModelMenuOpen(
+                                                                    false,
+                                                                )
+                                                                setMaxModelSearchValue(
+                                                                    "",
+                                                                )
+                                                            }}
+                                                        >
+                                                            <span className="truncate">
+                                                                {m.id}
+                                                            </span>
+                                                            {m.label ? (
+                                                                <span className="ml-2 max-w-[45%] truncate text-xs text-muted-foreground">
+                                                                    {m.label}
+                                                                </span>
+                                                            ) : null}
+                                                        </button>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    )}
+                            </div>
+                            <p className="text-[0.8rem] text-muted-foreground">
+                                {isLoadingMaxModels
+                                    ? "加载模型列表中..."
+                                    : maxModelOptions.length > 0
+                                      ? `已加载 ${maxModelOptions.length} 个模型`
+                                      : "留空则继承 Fast 模式的模型"}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                            提示：Max 模式适合复杂任务，推理能力更强但成本更高；
+                            用户可通过点击聊天框左侧的🧠按钮切换模式
                         </p>
                     </div>
                 </CardContent>

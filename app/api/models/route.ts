@@ -3,6 +3,7 @@ import { z } from "zod"
 import { authOptions } from "@/server/auth"
 import { db } from "@/server/db"
 import { decryptCredentials } from "@/server/encryption"
+import { getSystemCredential } from "@/server/system-config"
 
 export const maxDuration = 30
 
@@ -194,6 +195,18 @@ export async function POST(req: Request) {
                     provider,
                 )
             }
+        }
+    }
+
+    // 如果仍无 apiKey，尝试从系统凭证获取
+    if (!apiKey) {
+        const systemCredential = await getSystemCredential(provider)
+        if (systemCredential) {
+            apiKey = systemCredential.apiKey
+            if (!baseUrl && systemCredential.baseUrl) {
+                baseUrl = systemCredential.baseUrl
+            }
+            console.log("[/api/models] Using system credentials for:", provider)
         }
     }
 

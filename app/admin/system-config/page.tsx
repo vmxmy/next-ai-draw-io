@@ -33,14 +33,17 @@ export default function SystemConfigPage() {
     const hasReadPermission = usePermission("system:read")
     const hasWritePermission = usePermission("system:write")
 
-    // 模型选择相关状态
+    // Fast 模式模型选择相关状态
     const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
     const [isLoadingModels, setIsLoadingModels] = useState(false)
     const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
     const [modelSearchValue, setModelSearchValue] = useState("")
 
-    // Base URL 本地编辑状态
-    const [baseUrlInput, setBaseUrlInput] = useState<string>("")
+    // Max 模式模型选择相关状态
+    const [maxModelOptions, setMaxModelOptions] = useState<ModelOption[]>([])
+    const [isLoadingMaxModels, setIsLoadingMaxModels] = useState(false)
+    const [isMaxModelMenuOpen, setIsMaxModelMenuOpen] = useState(false)
+    const [maxModelSearchValue, setMaxModelSearchValue] = useState("")
 
     // Provider 目录配置
     const [editingProviderKey, setEditingProviderKey] = useState<string | null>(
@@ -107,18 +110,23 @@ export default function SystemConfigPage() {
         },
     )
 
-    // 获取当前 provider 和 API key（用于加载模型）
+    // Fast 模式配置
     const currentProvider =
         configs?.find((c) => c.key === "ai.default.provider")?.value ||
         "openrouter"
-    const currentApiKey =
-        configs?.find((c) => c.key === `ai.${currentProvider}.apiKey`)?.value ||
-        ""
-    const currentBaseUrl =
-        configs?.find((c) => c.key === `ai.${currentProvider}.baseUrl`)
-            ?.value || ""
     const currentModel =
         configs?.find((c) => c.key === "ai.default.model")?.value || ""
+
+    // Max 模式配置
+    const maxProvider =
+        configs?.find((c) => c.key === "ai.max.provider")?.value || ""
+    const maxModel = configs?.find((c) => c.key === "ai.max.model")?.value || ""
+
+    // 凭证配置
+    const currentCredential =
+        configs?.find((c) => c.key === "ai.default.credential")?.value || ""
+    const maxCredential =
+        configs?.find((c) => c.key === "ai.max.credential")?.value || ""
 
     // Provider 选项完全从数据库获取，不再使用硬编码 fallback
     const providerOptions =
@@ -133,12 +141,8 @@ export default function SystemConfigPage() {
         (provider) => provider.key === currentProvider,
     )
 
-    // 同步 base URL 到本地状态
-    useEffect(() => {
-        setBaseUrlInput(String(currentBaseUrl))
-    }, [currentBaseUrl])
-
     // 自动加载模型列表
+    // 不再传 apiKey/baseUrl，让后端从 SystemCredential 获取
     useEffect(() => {
         if (!currentProvider) {
             setModelOptions([])
@@ -153,8 +157,6 @@ export default function SystemConfigPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     provider: currentProvider,
-                    apiKey: currentApiKey,
-                    baseUrl: currentBaseUrl,
                 }),
                 signal: controller.signal,
             })
@@ -180,7 +182,55 @@ export default function SystemConfigPage() {
             clearTimeout(timeout)
             controller.abort()
         }
-    }, [currentProvider, currentApiKey, currentBaseUrl])
+    }, [currentProvider])
+
+    // 自动加载 Max 模式模型列表
+    // Max 模式可能使用不同的 Provider，需要单独加载
+    const effectiveMaxProvider = maxProvider || currentProvider
+    useEffect(() => {
+        // 如果 Max provider 与 Fast 相同，直接复用 Fast 的模型列表
+        if (!maxProvider || maxProvider === currentProvider) {
+            setMaxModelOptions(modelOptions)
+            setIsLoadingMaxModels(false)
+            return
+        }
+
+        const controller = new AbortController()
+        const timeout = setTimeout(() => {
+            setIsLoadingMaxModels(true)
+            fetch("/api/models", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    provider: maxProvider,
+                    // Max 模式使用自己的凭证（如果配置了的话）
+                    // 这里暂时不传 apiKey，因为凭证在 SystemCredential 表中
+                }),
+                signal: controller.signal,
+            })
+                .then((res) => {
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                    return res.json()
+                })
+                .then((data) => {
+                    const models = Array.isArray(data?.models)
+                        ? data.models
+                        : []
+                    setMaxModelOptions(models)
+                })
+                .catch(() => {
+                    setMaxModelOptions([])
+                })
+                .finally(() => {
+                    setIsLoadingMaxModels(false)
+                })
+        }, 250)
+
+        return () => {
+            clearTimeout(timeout)
+            controller.abort()
+        }
+    }, [maxProvider, currentProvider, modelOptions])
 
     // 权限检查
     if (!hasReadPermission) {
@@ -282,11 +332,8 @@ export default function SystemConfigPage() {
 
                 <TabsContent value="credentials" className="mt-6">
                     <CredentialsTab
-                        configs={configs}
                         providerCatalogs={providerCatalogs}
                         hasWritePermission={hasWritePermission}
-                        onUpdateConfig={handleQuickUpdate}
-                        isPending={updateMutation.isPending}
                     />
                 </TabsContent>
 
@@ -294,8 +341,7 @@ export default function SystemConfigPage() {
                     <SystemDefaultsTab
                         currentProvider={String(currentProvider)}
                         currentModel={String(currentModel)}
-                        currentBaseUrl={String(currentBaseUrl)}
-                        currentApiKey={String(currentApiKey)}
+                        currentCredential={String(currentCredential)}
                         currentProviderCatalog={currentProviderCatalog}
                         providerOptions={providerOptions}
                         modelOptions={modelOptions}
@@ -306,8 +352,15 @@ export default function SystemConfigPage() {
                         setModelSearchValue={setModelSearchValue}
                         hasWritePermission={hasWritePermission}
                         onQuickUpdate={handleQuickUpdate}
-                        baseUrlInput={baseUrlInput}
-                        setBaseUrlInput={setBaseUrlInput}
+                        maxProvider={String(maxProvider)}
+                        maxModel={String(maxModel)}
+                        maxCredential={String(maxCredential)}
+                        maxModelOptions={maxModelOptions}
+                        isLoadingMaxModels={isLoadingMaxModels}
+                        isMaxModelMenuOpen={isMaxModelMenuOpen}
+                        setIsMaxModelMenuOpen={setIsMaxModelMenuOpen}
+                        maxModelSearchValue={maxModelSearchValue}
+                        setMaxModelSearchValue={setMaxModelSearchValue}
                     />
                 </TabsContent>
             </Tabs>

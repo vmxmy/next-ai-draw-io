@@ -135,6 +135,10 @@ export type I18nKey =
     | "settings.language.note"
     | "settings.language.en"
     | "settings.language.zhCN"
+    | "settings.modelMode.label"
+    | "settings.modelMode.description"
+    | "settings.modelMode.fast"
+    | "settings.modelMode.max"
     | "chat.placeholder"
     | "chat.tooltip.clear"
     | "chat.tooltip.history"
@@ -143,6 +147,8 @@ export type I18nKey =
     | "chat.tooltip.redo"
     | "chat.tooltip.upload"
     | "chat.tooltip.applyTheme"
+    | "chat.tooltip.modelMax"
+    | "chat.tooltip.modelFast"
     | "chat.send"
     | "chat.sending"
     | "chat.thinking"
@@ -478,6 +484,11 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.language.note": "Choose interface language.",
         "settings.language.en": "English",
         "settings.language.zhCN": "简体中文",
+        "settings.modelMode.label": "Model Mode",
+        "settings.modelMode.description":
+            "Choose different models for different tasks. Configure the provider for each mode below.",
+        "settings.modelMode.fast": "Fast",
+        "settings.modelMode.max": "Deep Thinking",
         "chat.placeholder": "Describe your diagram or upload a file...",
         "chat.tooltip.clear": "Clear conversation",
         "chat.tooltip.history": "Diagram history",
@@ -486,6 +497,9 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.redo": "Redo",
         "chat.tooltip.upload": "Upload file (image, PDF, text)",
         "chat.tooltip.applyTheme": "Apply theme to diagram",
+        "chat.tooltip.modelMax": "Deep thinking mode (click to switch to fast)",
+        "chat.tooltip.modelFast":
+            "Fast mode (click to switch to deep thinking)",
         "chat.send": "Send",
         "chat.sending": "Sending...",
         "chat.thinking": "Thinking...",
@@ -826,6 +840,11 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "settings.language.note": "选择界面语言。",
         "settings.language.en": "English",
         "settings.language.zhCN": "简体中文",
+        "settings.modelMode.label": "模型模式",
+        "settings.modelMode.description":
+            "为不同任务选择不同模型，在下方配置对应模式的服务商。",
+        "settings.modelMode.fast": "快速",
+        "settings.modelMode.max": "深度思考",
         "chat.placeholder": "描述你想要的图表，或上传文件…",
         "chat.tooltip.clear": "清空对话",
         "chat.tooltip.history": "图表历史",
@@ -834,6 +853,8 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.redo": "重做",
         "chat.tooltip.upload": "上传文件（图片 / PDF / 文本）",
         "chat.tooltip.applyTheme": "应用主题样式到图表",
+        "chat.tooltip.modelMax": "深度思考模式（点击切换为快速模式）",
+        "chat.tooltip.modelFast": "快速模式（点击切换为深度思考）",
         "chat.send": "发送",
         "chat.sending": "发送中…",
         "chat.thinking": "思考中…",
