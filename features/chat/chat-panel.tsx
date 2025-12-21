@@ -946,15 +946,32 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                                 "Failed to fetch conversation payload:",
                                 error,
                             )
-                            toast.error("更新会话失败，请稍后重试")
-                            void utils.conversation.listMetas.invalidate()
-                            return
+                            // 不要立即报错，继续尝试从当前状态构建
                         }
                     }
 
+                    // 如果仍然没有 payload（新对话未同步到云端），从当前状态构建
+                    if (!payload && id === currentConversationId) {
+                        payload = {
+                            messages:
+                                (messagesRef.current as unknown as ConversationPayload["messages"]) ||
+                                [],
+                            xml: chartXMLRef.current || "",
+                            diagramVersions,
+                            diagramVersionCursor,
+                            sessionId,
+                        }
+                        console.log(
+                            "[handleUpdateConversationTitle] Built payload from current state for new conversation",
+                        )
+                    }
+
                     if (!payload) {
-                        toast.error("更新会话失败：未找到会话内容")
-                        void utils.conversation.listMetas.invalidate()
+                        // 非当前会话且服务端无数据，跳过更新（正常同步流程会处理）
+                        console.warn(
+                            "[handleUpdateConversationTitle] Skipping update - no payload available for:",
+                            id,
+                        )
                         return
                     }
 
@@ -996,6 +1013,12 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
             utils,
             pushMutation,
             setConversations,
+            currentConversationId,
+            messagesRef,
+            chartXMLRef,
+            diagramVersions,
+            diagramVersionCursor,
+            sessionId,
         ],
     )
 
