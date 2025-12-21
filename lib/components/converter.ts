@@ -539,12 +539,14 @@ function getComponentLabel(component: DrawIOComponent): string {
         case "List": {
             const list = component as ListComponent
             let label = list.title ? `<b>${list.title}</b><hr>` : ""
-            label += list.items
-                .map((item, i) =>
-                    list.numbered ? `${i + 1}. ${item}` : `• ${item}`,
-                )
-                .join("<br>")
-            return label
+            if (list.items?.length) {
+                label += list.items
+                    .map((item, i) =>
+                        list.numbered ? `${i + 1}. ${item}` : `• ${item}`,
+                    )
+                    .join("<br>")
+            }
+            return label || "List"
         }
 
         case "Table": {
@@ -560,7 +562,7 @@ function getComponentLabel(component: DrawIOComponent): string {
 
         case "Process": {
             const process = component as ProcessComponent
-            return process.steps.map((s) => s.label).join(" → ")
+            return process.steps?.map((s) => s.label).join(" → ") || "Process"
         }
 
         case "Callout":
