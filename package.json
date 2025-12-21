@@ -28,6 +28,7 @@
         "@langfuse/client": "^4.4.9",
         "@langfuse/otel": "^4.4.4",
         "@langfuse/tracing": "^4.4.9",
+        "@mendable/firecrawl-js": "^4.9.3",
         "@next-auth/prisma-adapter": "^1.0.7",
         "@next/third-parties": "^16.0.6",
         "@openrouter/ai-sdk-provider": "^1.2.3",

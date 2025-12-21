@@ -35,6 +35,7 @@ import { analyzeDiagramXml } from "@/lib/xml-analyzer"
 import { generateXmlDiff } from "@/lib/xml-diff"
 import { buildDiagramSummary } from "@/lib/xml-summary"
 import { authOptions } from "@/server/auth"
+import { preprocessUserMessage } from "@/server/content-preprocessor"
 import {
     enforceQuotaLimit,
     QuotaExceededError,
@@ -626,10 +627,18 @@ When the current diagram XML is non-empty and the user requests incremental chan
     const lastMessageText =
         lastMessage.parts?.find((part: any) => part.type === "text")?.text || ""
 
+    // Preprocess user message - detect URLs and fetch web content
+    const preprocessResult = await preprocessUserMessage(lastMessageText)
+    if (preprocessResult.urlsScraped > 0) {
+        console.log(
+            `[ContentPreprocessor] Scraped ${preprocessResult.urlsScraped}/${preprocessResult.urlsFound.length} URLs in ${preprocessResult.processingTime}ms`,
+        )
+    }
+
     // User input only - XML is now in a separate cached system message
     const formattedUserInput = `User input:
 """md
-${lastMessageText}
+${preprocessResult.processedMessage}
 """`
 
     // Expand file references (fileId -> full content for last message)
