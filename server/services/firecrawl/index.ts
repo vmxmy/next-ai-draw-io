@@ -34,7 +34,8 @@ function getClient(): Firecrawl {
     if (!apiKey) {
         throw new Error("FIRECRAWL_API_KEY is not configured")
     }
-    return new Firecrawl({ apiKey })
+    const apiUrl = process.env.FIRECRAWL_API_URL || undefined
+    return new Firecrawl({ apiKey, apiUrl })
 }
 
 /**
