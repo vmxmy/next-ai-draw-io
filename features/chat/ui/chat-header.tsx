@@ -63,6 +63,7 @@ export function ChatHeader({
     onShowQuota,
     getCurrentMessages,
     isBYOK,
+    quotaStatus,
 }: {
     isMobile: boolean
     isVisible: boolean
@@ -113,7 +114,17 @@ export function ChatHeader({
     getCurrentMessages?: () => any[]
     /** 是否使用 BYOK（用户自带密钥），影响配额按钮样式 */
     isBYOK?: boolean
+    /** 配额状态: normal | warning (>=80%) | exceeded (>=100%) */
+    quotaStatus?: "normal" | "warning" | "exceeded"
 }) {
+    // 根据配额状态确定图标颜色
+    const getQuotaIconColor = () => {
+        if (isBYOK) return "text-emerald-500"
+        if (quotaStatus === "exceeded") return "text-red-500"
+        if (quotaStatus === "warning") return "text-amber-500"
+        return "text-muted-foreground"
+    }
+    const quotaIconColor = getQuotaIconColor()
     return (
         <header
             className={`${isMobile ? "px-3 py-2" : "px-5 py-4"} border-b border-border/50`}
@@ -185,7 +196,7 @@ export function ChatHeader({
                             onClick={onShowQuota}
                         >
                             <ChartNoAxesColumn
-                                className={`h-5 w-5 ${isBYOK ? "text-emerald-500" : "text-muted-foreground"}`}
+                                className={`h-5 w-5 ${quotaIconColor}`}
                             />
                         </Button>
 
@@ -287,7 +298,7 @@ export function ChatHeader({
                             className="hover:bg-accent"
                         >
                             <ChartNoAxesColumn
-                                className={`h-5 w-5 ${isBYOK ? "text-emerald-500" : "text-muted-foreground"}`}
+                                className={`h-5 w-5 ${quotaIconColor}`}
                             />
                         </ButtonWithTooltip>
 

@@ -5,7 +5,7 @@ import { DefaultChatTransport } from "ai"
 import { PanelRightOpen } from "lucide-react"
 import { useSession } from "next-auth/react"
 import type React from "react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom"
 import { Toaster, toast } from "sonner"
 import { AuthDialog } from "@/components/auth-dialog"
@@ -848,7 +848,39 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const pushMutation = api.conversation.push.useMutation()
 
     // BYOK 检测：使用 quotaManager 的 isBYOK（已包含本地和云端检查，并监听 storage 变化）
-    const { isBYOK } = quotaManager
+    const { isBYOK, config: quotaConfig, usage: quotaUsage } = quotaManager
+
+    // 计算配额状态（用于图标颜色指示）
+    const quotaStatus = useMemo((): "normal" | "warning" | "exceeded" => {
+        if (isBYOK || !quotaConfig) return "normal"
+
+        const WARNING_THRESHOLD = 0.8 // 80%
+
+        // 检查每日请求配额
+        if (quotaConfig.dailyRequestLimit > 0) {
+            const requestRatio =
+                quotaUsage.dailyRequests / quotaConfig.dailyRequestLimit
+            if (requestRatio >= 1) return "exceeded"
+            if (requestRatio >= WARNING_THRESHOLD) return "warning"
+        }
+
+        // 检查每日 Token 配额
+        if (quotaConfig.dailyTokenLimit > 0) {
+            const tokenRatio =
+                quotaUsage.dailyTokens / quotaConfig.dailyTokenLimit
+            if (tokenRatio >= 1) return "exceeded"
+            if (tokenRatio >= WARNING_THRESHOLD) return "warning"
+        }
+
+        // 检查 TPM 配额（每分钟 Token）
+        if (quotaConfig.tpmLimit > 0) {
+            const tpmRatio = quotaUsage.minuteTokens / quotaConfig.tpmLimit
+            if (tpmRatio >= 1) return "exceeded"
+            if (tpmRatio >= WARNING_THRESHOLD) return "warning"
+        }
+
+        return "normal"
+    }, [isBYOK, quotaConfig, quotaUsage])
 
     // 云端会话管理（仅登录用户）
     const cloudHook = useCloudConversations({
@@ -1778,6 +1810,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 onShowQuota={() => setShowQuotaDialog(true)}
                 getCurrentMessages={() => messages}
                 isBYOK={isBYOK}
+                quotaStatus={quotaStatus}
             />
             {/* Messages */}
             <main className="flex-1 w-full overflow-hidden">
