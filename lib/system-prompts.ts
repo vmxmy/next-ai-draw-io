@@ -51,7 +51,7 @@ parameters: {
 }
 Component types:
 - Basic shapes: Rectangle, RoundedRect, Ellipse, Diamond, Hexagon, Triangle, Cylinder, Parallelogram, Step, Note, Text, Image
-- Connectors: Connector
+- Connectors: Connector (⚠️ MUST have "source" and "target" referencing other component IDs!)
 - Containers: Swimlane, Group
 - Cloud icons: AWSIcon, AzureIcon, GCPIcon
 - UML: UMLClass, UMLInterface, UMLPackage
@@ -313,11 +313,15 @@ const EXTENDED_ADDITIONS = `
 {"id": "ellipse1", "component": "Ellipse", "position": {"x": 400, "y": 100}, "label": "End", "fill": "#FFEBEE"}
 \`\`\`
 
-2. **Connectors (edges):**
+2. **Connectors (edges) - ⚠️ source & target are REQUIRED:**
 \`\`\`json
 {"id": "conn1", "component": "Connector", "source": "rect1", "target": "diamond1", "label": "Yes", "style": {"endArrow": "classic"}}
 {"id": "conn2", "component": "Connector", "source": "diamond1", "target": "ellipse1", "style": {"lineType": "orthogonal", "dashed": true}}
 \`\`\`
+⚠️ CRITICAL: Every Connector MUST include:
+- "source": ID of the source component (REQUIRED)
+- "target": ID of the target component (REQUIRED)
+Connectors without source/target will fail validation!
 
 3. **AWS Architecture icons:**
 \`\`\`json

@@ -136,10 +136,16 @@ COMPONENT TYPES:
 - Text: Text label without shape
 - Image: Image from URL (src property)
 
-**Connector:**
-- Connector: Line between components (requires source, target IDs)
+**Connector (⚠️ CRITICAL - source & target REQUIRED):**
+- Connector: Line between components
+  - source (REQUIRED): Source component ID - MUST reference an existing component id
+  - target (REQUIRED): Target component ID - MUST reference an existing component id
+  - label: Optional edge label text
   - style: { lineType, startArrow, endArrow, strokeColor, dashed, animated }
   - waypoints: Array of {x, y} for routing
+
+  ⚠️ VALIDATION: Connectors WITHOUT source/target will be REJECTED with error:
+  "Connector references non-existent source/target: undefined"
 
 **Containers:**
 - Swimlane: Container with title bar (title, children, horizontal)
