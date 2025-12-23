@@ -383,12 +383,25 @@ ${xml}
                         "[display_components] Validation errors:",
                         validation.errors,
                     )
+                    // Check if errors are about Connector source/target
+                    const hasConnectorError = validation.errors.some(
+                        (e) =>
+                            e.includes("Connector") &&
+                            e.includes("non-existent"),
+                    )
+                    const connectorHint = hasConnectorError
+                        ? `
+
+⚠️ CONNECTOR FIX: Every Connector component MUST have "source" and "target" properties referencing other component IDs.
+Example: {"id": "e1", "component": "Connector", "source": "node1", "target": "node2"}`
+                        : ""
+
                     addToolOutput({
                         tool: "display_components",
                         toolCallId: toolCall.toolCallId,
                         state: "output-error",
                         errorText: `Component validation failed:
-${validation.errors.map((e) => `- ${e}`).join("\n")}
+${validation.errors.map((e) => `- ${e}`).join("\n")}${connectorHint}
 
 Please fix the component definitions and try again.`,
                     })
