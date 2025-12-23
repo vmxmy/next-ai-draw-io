@@ -1338,11 +1338,80 @@ ${preprocessResult.processedMessage}
                                         .describe("Unique component ID"),
                                     component: z
                                         .string()
-                                        .describe("Component type name"),
+                                        .describe(
+                                            "Component type: Rectangle, RoundedRect, Ellipse, Diamond, Connector, Swimlane, AWSIcon, etc.",
+                                        ),
+                                    // Common properties for shapes
+                                    label: z
+                                        .string()
+                                        .optional()
+                                        .describe(
+                                            "Text label for the component",
+                                        ),
+                                    position: z
+                                        .object({
+                                            x: z.number(),
+                                            y: z.number(),
+                                        })
+                                        .optional()
+                                        .describe("Position coordinates"),
+                                    size: z
+                                        .object({
+                                            width: z.number(),
+                                            height: z.number(),
+                                        })
+                                        .optional()
+                                        .describe("Dimensions"),
+                                    // CRITICAL: Connector-specific properties
+                                    source: z
+                                        .string()
+                                        .optional()
+                                        .describe(
+                                            "⚠️ REQUIRED for Connector: Source component ID",
+                                        ),
+                                    target: z
+                                        .string()
+                                        .optional()
+                                        .describe(
+                                            "⚠️ REQUIRED for Connector: Target component ID",
+                                        ),
+                                    // Cloud icon properties
+                                    service: z
+                                        .string()
+                                        .optional()
+                                        .describe(
+                                            "Service name for AWSIcon/AzureIcon/GCPIcon (e.g., EC2, S3, Lambda)",
+                                        ),
+                                    // Container properties
+                                    title: z
+                                        .string()
+                                        .optional()
+                                        .describe(
+                                            "Title for Swimlane containers",
+                                        ),
+                                    parent: z
+                                        .string()
+                                        .optional()
+                                        .describe(
+                                            "Parent component ID for nested components",
+                                        ),
+                                    // Style properties
+                                    fill: z
+                                        .string()
+                                        .optional()
+                                        .describe(
+                                            "Fill color (hex, e.g., #DBEAFE)",
+                                        ),
+                                    stroke: z
+                                        .string()
+                                        .optional()
+                                        .describe("Stroke color (hex)"),
                                 })
                                 .passthrough(),
                         )
-                        .describe("Array of component definitions"),
+                        .describe(
+                            "Array of component definitions. For Connector components, source and target are REQUIRED.",
+                        ),
                 }),
             },
         },
