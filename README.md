@@ -106,7 +106,7 @@ https://github.com/user-attachments/assets/9d60a3e8-4a1c-4b5e-acbb-26af2d3eabd1
 ├────────────────────────────┼────────────────────────────────────┤
 │                            │                                    │
 │  默认模型:                  │  默认模型:                         │
-│  qwen-2.5-coder-32b        │  claude-sonnet-4                   │
+│  DeepSeek Chat 3.2         │  Gemini 3.0 Pro ⭐                 │
 │                            │                                    │
 │  特点:                      │  特点:                             │
 │  • 响应速度快               │  • 深度推理能力                    │
@@ -124,10 +124,12 @@ https://github.com/user-attachments/assets/9d60a3e8-4a1c-4b5e-acbb-26af2d3eabd1
 
 | 模式 | 默认模型 | 速度 | 精度 | Token 消耗 | 推荐场景 |
 |:---:|:---|:---:|:---:|:---:|:---|
-| **⚡ Fast** | qwen-2.5-coder-32b | 快 | 中 | 低 | 简单图表、快速迭代 |
-| **🧠 Max** | claude-sonnet-4 | 中 | 高 | 高 | 复杂架构、精确任务 |
+| **⚡ Fast** | DeepSeek Chat 3.2 | 快 | 中 | 低 | 简单图表、快速迭代 |
+| **🧠 Max** | Gemini 3.0 Pro ⭐ | 中 | 高 | 高 | 复杂架构、精确任务 |
 
-> 管理员可在后台自定义 Fast/Max 模式的默认模型和 Provider。
+> ⭐ **作者推荐**：Gemini 3.0 Pro 在图表创作和生成效果方面表现最佳。
+>
+> 管理员可在后台自定义 Fast/Max 模式的默认模型和 Provider。BYOK 用户可自行配置任意模型。
 
 ## 快速开始
 
