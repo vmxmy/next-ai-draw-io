@@ -144,6 +144,8 @@ export type ModelMode = "fast" | "max"
 interface ChatInputProps {
     input: string
     status: "submitted" | "streaming" | "ready" | "error"
+    isPreparing?: boolean
+    preparingLabel?: string
     onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void
     onClearChat: (options: { clearDiagram: boolean }) => void
@@ -176,6 +178,8 @@ interface ChatInputProps {
 export function ChatInput({
     input,
     status,
+    isPreparing = false,
+    preparingLabel,
     onSubmit,
     onChange,
     onClearChat,
@@ -212,6 +216,7 @@ export function ChatInput({
     // Allow retry when there's an error (even if status is still "streaming" or "submitted")
     const isDisabled =
         (status === "streaming" || status === "submitted") && !error
+    const effectiveDisabled = isDisabled || isPreparing
     const showStop = isDisabled && typeof onStop === "function"
 
     const adjustTextareaHeight = useCallback(() => {
@@ -236,14 +241,14 @@ export function ChatInput({
         if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
             e.preventDefault()
             const form = e.currentTarget.closest("form")
-            if (form && input.trim() && !isDisabled) {
+            if (form && input.trim() && !effectiveDisabled) {
                 form.requestSubmit()
             }
         }
     }
 
     const handlePaste = async (e: React.ClipboardEvent) => {
-        if (isDisabled) return
+        if (effectiveDisabled) return
 
         const items = e.clipboardData.items
         const imageItems = Array.from(items).filter((item) =>
@@ -329,7 +334,7 @@ export function ChatInput({
         e.stopPropagation()
         setIsDragging(false)
 
-        if (isDisabled) return
+        if (effectiveDisabled) return
 
         const droppedFiles = e.dataTransfer.files
         const allowImages = !disableImageUpload
@@ -381,7 +386,7 @@ export function ChatInput({
                     onKeyDown={handleKeyDown}
                     onPaste={handlePaste}
                     placeholder={t("chat.placeholder")}
-                    disabled={isDisabled}
+                    disabled={effectiveDisabled}
                     aria-label={t("chat.aria.input")}
                     className="min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent px-4 py-3 text-sm focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
                 />
@@ -499,7 +504,7 @@ export function ChatInput({
                             variant="ghost"
                             size="sm"
                             onClick={triggerFileInput}
-                            disabled={isDisabled}
+                            disabled={effectiveDisabled}
                             tooltipContent={t("chat.tooltip.upload")}
                             className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
                         >
@@ -517,7 +522,7 @@ export function ChatInput({
                                     : "image/*,.pdf,application/pdf,text/*,.md,.markdown,.json,.csv,.xml,.yaml,.yml,.toml"
                             }
                             multiple
-                            disabled={isDisabled}
+                            disabled={effectiveDisabled}
                         />
 
                         <div className="w-px h-5 bg-border mx-1" />
@@ -532,7 +537,7 @@ export function ChatInput({
                                     modelMode === "fast" ? "max" : "fast"
                                 onModelModeChange?.(nextMode)
                             }}
-                            disabled={isDisabled}
+                            disabled={effectiveDisabled}
                             tooltipContent={
                                 modelMode === "max"
                                     ? t("chat.tooltip.modelMax")
@@ -552,16 +557,19 @@ export function ChatInput({
                             variant={showStop ? "destructive" : "default"}
                             onClick={showStop ? onStop : undefined}
                             disabled={
-                                !showStop && (isDisabled || !input.trim())
+                                !showStop &&
+                                (effectiveDisabled || !input.trim())
                             }
                             size="sm"
                             className="h-8 px-4 rounded-xl font-medium shadow-sm whitespace-nowrap"
                             aria-label={
                                 showStop
                                     ? t("chat.stop")
-                                    : isDisabled
-                                      ? t("chat.sending")
-                                      : t("chat.send")
+                                    : isPreparing
+                                      ? preparingLabel || t("chat.preparing")
+                                      : isDisabled
+                                        ? t("chat.sending")
+                                        : t("chat.send")
                             }
                         >
                             {showStop ? (
@@ -571,6 +579,13 @@ export function ChatInput({
                                         {t("chat.stop")}
                                     </span>
                                     <Loader2 className="h-4 w-4 ml-1.5 animate-spin" />
+                                </>
+                            ) : isPreparing ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span className="hidden sm:inline ml-2">
+                                        {preparingLabel || t("chat.preparing")}
+                                    </span>
                                 </>
                             ) : isDisabled ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />

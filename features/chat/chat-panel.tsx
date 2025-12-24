@@ -197,6 +197,9 @@ export default function ChatPanel({
     const [tpmLimit, setTpmLimit] = useState(0)
     const [disableImageUpload, setDisableImageUpload] = useState(false)
     const [persistUploadedFiles, setPersistUploadedFiles] = useState(false)
+    const [isPreparingSend, setIsPreparingSend] = useState(false)
+    const [preparingLabel, setPreparingLabel] = useState<string>("")
+    const preparingSendRef = useRef(false)
 
     // Check config on mount
     useEffect(() => {
@@ -1262,6 +1265,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     const onFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         const isProcessing = status === "streaming" || status === "submitted"
+        if (preparingSendRef.current) return
         if (input.trim() && !isProcessing) {
             // Check if input matches a cached example (only when no messages yet)
             if (messages.length === 0) {
@@ -1307,7 +1311,13 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 }
             }
 
+            let didStartSend = false
             try {
+                preparingSendRef.current = true
+                setIsPreparingSend(true)
+
+                // Stage 1: export current diagram (can be slow on mobile / busy iframe)
+                setPreparingLabel(t("chat.preparing.diagram"))
                 let chartXml = await onFetchChart()
                 chartXml = formatXML(chartXml)
 
@@ -1318,6 +1328,16 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 // Build user text by concatenating input with pre-extracted text
                 // Process files separately for AI SDK format
                 const fileParts: any[] = []
+
+                // Stage 2: build message payload (image dataUrl + optional upload)
+                const hasImageFiles = files.some((f) =>
+                    f.type.startsWith("image/"),
+                )
+                setPreparingLabel(
+                    hasImageFiles
+                        ? t("chat.preparing.upload")
+                        : t("chat.preparing.files"),
+                )
                 const userText = await processFilesAndAppendContent(
                     input,
                     files,
@@ -1337,6 +1357,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 // Check all quota limits
                 if (!checkAllQuotaLimits()) return
 
+                didStartSend = true
                 sendChatMessage(
                     userText,
                     fileParts,
@@ -1350,6 +1371,20 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 setFiles([])
             } catch (error) {
                 console.error("Error fetching chart data:", error)
+            } finally {
+                // If we started the network request, give `useChat` a moment to flip status to
+                // submitted/streaming so the input doesn't briefly become clickable again.
+                if (didStartSend) {
+                    setTimeout(() => {
+                        preparingSendRef.current = false
+                        setIsPreparingSend(false)
+                        setPreparingLabel("")
+                    }, 300)
+                } else {
+                    preparingSendRef.current = false
+                    setIsPreparingSend(false)
+                    setPreparingLabel("")
+                }
             }
         }
     }
@@ -1503,6 +1538,7 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
     ): Promise<string> => {
         let userText = baseText
 
+        const imageFiles: File[] = []
         for (const file of files) {
             if (isPdfFile(file)) {
                 const extracted = pdfData.get(file)
@@ -1515,48 +1551,62 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                     userText += `\n\n[File: ${file.name}]\n${extracted.text}`
                 }
             } else if (imageParts) {
-                // Create data URL for AI SDK (required for sendMessage)
-                const reader = new FileReader()
-                const dataUrl = await new Promise<string>((resolve) => {
+                imageFiles.push(file)
+            }
+        }
+
+        if (imageParts && imageFiles.length > 0) {
+            const readAsDataUrl = (file: File) =>
+                new Promise<string>((resolve) => {
+                    const reader = new FileReader()
                     reader.onload = () => resolve(reader.result as string)
                     reader.readAsDataURL(file)
                 })
 
-                // Upload file to server and get fileId (for backend optimization)
-                try {
-                    const formData = new FormData()
-                    formData.append("file", file)
+            const uploadFile = async (file: File) => {
+                const formData = new FormData()
+                formData.append("file", file)
+                const response = await fetch("/api/files/upload", {
+                    method: "POST",
+                    body: formData,
+                })
+                if (!response.ok) {
+                    throw new Error("File upload failed")
+                }
+                return response.json()
+            }
 
-                    const response = await fetch("/api/files/upload", {
-                        method: "POST",
-                        body: formData,
-                    })
+            const imagePartsBuilt = await Promise.all(
+                imageFiles.map(async (file) => {
+                    const [dataUrl, uploaded] = await Promise.all([
+                        readAsDataUrl(file),
+                        uploadFile(file).catch((error) => {
+                            console.error("Failed to upload file:", error)
+                            return null
+                        }),
+                    ])
 
-                    if (!response.ok) {
-                        throw new Error("File upload failed")
+                    if (uploaded) {
+                        return {
+                            type: "file",
+                            url: dataUrl,
+                            mediaType: file.type,
+                            fileId: uploaded.fileId,
+                            fileName: uploaded.fileName,
+                            fileType: uploaded.fileType,
+                        }
                     }
 
-                    const fileData = await response.json()
-
-                    // Include both data URL (for AI SDK) and fileId (for backend)
-                    imageParts.push({
-                        type: "file",
-                        url: dataUrl,
-                        mediaType: file.type,
-                        fileId: fileData.fileId,
-                        fileName: fileData.fileName,
-                        fileType: fileData.fileType,
-                    })
-                } catch (error) {
-                    console.error("Failed to upload file:", error)
                     // Fallback: use data URL only
-                    imageParts.push({
+                    return {
                         type: "file",
                         url: dataUrl,
                         mediaType: file.type,
-                    })
-                }
-            }
+                    }
+                }),
+            )
+
+            imageParts.push(...imagePartsBuilt)
         }
 
         return userText
@@ -1846,6 +1896,8 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
                 <ChatInput
                     input={input}
                     status={status}
+                    isPreparing={isPreparingSend}
+                    preparingLabel={preparingLabel}
                     onSubmit={onFormSubmit}
                     onChange={handleInputChange}
                     onClearChat={({ clearDiagram }) => {

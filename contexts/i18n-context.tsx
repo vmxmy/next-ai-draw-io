@@ -151,6 +151,10 @@ export type I18nKey =
     | "chat.tooltip.modelFast"
     | "chat.send"
     | "chat.sending"
+    | "chat.preparing"
+    | "chat.preparing.diagram"
+    | "chat.preparing.files"
+    | "chat.preparing.upload"
     | "chat.thinking"
     | "chat.stop"
     | "chat.slowResponseTip"
@@ -502,6 +506,10 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
             "Fast mode (click to switch to deep thinking)",
         "chat.send": "Send",
         "chat.sending": "Sending...",
+        "chat.preparing": "Preparing...",
+        "chat.preparing.diagram": "Preparing diagram...",
+        "chat.preparing.files": "Processing files...",
+        "chat.preparing.upload": "Uploading...",
         "chat.thinking": "Thinking...",
         "chat.stop": "Stop",
         "chat.slowResponseTip":
@@ -857,6 +865,10 @@ const MESSAGES: Record<Locale, Record<I18nKey, string>> = {
         "chat.tooltip.modelFast": "快速模式（点击切换为深度思考）",
         "chat.send": "发送",
         "chat.sending": "发送中…",
+        "chat.preparing": "准备中…",
+        "chat.preparing.diagram": "正在读取画布…",
+        "chat.preparing.files": "正在处理文件…",
+        "chat.preparing.upload": "正在处理图片…",
         "chat.thinking": "思考中…",
         "chat.stop": "停止",
         "chat.slowResponseTip": "响应时间较长，可点击停止按钮取消请求",
