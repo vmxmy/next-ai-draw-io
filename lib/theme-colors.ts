@@ -84,17 +84,15 @@ export function cssColorToHex(cssColor: string): string {
 }
 
 /**
- * Get computed color from CSS variable on document root
+ * Get computed color from CSS variable on a given element
  * Reads --ds-* variables directly as they contain the actual OKLCH values
- * Uses getComputedStyle on documentElement to get the resolved color value
+ * Uses getComputedStyle to get the resolved color value
  */
-function getComputedColor(varName: string): string {
-    if (typeof document === "undefined") {
-        return "#808080"
-    }
-
-    const root = document.documentElement
-    const styles = getComputedStyle(root)
+function getComputedColorFromElement(
+    element: Element,
+    varName: string,
+): string {
+    const styles = getComputedStyle(element)
     const rawValue = styles.getPropertyValue(varName).trim()
 
     if (!rawValue) {
@@ -126,18 +124,40 @@ function getComputedColor(varName: string): string {
 }
 
 /**
+ * Get computed color from CSS variable on document root
+ */
+function getComputedColor(varName: string): string {
+    if (typeof document === "undefined") {
+        return "#808080"
+    }
+    return getComputedColorFromElement(document.documentElement, varName)
+}
+
+/**
+ * Get computed CSS value (non-color) from a given element
+ */
+function getComputedValueFromElement(
+    element: Element,
+    varName: string,
+    fallback: string,
+): string {
+    const styles = getComputedStyle(element)
+    const rawValue = styles.getPropertyValue(varName).trim()
+    return rawValue || fallback
+}
+
+/**
  * Get computed CSS value (non-color) from document root
  */
 function getComputedValue(varName: string, fallback: string): string {
     if (typeof document === "undefined") {
         return fallback
     }
-
-    const root = document.documentElement
-    const styles = getComputedStyle(root)
-    const rawValue = styles.getPropertyValue(varName).trim()
-
-    return rawValue || fallback
+    return getComputedValueFromElement(
+        document.documentElement,
+        varName,
+        fallback,
+    )
 }
 
 /**
@@ -320,4 +340,184 @@ export function formatThemeColorsForPrompt(config: FullThemeConfig): string {
 6. For data visualizations, use chart colors in order: chart1→chart5
 
 7. Use Success (${colors.success}) for positive states, Destructive (${colors.destructive}) for errors/warnings`
+}
+
+/**
+ * Default colors when extraction fails
+ */
+const defaultColors: ThemeColors = {
+    primary: "#3B82F6",
+    primaryForeground: "#FFFFFF",
+    secondary: "#F3F4F6",
+    secondaryForeground: "#1F2937",
+    accent: "#FEF3C7",
+    accentForeground: "#1F2937",
+    background: "#FFFFFF",
+    foreground: "#1F2937",
+    muted: "#9CA3AF",
+    mutedForeground: "#6B7280",
+    border: "#E5E7EB",
+    card: "#FFFFFF",
+    cardForeground: "#1F2937",
+    destructive: "#EF4444",
+    success: "#22C55E",
+    chart1: "#3B82F6",
+    chart2: "#22C55E",
+    chart3: "#F59E0B",
+    chart4: "#EF4444",
+    chart5: "#8B5CF6",
+}
+
+/**
+ * Default style when extraction fails
+ */
+const defaultStyle: ThemeStyle = {
+    radius: "8px",
+    shadowColor: "#000000",
+    shadowOffsetX: "0px",
+    shadowOffsetY: "4px",
+    shadowBlur: "6px",
+    fontFamily: "sans-serif",
+}
+
+/**
+ * Extract colors from a specific element (used for theme extraction)
+ */
+function extractColorsFromElement(element: Element): ThemeColors {
+    return {
+        primary: getComputedColorFromElement(element, "--ds-primary"),
+        primaryForeground: getComputedColorFromElement(
+            element,
+            "--ds-primary-foreground",
+        ),
+        secondary: getComputedColorFromElement(element, "--ds-secondary"),
+        secondaryForeground: getComputedColorFromElement(
+            element,
+            "--ds-secondary-foreground",
+        ),
+        accent: getComputedColorFromElement(element, "--ds-accent"),
+        accentForeground: getComputedColorFromElement(
+            element,
+            "--ds-accent-foreground",
+        ),
+        background: getComputedColorFromElement(element, "--ds-background"),
+        foreground: getComputedColorFromElement(element, "--ds-foreground"),
+        muted: getComputedColorFromElement(element, "--ds-muted"),
+        mutedForeground: getComputedColorFromElement(
+            element,
+            "--ds-muted-foreground",
+        ),
+        border: getComputedColorFromElement(element, "--ds-border"),
+        card: getComputedColorFromElement(element, "--ds-card"),
+        cardForeground: getComputedColorFromElement(
+            element,
+            "--ds-card-foreground",
+        ),
+        destructive: getComputedColorFromElement(element, "--ds-destructive"),
+        success: getComputedColorFromElement(element, "--ds-success"),
+        chart1: getComputedColorFromElement(element, "--ds-chart-1"),
+        chart2: getComputedColorFromElement(element, "--ds-chart-2"),
+        chart3: getComputedColorFromElement(element, "--ds-chart-3"),
+        chart4: getComputedColorFromElement(element, "--ds-chart-4"),
+        chart5: getComputedColorFromElement(element, "--ds-chart-5"),
+    }
+}
+
+/**
+ * Extract style from a specific element (used for theme extraction)
+ */
+function extractStyleFromElement(element: Element): ThemeStyle {
+    return {
+        radius: getComputedValueFromElement(element, "--ds-radius", "8px"),
+        shadowColor: getComputedColorFromElement(element, "--ds-shadow-color"),
+        shadowOffsetX: getComputedValueFromElement(
+            element,
+            "--ds-shadow-offset-x",
+            "0px",
+        ),
+        shadowOffsetY: getComputedValueFromElement(
+            element,
+            "--ds-shadow-offset-y",
+            "4px",
+        ),
+        shadowBlur: getComputedValueFromElement(
+            element,
+            "--ds-shadow-blur",
+            "6px",
+        ),
+        fontFamily: getComputedValueFromElement(
+            element,
+            "--ds-font-sans",
+            "sans-serif",
+        ),
+    }
+}
+
+/**
+ * Extract theme colors for a specific theme by name
+ * Creates a temporary element with the theme class to read CSS variables
+ */
+export function extractThemeColorsForTheme(
+    themeName: string,
+    mode: "light" | "dark",
+): ThemeColors {
+    if (typeof document === "undefined") {
+        return defaultColors
+    }
+
+    // Create a temporary element with the theme class
+    const tempElement = document.createElement("div")
+    tempElement.className = `theme-${themeName} ${mode}`
+    tempElement.style.cssText =
+        "position:absolute;visibility:hidden;pointer-events:none"
+    document.body.appendChild(tempElement)
+
+    // Extract colors from the temporary element
+    const colors = extractColorsFromElement(tempElement)
+
+    // Clean up
+    document.body.removeChild(tempElement)
+
+    return colors
+}
+
+/**
+ * Extract theme style for a specific theme by name
+ * Creates a temporary element with the theme class to read CSS variables
+ */
+export function extractThemeStyleForTheme(
+    themeName: string,
+    mode: "light" | "dark",
+): ThemeStyle {
+    if (typeof document === "undefined") {
+        return defaultStyle
+    }
+
+    // Create a temporary element with the theme class
+    const tempElement = document.createElement("div")
+    tempElement.className = `theme-${themeName} ${mode}`
+    tempElement.style.cssText =
+        "position:absolute;visibility:hidden;pointer-events:none"
+    document.body.appendChild(tempElement)
+
+    // Extract style from the temporary element
+    const style = extractStyleFromElement(tempElement)
+
+    // Clean up
+    document.body.removeChild(tempElement)
+
+    return style
+}
+
+/**
+ * Extract full theme config for a specific theme by name
+ */
+export function extractFullThemeConfigForTheme(
+    themeName: string,
+    mode: "light" | "dark",
+): FullThemeConfig {
+    return {
+        colors: extractThemeColorsForTheme(themeName, mode),
+        style: extractThemeStyleForTheme(themeName, mode),
+    }
 }

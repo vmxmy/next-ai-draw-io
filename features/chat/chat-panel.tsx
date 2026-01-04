@@ -38,7 +38,7 @@ import { componentsToXml, validateComponents } from "@/lib/components"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
 import { STORAGE_KEYS } from "@/lib/storage"
 import {
-    extractFullThemeConfig,
+    extractFullThemeConfigForTheme,
     formatThemeColorsForPrompt,
 } from "@/lib/theme-colors"
 import { api } from "@/lib/trpc/client"
@@ -1487,47 +1487,66 @@ Please retry with an adjusted search pattern or use display_diagram if retries a
         [quotaManager, sendMessage, authSession, buildAIHeaders, modelMode],
     )
 
-    // Apply current UI theme colors to the diagram
-    const handleApplyTheme = useCallback(async () => {
-        const isProcessing = status === "streaming" || status === "submitted"
-        if (isProcessing) return
+    // Apply selected theme colors to the diagram
+    const handleApplyTheme = useCallback(
+        async (themeName: string) => {
+            const isProcessing =
+                status === "streaming" || status === "submitted"
+            if (isProcessing) return
 
-        // Check quota limits first
-        if (!checkAllQuotaLimits()) return
+            // Check quota limits first
+            if (!checkAllQuotaLimits()) return
 
-        try {
-            // Extract full theme configuration (colors + style) and format prompt
-            const themeConfig = extractFullThemeConfig()
-            const themePrompt = formatThemeColorsForPrompt(themeConfig)
+            try {
+                // Determine current light/dark mode
+                const isDark =
+                    document.documentElement.classList.contains("dark")
+                const mode = isDark ? "dark" : "light"
 
-            // Fetch current diagram XML
-            const chartXml = await onFetchChart()
-            chartXMLRef.current = chartXml
+                // Extract theme configuration for the selected theme
+                const themeConfig = extractFullThemeConfigForTheme(
+                    themeName,
+                    mode,
+                )
+                const themePrompt = formatThemeColorsForPrompt(themeConfig)
 
-            // Record diagram version before sending
-            const messageIndex = messages.length
-            const previousXml = getPreviousDiagramXmlBeforeMessage(messageIndex)
-            ensureDiagramVersionForMessage(
-                messageIndex,
-                chartXml,
-                "before-send",
-            )
+                // Fetch current diagram XML
+                const chartXml = await onFetchChart()
+                chartXMLRef.current = chartXml
 
-            // Send the theme application message
-            sendChatMessage(themePrompt, [], chartXml, previousXml, sessionId)
-        } catch (error) {
-            console.error("Error applying theme:", error)
-        }
-    }, [
-        status,
-        checkAllQuotaLimits,
-        onFetchChart,
-        messages.length,
-        getPreviousDiagramXmlBeforeMessage,
-        ensureDiagramVersionForMessage,
-        sendChatMessage,
-        sessionId,
-    ])
+                // Record diagram version before sending
+                const messageIndex = messages.length
+                const previousXml =
+                    getPreviousDiagramXmlBeforeMessage(messageIndex)
+                ensureDiagramVersionForMessage(
+                    messageIndex,
+                    chartXml,
+                    "before-send",
+                )
+
+                // Send the theme application message
+                sendChatMessage(
+                    themePrompt,
+                    [],
+                    chartXml,
+                    previousXml,
+                    sessionId,
+                )
+            } catch (error) {
+                console.error("Error applying theme:", error)
+            }
+        },
+        [
+            status,
+            checkAllQuotaLimits,
+            onFetchChart,
+            messages.length,
+            getPreviousDiagramXmlBeforeMessage,
+            ensureDiagramVersionForMessage,
+            sendChatMessage,
+            sessionId,
+        ],
+    )
 
     // Process files and append content to user text (handles PDF, text, and optionally images)
     const processFilesAndAppendContent = async (

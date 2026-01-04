@@ -6,7 +6,6 @@ import {
     History,
     Image as ImageIcon,
     Loader2,
-    Palette,
     Redo2,
     Send,
     Square,
@@ -21,6 +20,7 @@ import { ErrorToast } from "@/components/error-toast"
 import { HistoryDialog } from "@/components/history-dialog"
 import { ResetWarningModal } from "@/components/reset-warning-modal"
 import { SaveDialog } from "@/components/save-dialog"
+import { ThemeSelector } from "@/components/theme-selector"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { useDiagram } from "@/contexts/diagram-context"
@@ -170,7 +170,7 @@ interface ChatInputProps {
     conversationTitle?: string
     error?: Error | null
     disableImageUpload?: boolean
-    onApplyTheme?: () => void
+    onApplyTheme?: (themeName: string) => void
     modelMode?: ModelMode
     onModelModeChange?: (mode: ModelMode) => void
 }
@@ -486,17 +486,10 @@ export function ChatInput({
                         />
 
                         {onApplyTheme && (
-                            <ButtonWithTooltip
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={onApplyTheme}
+                            <ThemeSelector
+                                onValueChange={onApplyTheme}
                                 disabled={isDisabled}
-                                tooltipContent={t("chat.tooltip.applyTheme")}
-                                className="h-8 w-8 p-0 shrink-0 text-muted-foreground hover:text-foreground"
-                            >
-                                <Palette className="h-4 w-4" />
-                            </ButtonWithTooltip>
+                            />
                         )}
 
                         <ButtonWithTooltip
