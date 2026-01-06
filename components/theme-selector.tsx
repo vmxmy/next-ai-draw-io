@@ -48,7 +48,8 @@ function ThemeColorSwatches({
  * Theme selector dropdown for applying theme styles to diagrams
  */
 export function ThemeSelector({ onValueChange, disabled }: ThemeSelectorProps) {
-    const { resolvedAppearance } = useTheme()
+    const { resolvedAppearance, palette } = useTheme()
+    const currentPalette = palette || "amber-minimal"
 
     return (
         <Select onValueChange={onValueChange} disabled={disabled}>
@@ -56,17 +57,25 @@ export function ThemeSelector({ onValueChange, disabled }: ThemeSelectorProps) {
                 <Palette className="h-4 w-4" />
             </SelectTrigger>
             <SelectContent className="max-h-[300px]">
-                {tweakcnThemes.map((theme) => (
-                    <SelectItem key={theme.name} value={theme.name}>
-                        <div className="flex items-center gap-2">
-                            <ThemeColorSwatches
-                                themeName={theme.name}
-                                mode={resolvedAppearance}
-                            />
-                            <span className="text-xs">{theme.title}</span>
-                        </div>
-                    </SelectItem>
-                ))}
+                {tweakcnThemes.map((theme) => {
+                    const isCurrentTheme = theme.name === currentPalette
+                    return (
+                        <SelectItem key={theme.name} value={theme.name}>
+                            <div className="flex items-center gap-2">
+                                <ThemeColorSwatches
+                                    themeName={theme.name}
+                                    mode={resolvedAppearance}
+                                />
+                                <span
+                                    className={`text-xs ${isCurrentTheme ? "font-semibold text-primary" : ""}`}
+                                >
+                                    {theme.title}
+                                    {isCurrentTheme && " ✓"}
+                                </span>
+                            </div>
+                        </SelectItem>
+                    )
+                })}
             </SelectContent>
         </Select>
     )
